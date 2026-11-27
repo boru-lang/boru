@@ -56,17 +56,20 @@ def gen_item(rng, depth):
         return out + ["}"]
     if r < 0.50:
         w = rng.choice(WORDS)
-        # call-site modifiers: /s stack only, /f forward only, /N arity
-        if rng.random() < 0.15:
-            w += "/" + rng.choice(["s", "f", "1", "2", "0", "1s", "2f", "1f", "2s", "v", "v", "v"])
+        # call-site modifiers: /s stack only, /f forward only, /N arity,
+        # /v the bound value, /u the function with its arguments reversed
+        if rng.random() < 0.22:
+            w += "/" + rng.choice(["s", "f", "1", "2", "0", "1s", "2f", "1f", "2s", "v", "v", "v",
+                                   "u", "u", "u", "uv", "uv", "su", "2u", "fuv", "sv", "1v"])
         return [w]
     if r < 0.78:
         return [rng.choice(LITS)]
     if r < 0.86:
         return [rng.choice(TYPES)]
     if r < 0.92:
-        n = rng.choice(NAMES)
-        return [n + "/v"] if rng.random() < 0.2 else [n]
+        n = rng.choice(NAMES + ["inc"])
+        r2 = rng.random()
+        return [n + "/v"] if r2 < 0.2 else [n + "/u"] if r2 < 0.3 else [n + "/uv"] if r2 < 0.35 else [n]
     return [rng.choice(MARKS)]
 
 
@@ -81,8 +84,12 @@ def gen_value(rng, depth):
         for k in rng.sample(["a", "b", "c"], n):
             out += [k + ":"] + gen_value(rng, depth - 1)
         return out + ["}"]
-    if r < 0.7:
+    if r < 0.66:
         return [rng.choice(LITS[:8])]
+    if r < 0.70:
+        # a function is a value too — and one with an IDENTITY: the same
+        # text written twice is two functions
+        return ["fn(", "n", "Integer", "Integer", "[", "n", "]", ")"]
     return [rng.choice(TYPES[:7])]
 
 

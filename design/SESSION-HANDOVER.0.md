@@ -51,10 +51,13 @@ discipline: [PERF-BASELINE.10.md](PERF-BASELINE.10.md), `make bench`,
 ## Next
 
 1. The compiler lane's residue is pruned (COMPILER-LANE-REMOVAL.0.md §4,
-   the third sweep). It left two things: commentary in core, check and
-   lang that still tells its history in the lane's words, and the
-   TypeScript twin's own compiled lane (`eng/ts`), which is a separate
-   decision.
+   the third sweep), and the TypeScript twin's own compiled lane
+   (`eng/ts`) was removed on 2026-11-27 (§4, "The TypeScript twin"). Two
+   things are left: commentary in core, check and lang that still tells
+   its history in the lane's words, and in `core/ts` the recording seam
+   the TypeScript lane implemented (`emit-recorder.ts`, `CheckState.emit`
+   and the engine's reads of it), which nothing outside core's own tests
+   installs now.
 2. The dispatch-cost plan's remaining levers (INTERPRETER-PERF-HANDOVER.0.md,
    "The dispatch-cost plan: what is left"), each measured with
    `BenchmarkInterpExec` before and after it lands (PERF-BASELINE.10.md's

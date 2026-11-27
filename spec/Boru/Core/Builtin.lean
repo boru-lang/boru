@@ -44,7 +44,7 @@ namespace Value
     `TypeMembership`). -/
 def isType (v : Value) : Bool :=
   match v.unquote with
-  | typeLit _ | typedList _ _ | typedMap _ _ | disjunct _ | fn _ _ => true
+  | typeLit _ | typedList _ _ | typedMap _ _ | disjunct _ | fn _ _ _ => true
   | _ => false
 
 /-- `v` is a value of type `t` (the kernel's `Value.Is`). By default the

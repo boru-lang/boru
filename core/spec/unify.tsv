@@ -172,3 +172,9 @@ run unifyq d( 5 6 ) [q d( 5 ) ]	false
 run unifyq d( { a: 1 } ) { b: Integer }	false
 run unifyq d( { a: 1 } ) { a: String }	false
 run unifyq d( { a: 1 } ) { b: 2 }	false
+
+# --- a FUNCTION is equal only to itself ---------------------------------------
+# Functions are compared by identity, not by text: the same function written
+# twice is two values. (The rows that need a reference — one binding read
+# twice IS one function — are in divergent.tsv until core/ts reads /v.)
+run unifyq fn( n Integer Integer [ n ] ) fn( n Integer Integer [ n ] )	false

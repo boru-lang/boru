@@ -467,3 +467,9 @@ run dupq x/v	ERROR:undefined_word	and the same inside a forward window
 # refused, re-planned the same thing, and ran to the step limit.
 run ( tyq/v Integer )	Integer	with a type after it the same value callee is simply called
 run ( Integer tyq/v 'x' )	Integer 'x'	and with a type beneath it, it takes that from the stack
+
+# --- `/u` and `/uv` name a FUNCTION -------------------------------------------
+# A name bound to nothing is undefined, whatever modifier is written on it.
+# (What `/u` does to a function is in divergent.tsv until core/ts reads it.)
+run nosuch/u	ERROR:undefined_word
+run nosuch/uv	ERROR:undefined_word

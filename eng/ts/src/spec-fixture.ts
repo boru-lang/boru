@@ -1,9 +1,10 @@
 // Shared spec fixtures: the word registry, tokenizer, and .tsv corpus
-// loader used by BOTH the interpreter spec gate (spec.test.ts) and the
-// compiled differential gate (corpus.test.ts). Extracted verbatim from the
-// original spec.test.ts so the two gates run the identical fixture set.
+// loader used by the interpreter spec gate (spec.test.ts), the cross-engine
+// differential (crossdiff-shared.ts) and the fixture probes. VALUE MODE
+// only: the check corpus (eng/spec/check) has its own return-annotated
+// fixture set in check-fixture.ts, so nothing here declares check-mode
+// behaviour (returns / returnsFn / runInCheckMode).
 
-import type { EmitState } from './emit.ts'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -42,7 +43,6 @@ import {
   TIdeal,
   TNode,
   TClass,
-  TDisjunct,
   TScalar,
   TType,
   TWord,
@@ -52,7 +52,6 @@ import {
   type FnSig,
   newAtom,
   newBoolean,
-  newDynamicCarrier,
   newDisjunct,
   newEnum,
   newFnDef,
@@ -88,47 +87,8 @@ let replayCounter = 0
 const typeTable = typeNameTable()
 
 /**
- * Recover the concrete value a compile-mode operand will hold at run time, so
- * a constraint can be validated statically. In compile mode a literal is
- * stripped to a carrier and a `quote …` operand becomes a self-contained
- * island; neither is `isConcrete()`, but both are determinable:
- *   - a stripped literal / inert container → its const original via classify;
- *   - a 0-input token island (`quote red`, `quote [1 2 3]`) → the value it
- *     re-runs to, evaluated on a throwaway non-check registry (islands are
- *     capture-free, so a fresh registry reproduces the result faithfully).
- * Returns null when the value cannot be determined at compile time.
- */
-function recoverConcrete(emit: import('./emit.ts').EmitState, value: Value): Value | null {
-  if (value.isConcrete()) return value
-  const op = emit.classify(value)
-  if (op !== null && op.kind === 'const') return op.value
-  const island = emit.islandTokensFor(value)
-  if (island !== null) {
-    try {
-      const tmp = new Registry()
-      registerSpecWords(tmp)
-      const out = new Engine(tmp).run([...island])
-      if (out.length === 1 && out[0]!.isConcrete()) return out[0]!
-    } catch {
-      /* fall through to null — caller refuses */
-    }
-  }
-  return null
-}
-
-/**
- * Apply a `def`/`enum` type constraint to a value. Three modes:
- *   - Interpret mode: throw the canonical `type_error` on violation (the
- *     long-standing runtime behaviour).
- *   - Compile mode (an active EmitState): validate against the recovered
- *     concrete value. A violation lowers to a terminal `OpTrap` so the compiled
- *     program raises the byte-identical `type_error` the interpreter would
- *     (mirrors Go's check-lenient/run-error parity); a value the compiler
- *     cannot determine statically refuses, falling back to the interpreter.
- *   - Pure check mode (no EmitState): lenient — the value may be a type-only
- *     carrier, so the constraint is never evaluated (unchanged behaviour).
- * Returns true when the caller must ABORT the bind (the violation was handled
- * via trap/refuse), false to proceed with the bind.
+ * Apply a `def`/`enum` type constraint to a value: throw the canonical
+ * `type_error` on violation.
  */
 function enforceTypeConstraint(
   registry: Registry,
@@ -136,30 +96,12 @@ function enforceTypeConstraint(
   constraint: Value,
   detail: string,
   word: string,
-): boolean {
+): void {
   // Post-opacity, a constraint can carry bare type-name Words
   // (`[:Integer]` arrives with child word(Integer)) — resolve them
   // through the canonical cascade before validating.
   constraint = resolveWordsDeep(constraint, registry)
-  const emit = registry.check.emit as EmitState | undefined
-  if (registry.check.isActive()) {
-    if (emit === undefined) return false // pure check mode: lenient
-    const concrete = recoverConcrete(emit, value)
-    if (concrete === null) {
-      emit.markUncompilable('def: unverifiable type constraint on a computed value')
-      return true
-    }
-    if (!isValueOfType(concrete, constraint)) {
-      if (!emit.recordTrap('type_error', detail, word)) {
-        emit.markUncompilable('def: conditional type-constraint violation')
-      }
-      return true
-    }
-    return false
-  }
-  // Interpret mode.
   if (!isValueOfType(value, constraint)) throw new BoruError('type_error', detail, word)
-  return false
 }
 
 function registerSpecWords(r: Registry): void {
@@ -200,7 +142,6 @@ function registerSpecWords(r: Registry): void {
       {
         args: [TAny],
         handler: (args) => [args[0]!, args[0]!],
-        returns: [TAny, TAny],
       },
     ],
   })
@@ -216,7 +157,6 @@ function registerSpecWords(r: Registry): void {
         // deeper position and the old next-deeper at the top — the
         // two values come out swapped on the stack.
         handler: (args) => [args[0]!, args[1]!],
-        returns: [TAny, TAny],
       },
     ],
   })
@@ -226,7 +166,6 @@ function registerSpecWords(r: Registry): void {
       {
         args: [TAny],
         handler: () => [],
-        returns: [],
       },
     ],
   })
@@ -407,16 +346,9 @@ function registerSpecWords(r: Registry): void {
   // in source order. Mirrors registerEngSpecStack. (dup/swap/drop are
   // registered above; the rest are added here.)
   const stackOp = (name: string, argCount: number, fn: (a: Value[]) => Value[]): void => {
-    // Probe the handler to learn its TRUE result count so the checker models
-    // the arity faithfully (Go annotates these via NativeSig.Returns). A
-    // non-1 count makes the bytecode recorder refuse (multi/zero-result) and
-    // fall back; a 1-result reorder (nip) stays compilable.
-    const returns = fn(new Array<Value>(argCount).fill(newNone())).map(() => TAny)
     reg({
       name,
-      signatures: [
-        { args: new Array<typeof TAny>(argCount).fill(TAny), barrierPos: 0, handler: (a) => fn(a), returns },
-      ],
+      signatures: [{ args: new Array<typeof TAny>(argCount).fill(TAny), barrierPos: 0, handler: (a) => fn(a) }],
     })
   }
   stackOp('over', 2, (a) => [a[1]!, a[0]!, a[1]!])
@@ -606,10 +538,6 @@ function registerSpecWords(r: Registry): void {
       {
         args: [TList],
         noEvalArgs: new Set([0]),
-        // replayq emits mark/move tape tokens the stack VM has no opcodes for;
-        // island it (bake the inert body, re-run through a sub-engine that
-        // handles the replay). A non-inert body (paren/nested) falls back.
-        compileFallback: true,
         handler: (args) => {
           const body = args[0]!.asList()
           replayCounter++
@@ -625,31 +553,19 @@ function registerSpecWords(r: Registry): void {
   // arrives unevaluated (noEvalArgs); a bare List/Map type literal fails
   // the concrete-container match and surfaces a signature_error.
   const doEvalMapValue = (v: Value): Value => {
-    const emit = r.check.emit
     if (v.isMap() && v.data instanceof OrderedMap) {
       const src = v.asMap()
       const keys = src.keys()
       const vals = keys.map((k) => doEvalMapValue(src.get(k)!))
-      if (emit !== undefined) {
-        // Compile mode: record a makeMap so the assembled map has provenance.
-        const ops = vals.map((x) => emit.classify(x))
-        if (ops.every((o) => o !== null)) return emit.recordMakeMap([...keys], ops as import('./emit.ts').Operand[])
-        emit.markUncompilable('do-map: value of unknown provenance')
-      }
       const out = new OrderedMap()
       keys.forEach((k, i) => out.set(k, vals[i]!))
       return newMap(out)
     }
     if (v.vType.matches(TList) && Array.isArray(v.data)) {
       const residual = new Engine(r).run([...v.asList()])
-      // A single-value residual collapses to that value (already provenance-
-      // carrying); a multi-value residual is a list — record a makeList.
+      // A single-value residual collapses to that value; a multi-value
+      // residual is a list.
       if (residual.length === 1) return residual[0]!
-      if (emit !== undefined) {
-        const ops = residual.map((x) => emit.classify(x))
-        if (ops.every((o) => o !== null)) return emit.recordMakeList(ops as import('./emit.ts').Operand[])
-        emit.markUncompilable('do-list: element of unknown provenance')
-      }
       return newList(residual, { eval: false })
     }
     return v
@@ -661,20 +577,11 @@ function registerSpecWords(r: Registry): void {
       {
         args: [TMap],
         noEvalArgs: new Set([0]),
-        // Transparent in check mode: doEvalMapValue records makeMap/makeList
-        // so a deep-evaluated map (do { a:(1 addq 2) }) compiles.
-        runInCheckMode: true,
         handler: (args) => [doEvalMapValue(args[0]!)],
       },
       {
         args: [TList],
         noEvalArgs: new Set([0]),
-        // runInCheckMode makes `do` TRANSPARENT to the recorder: its body
-        // runs in a sub-engine that records into the shared trace, and the
-        // body residual (carriers with provenance) becomes do's result — so
-        // `do [1 addq 2]` compiles inline with no do-event, exactly like a
-        // fn body. In value mode the same handler just runs the body.
-        runInCheckMode: true,
         // The escape hatch: a body error surfaces as an Error VALUE
         // rather than propagating — the Go fixture (and basic's
         // production do) is the reference.
@@ -770,9 +677,6 @@ function registerSpecWords(r: Registry): void {
       {
         args: [TAny, TNode],
         noEvalArgs: new Set([1]),
-        // Build the record/object type in check mode so typeof/is/inspect
-        // consume it and it bakes as an inert type constant.
-        runInCheckMode: true,
         handler: (args) => {
           const base = args[0]!
           // refine Record [ {k:T} … ] merges the pair-maps into a
@@ -811,7 +715,6 @@ function registerSpecWords(r: Registry): void {
       },
       {
         args: [TAny],
-        runInCheckMode: true,
         // The 1-arg bare form: return the base type unchanged (the
         // paired def mints the fresh subtype) — the Go fixture's
         // refineBareCtorH is the reference. A non-type argument is the
@@ -844,50 +747,6 @@ function registerSpecWords(r: Registry): void {
         // (so the matcher does not dispatch a registered word like `dup`).
         args: [TAtom],
         quoteArgs: new Set([0]),
-        recordsOwnEvent: true,
-        // Island [inspect <name>] when the name is NOT a def: a registered
-        // word's signatures and an unknown name's "unknown" inspection are
-        // both registry-stable, so the island re-runs faithfully. A def's
-        // binding is compile-time only (not live in the VM) — refuse it.
-        returnsFn: (args, registry) => {
-          const out = newDynamicCarrier(TMap)
-          const emit = registry.check.emit as EmitState | undefined
-          if (emit !== undefined) {
-            const a = args[0]!
-            const name = a.isWord() ? a.asWord().name : a.data !== null ? a.asAtom() : ''
-            const top = name === '' ? undefined : registry.topOfDefStack(name)
-            if (name === '') {
-              // The operand is a computed VALUE (e.g. `inspect (quote red)`),
-              // not a name. Thread it into an inspect island that re-runs the
-              // identical dispatch on the runtime value — matches by
-              // construction. Refuses if the operand has no provenance.
-              if (!emit.recordFallback('inspect', [a], [out], registry)) {
-                emit.markUncompilable('inspect: non-name operand of unknown provenance')
-              }
-            } else if (top === undefined) {
-              // Registered word or unknown name: registry-stable, island it.
-              emit.recordTokenIsland([newWord('inspect'), newWord(name)], out, 'inspect')
-            } else {
-              // A def bound to a compile-time-known value (a type / enum /
-              // sig / fn, or a literal recovered through its carrier): its
-              // inspection is fixed, so bake the precomputed result.
-              let concrete: import('@boru-lang/core').Value | null = top.carrier ? null : top
-              if (concrete === null) {
-                concrete = emit.constValueOf(emit.classify(top))
-              }
-              if (concrete !== null) {
-                emit.recordTokenIsland(
-                  [buildDefinedInspection(name, resolveWordsDeep(concrete, registry))],
-                  out,
-                  'inspect',
-                )
-              } else {
-                emit.markUncompilable('inspect: def bound to a computed value')
-              }
-            }
-          }
-          return [out]
-        },
         handler: (args, _ctx, _stk, registry) => {
           const name = args[0]!.asAtom()
           const fn = registry.lookup(name)
@@ -921,12 +780,7 @@ function registerSpecWords(r: Registry): void {
   reg({
     name: 'word',
     forwardPrecedence: true,
-    // runInCheckMode so the word-body list is produced in the record pass and
-    // bound by def; a later reference splices the body inline, which records
-    // its events (the macro is transparent to the recorder, like do/def).
-    signatures: [
-      { args: [TAny], noEvalArgs: new Set([0]), runInCheckMode: true, handler: (args) => [args[0]!] },
-    ],
+    signatures: [{ args: [TAny], noEvalArgs: new Set([0]), handler: (args) => [args[0]!] }],
   })
 
   // def: spec-subset code-body binding. Captures `def NAME body`
@@ -949,15 +803,12 @@ function registerSpecWords(r: Registry): void {
         quoteArgs: new Set([0, 1]),
         patterns: new Map([[1, newAtom('word')]]),
         noEvalArgs: new Set([2]),
-        runInCheckMode: true,
-        returns: [],
         handler: (args, _ctx, _stk, registry) => {
           const nameArg = args[0]!
           const name = nameArg.isWord() ? nameArg.asWord().name : nameArg.asAtom()
           if (/^-?\d/.test(name)) {
             throw new BoruError('syntax_error', `invalid numeric literal: ${name}`, name)
           }
-          registry.check.recordDef(name)
           registry.pushDef(name, args[2]!)
           return []
         },
@@ -971,8 +822,6 @@ function registerSpecWords(r: Registry): void {
         quoteArgs: new Set([0, 1]),
         patterns: new Map([[1, newAtom('fn')]]),
         noEvalArgs: new Set([2]),
-        runInCheckMode: true,
-        returns: [],
         handler: (args, _ctx, _stk, registry) => {
           const nameArg = args[0]!
           const name = nameArg.isWord() ? nameArg.asWord().name : nameArg.asAtom()
@@ -987,7 +836,6 @@ function registerSpecWords(r: Registry): void {
           for (let i = 0; i < elems.length; i += 3) {
             sigs.push(parseFnTriple(elems[i]!, elems[i + 1]!, elems[i + 2]!))
           }
-          registry.check.recordDef(name)
           registry.pushDef(name, newFnDef({ sigs }))
           return []
         },
@@ -1001,8 +849,6 @@ function registerSpecWords(r: Registry): void {
       {
         args: [TMap, TAny],
         noEvalArgs: new Set([0]),
-        runInCheckMode: true,
-        returns: [],
         handler: (args, _ctx, _stk, registry) => {
           const nameMap = args[0]!.asMap()
           if (nameMap.size !== 1) {
@@ -1030,18 +876,13 @@ function registerSpecWords(r: Registry): void {
           // typedDef receives the resolved value): `def x:null null`
           // must bind the atom, not the raw word.
           const value = resolveWordsDeep(args[1]!, registry)
-          if (
-            enforceTypeConstraint(
-              registry,
-              value,
-              constraint,
-              `def ${name}: value ${value.toString()} does not satisfy declared type ${constraint.toString()}`,
-              name,
-            )
-          ) {
-            return []
-          }
-          registry.check.recordDef(name)
+          enforceTypeConstraint(
+            registry,
+            value,
+            constraint,
+            `def ${name}: value ${value.toString()} does not satisfy declared type ${constraint.toString()}`,
+            name,
+          )
           registry.pushDef(name, value)
           return []
         },
@@ -1056,13 +897,6 @@ function registerSpecWords(r: Registry): void {
         // def time, not at first reference.
         args: [TAtom, TAny],
         quoteArgs: new Set([0]),
-        // Bind in check mode too, so later references resolve (otherwise
-        // every `def x … x` cascades into undefined_word) — the binding is
-        // a prerequisite for analysis, exactly as in Go. The bound carrier
-        // carries the stripped-literal origin, so a compiled reference bakes
-        // the value.
-        runInCheckMode: true,
-        returns: [],
         handler: (args, _ctx, _stk, registry) => {
           const nameArg = args[0]!
           const nameWord = nameArg.isWord() ? nameArg.asWord() : { name: nameArg.asAtom(), constraint: undefined }
@@ -1120,10 +954,6 @@ function registerSpecWords(r: Registry): void {
       {
         args: [TList],
         noEvalArgs: new Set([0]),
-        // Build the fn value in check mode so def binds it and a later call
-        // inlines the body (dispatchFnDefCheck/analyseFnBody), exactly as the
-        // compiled-test fn fixture does.
-        runInCheckMode: true,
         handler: (args) => {
           const elems = args[0]!.asList()
           if (elems.length === 0 || elems.length % 3 !== 0) {
@@ -1145,9 +975,6 @@ function registerSpecWords(r: Registry): void {
       {
         args: [TList],
         noEvalArgs: new Set([0]),
-        // Build the signature value in check mode so typeof/is consume it and
-        // it bakes as an inert constant (its spec list is type literals).
-        runInCheckMode: true,
         handler: (args, _ctx, _stk, registry) => {
           const elems = args[0]!.asList()
           if (elems.length === 0 || elems.length % 2 !== 0) {
@@ -1175,55 +1002,11 @@ function registerSpecWords(r: Registry): void {
       {
         args: [TAtom],
         quoteArgs: new Set([0]),
-        // quote returns the captured NAME verbatim (never resolves it), so
-        // [quote <word>] re-runs faithfully as a self-contained island.
-        recordsOwnEvent: true,
-        returnsFn: (args, registry) => {
-          const out = newDynamicCarrier(TAtom)
-          const emit = registry.check.emit as EmitState | undefined
-          if (emit !== undefined) {
-            const a = args[0]!
-            const name = a.isWord() ? a.asWord().name : a.data !== null ? a.asAtom() : ''
-            if (name !== '') {
-              emit.recordTokenIsland([newWord('quote'), newWord(name)], out, 'quote')
-            } else {
-              // A non-name operand (e.g. `quote null`): bake the value itself
-              // — quote returns it verbatim.
-              const op = emit.classify(a)
-              const tok = a.isConcrete() ? a : op !== null && op.kind === 'const' ? op.value : null
-              if (tok !== null) emit.recordTokenIsland([newWord('quote'), tok], out, 'quote')
-              else emit.markUncompilable('quote: non-bakeable operand')
-            }
-          }
-          return [out]
-        },
         handler: (args) => [args[0]!],
       },
       {
         args: [TAny],
         noEvalArgs: new Set([0]),
-        // quote returns its arg RAW (never evaluated), so re-running
-        // [quote <value>] reproduces it — island it. Only an inert value is
-        // bakeable as a token; a non-inert arg (code/carrier) falls back.
-        recordsOwnEvent: true,
-        returnsFn: (args, registry) => {
-          const out = newDynamicCarrier(TAny)
-          const emit = registry.check.emit as EmitState | undefined
-          const a = args[0]!
-          if (emit !== undefined) {
-            // A raw value (eval-list/map) bakes verbatim (quote returns it
-            // unevaluated); a stripped literal / type operand bakes via its
-            // classified const original (quote 5, quote Integer).
-            let tok: import('@boru-lang/core').Value | null = a.isConcrete() ? a : null
-            if (tok === null) {
-              const op = emit.classify(a)
-              if (op !== null && op.kind === 'const') tok = op.value
-            }
-            if (tok !== null) emit.recordTokenIsland([newWord('quote'), tok], out, 'quote')
-            else emit.markUncompilable('quote: non-bakeable value operand')
-          }
-          return [out]
-        },
         handler: (args) => {
           const v = args[0]!
           if (v.vType.matches(TList) && v.isConcrete()) {
@@ -1251,27 +1034,6 @@ function registerSpecWords(r: Registry): void {
     signatures: [
       {
         args: [],
-        // `args` reads the current call's positional-arg frame. Inside an
-        // inlined fn body that frame holds the param operands (analyseFnBody
-        // pushes it), so record a makeList of them — the VM rebuilds the list
-        // with no runtime frame. Outside a frame (or with an unresolvable
-        // operand) it refuses. recordsOwnEvent so the makeList is the event.
-        recordsOwnEvent: true,
-        returnsFn: (_a, r) => {
-          const emit = r.check.emit
-          const frame = r.topArgs()
-          if (emit !== undefined) {
-            if (frame === undefined) {
-              // No call frame (top level): args is the empty list.
-              return [emit.recordMakeList([])]
-            } else {
-              const ops = frame.map((v) => emit.classify(v))
-              if (ops.every((o) => o !== null)) return [emit.recordMakeList(ops as import('./emit.ts').Operand[])]
-              emit.markUncompilable('args: frame operand of unknown provenance')
-            }
-          }
-          return [newDynamicCarrier(TList)]
-        },
         handler: (_args, _ctx, _stk, registry) => {
           const top = registry.topArgs()
           return [newList(top ? [...top] : [], { eval: false })]
@@ -1314,10 +1076,6 @@ function registerSpecWords(r: Registry): void {
     signatures: [
       {
         args: [TWord],
-        // Mutates the def stack — a compile-time effect like def, so run it in
-        // check mode (returns nothing) and a later reference resolves correctly.
-        runInCheckMode: true,
-        returns: [],
         handler: (args, _ctx, _stk, registry) => {
           const name = args[0]!.asWord().name
           const has = registry.topOfDefStack(name) !== undefined
@@ -1411,20 +1169,7 @@ function registerSpecWords(r: Registry): void {
       {
         args: [TAny, TAny],
         barrierPos: 1,
-        // Build the disjunct in check mode (like `refine`) so a consumer —
-        // `inspect` of a def bound to `A tor B` — sees the concrete type and
-        // bakes it as an inert const rather than refusing a dynamic carrier.
-        runInCheckMode: true,
-        handler: (args, _ctx, _stk, registry) => {
-          // A stripped concrete operand (a check-mode carrier): the
-          // runtime disjunct (`2.0 tor 100`) differs from the carrier
-          // one (`Integer tor Float`), so baking the check-shape is a
-          // miscompile — return a dynamic carrier and let the program
-          // fall back to the interpreter. Type-literal operands (the
-          // `def T (A tor B)` inspect rows) stay concrete and bake.
-          if (registry.check.isActive() && (args[0]!.carrier || args[1]!.carrier)) {
-            return [newDynamicCarrier(TDisjunct)]
-          }
+        handler: (args) => {
           const alts = [...flattenAlts(args[1]!), ...flattenAlts(args[0]!)]
           const seen = new Set<string>()
           const out: Value[] = []
@@ -1478,9 +1223,6 @@ function registerSpecWords(r: Registry): void {
       {
         args: [TList],
         noEvalArgs: new Set([0]),
-        // Build the enum type value in check mode so typeof/is consume it and
-        // it bakes (its alternatives are atoms/inert literals).
-        runInCheckMode: true,
         handler: (args, _ctx, _stk, registry) => {
           // A typed list `[:T …]` carries a child constraint each
           // element must satisfy; a plain list has none.
@@ -1493,10 +1235,7 @@ function registerSpecWords(r: Registry): void {
           const elems = hasChild ? list.asChildType().elements : list.asList()
           const alts = elems.map((e) => {
             const v = e.isWord() ? newAtom(e.asWord().name) : e
-            // Validate each element against the child constraint: interpret
-            // mode throws, compile mode traps/refuses, pure check mode is
-            // lenient (see enforceTypeConstraint). The trap is terminal, so a
-            // still-being-built enum past it is never observed at run time.
+            // Validate each element against the child constraint.
             if (child !== undefined) {
               enforceTypeConstraint(
                 registry,

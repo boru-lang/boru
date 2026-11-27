@@ -216,6 +216,19 @@ def commitBarrierForward (e : Engine) : Option Engine :=
         | _ => none
     | _ => none
 
+/-- THE USURP WRAPPER (core/go/core_ref.go `usurpOver`): a function whose
+    every signature is one of the original's with its parameters REVERSED
+    and every one of them collectable forward, so `f/u a b c` is `f c b a`.
+    A parameter keeps its type, pattern and `/q`; a type-arg slot is the
+    original's to enforce, on the re-dispatch. The wrapper's handler
+    re-dispatches the original as it was bound. -/
+def usurpOver (name : String) (sigs : List Sig) (origIdent ident : Nat) : Value :=
+  let orig := Value.fn name sigs origIdent
+  let wrapped := sigs.map fun s =>
+    Sig.mk (s.params.reverse.map fun p => Param.mk p.name p.type p.pattern p.quote false)
+      s.returns s.arity (.usurp orig s.barrier) false
+  .fn name (wrapped.foldl (fun acc s => Defs.insertSig s acc) []) ident
+
 /-- Resolve the type-name words inside an inert TYPE SHAPE — a typed
     container's child, a disjunct's alternatives — where the value is
     consumed or left as a result (ADR-012 rule 4). A quoted value stays
@@ -262,6 +275,37 @@ def stepToken (nat : Natives) : Nat → Engine → Except BoruError Engine
 def stepWord (nat : Natives) : Nat → Engine → WordInfo → Except BoruError Engine
   | 0, _, _ => Engine.outOfFuel
   | fuel + 1, e, w =>
+    if w.forceUsurp then
+      -- `/u`: the bound FUNCTION with its argument order reversed. Only a
+      -- function has a signature to reverse; the arity and `s`/`f`
+      -- modifiers written beside `u` are not read.
+      match e.defs.top? w.name with
+      | none => Engine.err "undefined_word" w.name
+      | some top =>
+        if !top.isFn then Engine.err "illegal_ref" ("/u requires a function word: " ++ w.name)
+        else
+          -- the function as it is bound, and a wrapper that is a new
+          -- function every time one is made
+          let (origIdent, defs) := e.defs.refIdent w.name
+          let (ident, defs) := defs.freshIdent
+          let wrapper := usurpOver w.name ((e.defs.lookup? w.name).getD []) origIdent ident
+          let e := { e with defs := defs }
+          if w.forceVal then
+            -- `/uv`: the wrapper as a value, placed and stepped over. It
+            -- is NOT delivered to a word that is collecting, as a `/v`
+            -- value is — as the kernel has it, not as it should be (NUR390)
+            pure { e with tape := setAt e.tape e.ptr wrapper, ptr := e.ptr + 1 }
+          else
+            -- `/u` alone is a call: a statement boundary, as a bare
+            -- function word is, and then the wrapper dispatched where
+            -- it stands as any function value is
+            match commitBarrierForward e with
+            | some e' => pure e'
+            | none =>
+              if !w.name.startsWith "__" && (pendingForwardIdx e.tape e.ptr).isSome then
+                Engine.err "signature_error" ("stranded forward before " ++ w.name)
+              else stepLiteral nat fuel { e with tape := setAt e.tape e.ptr wrapper }
+    else
     if w.forceVal then
       -- `/v`: the bound VALUE, never a call. A function binding yields
       -- the function the name dispatches to, as a value; it is collected
@@ -269,12 +313,14 @@ def stepWord (nat : Natives) : Nat → Engine → WordInfo → Except BoruError 
       match e.defs.top? w.name with
       | none => Engine.err "undefined_word" w.name
       | some top =>
-        let v :=
+        let (v, defs) :=
           if top.isFn then (match e.defs.lookup? w.name with
-            | some sigs => Value.fn w.name sigs
-            | none => top)
-          else top
-        let e := { e with tape := setAt e.tape e.ptr v }
+            | some sigs =>
+              let (ident, defs) := e.defs.refIdent w.name
+              (Value.fn w.name sigs ident, defs)
+            | none => (top, e.defs))
+          else (top, e.defs)
+        let e := { e with tape := setAt e.tape e.ptr v, defs := defs }
         let collecting := pendingCollecting e.tape e.defs e.ptr
         if collecting then stepLiteral nat fuel e else pure { e with ptr := e.ptr + 1 }
     else
@@ -464,7 +510,7 @@ def stepLiteral (nat : Natives) : Nat → Engine → Except BoruError Engine
       | none =>
         match val with
         | .dispatchMod _ => pure { e with tape := removeAt e.tape valIdx }
-        | .fn name sigs =>
+        | .fn name sigs _ =>
           -- a function value at the pointer is a CALL, unless a `/v` or
           -- `/q` marker right after it says it is data
           match e.tok? (valIdx + 1) with
@@ -493,7 +539,7 @@ def stepLiteral (nat : Natives) : Nat → Engine → Except BoruError Engine
               let sealAt :=
                 if f.collected == 0 then
                   (match e.tape[f.funcIndex]? with
-                   | some (.fn _ _) => some f.funcIndex
+                   | some (.fn _ _ _) => some f.funcIndex
                    | _ => e.sealAt)
                 else e.sealAt
               let tape := removeAt e.tape fwdIdx
@@ -514,7 +560,7 @@ def stepLiteral (nat : Natives) : Nat → Engine → Except BoruError Engine
                 let funcIdx := if fwdIdx < funcIdx then funcIdx - 1 else funcIdx
                 -- a word is rewritten to `/s`; a function value is sealed
                 let sealAt := match tape[funcIdx]? with
-                  | some (.fn _ _) => some funcIdx
+                  | some (.fn _ _ _) => some funcIdx
                   | _ => none
                 let tape := forceStackWord tape funcIdx
                 pure { e with tape := rearrangeForForward tape funcIdx f.stackArgs collected,
@@ -637,7 +683,7 @@ def stepCloseParen (nat : Natives) : Nat → Engine → Except BoruError Engine
           -- not called on what stands outside the group
           let park :=
             if closeIdx == openIdx + 2 then
-              (match tape[openIdx]? with | some (.fn _ _) => 1 | _ => 0)
+              (match tape[openIdx]? with | some (.fn _ _ _) => 1 | _ => 0)
             else 0
           pure { e with tape := tape, ptr := openIdx + park }
 
@@ -786,6 +832,7 @@ def execMatch (nat : Natives) :
           pure { e with tape := splice e.tape base (e.ptr + 1 - base) results, ptr := base }
         | _ => Engine.err "internal_error" ("no full-stack handler for " ++ name)
       | .boru _ => Engine.err "internal_error" "a boru body is not a full-stack handler"
+      | .usurp _ _ => Engine.err "internal_error" "a usurp wrapper is not a full-stack handler"
     else do
       let (results, defs) ←
         match s.impl with
@@ -793,6 +840,12 @@ def execMatch (nat : Natives) :
           match nat.lookup key with
           | some (.plain f) => f args e.defs
           | _ => Engine.err "internal_error" ("no handler for " ++ name)
+        | .usurp orig b =>
+          -- the original, re-dispatched in a group of its own with the
+          -- arguments reversed and laid out for ITS barrier: what it
+          -- takes from the stack before it, what it takes forward after
+          let k := args.length - min b args.length
+          pure (.openParen :: args.take k ++ [orig] ++ (args.drop k).reverse ++ [.closeParen], e.defs)
         | .boru body =>
           -- a call frame: bind the named parameters, splice the body in
           -- a paren group closed by the cleanup marker and return check

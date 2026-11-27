@@ -77,7 +77,7 @@ mutual
     disjunct, a function — and, for a list or a map, holding only such
     values. `[1 2]` is one; `[Integer]` and `[: Integer ]` are not. -/
 def Value.isPlain : Value → Bool
-  | .typeLit _ | .typedList _ _ | .typedMap _ _ | .disjunct _ | .fn _ _ => false
+  | .typeLit _ | .typedList _ _ | .typedMap _ _ | .disjunct _ | .fn _ _ _ => false
   | .list elems _ => allPlain elems
   | .map entries _ => allPlainEntries entries
   | .quoted v => v.isPlain
@@ -104,7 +104,7 @@ def unifySameOrSubtype (a b : Value) : Option Value :=
   let tb := b.typeOf
   if a.isBareTypeNode && b.isConcrete && conforms tb ta then some b
   else if b.isBareTypeNode && a.isConcrete && conforms ta tb then some a
-  else if ta == tb then (if a == b then some a else none)
+  else if ta == tb then (if sameValue a b then some a else none)
   else if isSubtype ta tb then some a
   else if isSubtype tb ta then some b
   else none
