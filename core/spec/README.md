@@ -96,6 +96,18 @@ drops the round — and it passes through a group, a container literal, a
 call frame and a driven loop to reach it. With no loop to take it, it is
 `ERROR:flow_error`.
 
+### Binding at run time
+
+A row's leading `def NAME item ;` clauses bind before the program starts,
+and bind the item as it is written. Anywhere else `def` is a WORD —
+`def name value` — that binds when it is stepped, which is what lets a
+function's body make a definition of its own. It carries basic's name on
+purpose, as `afn` and `undef` do: the kernel decides BY NAME whether a body
+can bind (`frameStateWords`), and gives a body that cannot a frame with no
+record of what to undo. `bindq name value` is the same binding under a
+name that list does not hold, and stands for every word that binds from
+the host without being on it (lang's `unpack` is the shipped one).
+
 ### A call's arguments
 
 Two words reach what a call keeps of its arguments beside the bindings.
@@ -190,7 +202,7 @@ than silently re-baselined. Each runner also **fails a row whose `go` and
 belongs in, or this stops being an honest debt list. Shrink-only, exactly as
 `parser/spec/divergent.tsv` is.
 
-It holds **348 rows**. 323 are a mechanism `core/ts` does not have at
+It holds **406 rows**. 377 are a mechanism `core/ts` does not have at
 all: closures (26 rows, the `afn` fixture); driven loops (35 rows, the
 `eachq` fixture — eight of them the same loop out of a group and inside one
 a waiting word evaluates, where the kernel once stepped the loop's inert
@@ -205,9 +217,21 @@ again); the arity widening of a value call
 parameter's argument as the frame's own stack data (53 rows — `core/ts`
 binds it under the empty name — three of them NUR404, pinned as the kernel
 has it), with 11 more that read the args list or call `__pa` from inside a
-loop, a region, a branch or a closure. Two are a difference in a mechanism
-both have: `core/ts` puts a list argument's quoted BINDING in the args
-list, where the kernel puts the argument. One is a
+loop, a region, a branch or a closure; the frame's ENTRY SNAPSHOT, which
+ends a body's own definitions with the call (28 rows — `core/ts` leaves
+them bound — and 4 more that bind in a round, a region or a branch outside
+a function); a function that calls itself last, through a branch (13
+rows); and the deferred residual of an anonymous function's one bare
+container (9 rows). Two are a difference in a mechanism both have:
+`core/ts` puts a list argument's quoted BINDING in the args list, where
+the kernel puts the argument. Two are a diagnostic: the kernel reports a
+void argument of the word named `def` as `def_error`. **Two are NUR407,
+and are the only rows where the Lean specification agrees with the `ts`
+column**: core/go's tail-call elision changes the answer of a callee that
+unbinds its own parameter, and `core/ts`, which only nests, gives the
+nested answer — `TestCoreSpecTailCallsUnobservable` in `core/go` runs every
+row of the corpus with elision off and holds exactly those two to it. One
+is a
 recorded kernel defect pinned as the kernel has
 it — NUR392, an unmatched `(` in a function's body — where `core/ts`
 refuses what Go lets through. The other 22 are what a Go-against-TS search

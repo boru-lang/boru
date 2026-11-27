@@ -151,7 +151,7 @@ partial def item : List String → Except String (Value × List String)
       | .list elems _, ")" :: rest =>
         -- a function written here is ONE function: its identity is the
         -- place it was written
-        pure (.fn "__corespec_fn" [.mk ps [rt] ps.length (.boru elems []) false]
+        pure (.fn "__corespec_fn" [.mk ps [rt] ps.length (.boru elems [] false) false]
                 (1000 + rest.length), rest)
       | _, _ => throw "fn( body must be a list closed by )"
     | none => throw "fn( types must be corpus-known type names"

@@ -407,6 +407,36 @@ function fixtureRegistry(): Registry {
       },
     ],
   });
+  // def binds a name while the program RUNS — `def name value` — where a
+  // row's leading `def NAME item ;` clauses bind before it starts. It is
+  // what lets a function's body make a definition of its own, which the
+  // frame's close is then to undo. bindq does the same under a name the
+  // Go kernel's frame analysis does not list as a binding word, so a body
+  // that binds only through it is a frame with nothing recorded to undo.
+  // Both are the def table's push; only the names differ.
+  for (const binder of ["def", "bindq"]) {
+    r.registerNativeFunc({
+      name: binder,
+      signatures: [
+        {
+          args: [TAtom, TAny],
+          argNames: ["n", "v"],
+          returns: [],
+          quoteArgs: new Set([0]),
+          barrierPos: 2,
+          handler: (
+            a: Value[],
+            _c: unknown,
+            _s: Value[],
+            reg: Registry,
+          ): Value[] => {
+            reg.pushDef(a[0]!.asAtom(), a[1]!);
+            return [];
+          },
+        },
+      ],
+    });
+  }
   // qanyq is the /q fixture whose name slot is ANY rather than Atom, and it
   // RETURNS what it captured so a row can read the capture back. Paired
   // with undef's Atom slot it pins /q's CONDITIONAL coercion.

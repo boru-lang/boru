@@ -125,6 +125,8 @@ list only by becoming **Resolved** (the record is then deleted) or
 | [NUR403](#nur403) | An empty list built over a nil slice is not a list to the kernel's readers: `NewList(nil)` and `NewList([]Value{})` render alike and compare equal, but as a loop's body the first is ONE token (itself) and the second none | the Lean specification's differential fuzzer over call regions, against core/go (2026-11-27) |
 | [NUR404](#nur404) | A function with an unnamed parameter drops a value its body COMPUTED: `def f fn [[Integer][String][drop "a" "b"]]` answers `b` for `f 5`, with no error, where the same surplus in a function of named parameters is a `type_error` | the Lean specification's model of the frame's argument span, against core/go (2026-11-27) |
 | [NUR405](#nur405) | The frame-pop word `__pa` is still registered though no frame has emitted it since 2026-10-08, and a program can call it: in a function's body it pops the frame's arguments and capture baseline, and the frame's own close then pops the ENCLOSING call's — `args` there answers "not inside a function", inside a function | the Lean specification's model of the args list, against core/go and the shipped words (2026-11-27) |
+| [NUR406](#nur406) | A function whose body unbinds its own parameter unbinds its CALLER's binding of that name when it closes: with `def g fn [[n:Integer][Integer][undef n 7]]`, a caller `fn [[n:Integer][Integer][g 2 drop n]]` given `5` reads the global `n` after the call, and at the top level `n` is undefined after `g 5`; `boru check` reports nothing | the Lean specification's model of the frame's close, against core/go and the shipped words (2026-11-27) |
+| [NUR407](#nur407) | Tail-call elision changes an answer: a callee that unbinds its own parameter reads the caller's binding of that name — unless the call is the last thing the caller does, when the caller's is already unbound: with `def n 8 ; def g fn [[n:Integer][Integer][undef n n]]`, `fn [[n:Integer][Integer][g 7]]` given `5` answers `8` and `fn [[n:Integer][Integer][g 7 add 0]]` answers `5` | the Lean specification's machine, which nests every call, against core/go (2026-11-27) |
 
 Pending records normally use a compact form (rule / divergence /
 evidence / documentation status, plus a proposed verdict where one is
@@ -1107,6 +1109,23 @@ def b 9  def g fn [[d:Map][Integer][def z 0 unpack [a b] d  a add b]]  g {a:1 b:
   boru do          3 9      (the outer `b` is restored)                check: 0 errors
 ```
 
+A leaf frame's close still takes ONE binding of each parameter, so an
+`unpack` over the parameter's own name leaves the PARAMETER bound after
+the call (measured 2026-11-27):
+
+```
+def f fn [[a:Integer m:Map][Integer][unpack [a] m  a]] ; f 5 {a: 9} ; a
+  boru do          9 5      (`a` after the call is the argument, 5)
+def f fn [[a:Integer m:Map][Integer][def z 0 unpack [a] m  a]] ; f 5 {a: 9} ; a
+  boru do          9, then [boru/undefined_word]: undefined word: a
+```
+
+`core/spec/dispatch.tsv` pins the rule at the kernel's level with a
+fixture binder the frame analysis does not list (`bindq`: five rows, the
+parameter that outlives its call among them), and `core/spec/divergent.tsv`
+the two rows where a body or a caller that DOES name a binding word undoes
+the same binding.
+
 The same `unpack` is call-local or not by whether the body happens to
 name a binding word. A body naming none is a leaf frame and takes no
 cleanup snapshot, and `unpack` binds from Go, outside that rule's sight:
@@ -1819,5 +1838,102 @@ and nothing emits it".
 `basic/go` and `test/specfix`: no frame needs it. The corpus rows that
 use it as "a word of no results" (`bothq __pa …`) take another such word,
 and the rows that pin the double pop go with it.
+
+---
+
+## NUR406 — a body that unbinds its own parameter unbinds the caller's binding of that name {#nur406}
+
+**Status:** Pending · **Recorded:** 2026-11-27 · measured through the shipped words · silent (`boru check`: 0 errors)
+
+**Rule:** a parameter is bound for the call and unbound when it ends, "so
+they do not leak" (design/LANGREF.10.md, "Named parameters are
+automatically undefined after the body executes"); a call leaves the
+caller's bindings as it found them — `def n 1 ; def f fn
+[[n:Integer][Integer][7]] ; f 5 ; n` is `7 1`.
+
+**Divergence:** the frame's close takes its own names off by COUNT, not
+by depth: one binding of each parameter and capture, whatever the name
+holds by then (`core/go/engine.go` `stepDefCleanup`, the
+`UninstallFrameBinding` loop over `DefCleanupInfo.Names`). The body-local
+truncation before it only ever unbinds DOWN to the entry snapshot. So
+when the body has unbound its own parameter — `undef n` — the close's one
+pop lands on whatever `n` is beneath: the caller's.
+
+```
+def n 1 ; def f fn [[n:Integer][Integer][7]] ; f 5 ; n               → 7 1
+def n 1 ; def f fn [[n:Integer][Integer][undef n 7]] ; f 5 ; n       → 7, then undefined_word: n
+def n 1 ; def g fn [[n:Integer][Integer][undef n 7]] ;
+          def f fn [[n:Integer][Integer][g 2 drop n]] ; f 5           → 1    (f's own n, 5, is gone: it reads the global)
+```
+
+In the last program a function loses its own parameter to a function it
+called. `boru check -e` on the second reports `0 error(s)` and types the
+result `Integer Integer`.
+
+`core/spec/dispatch.tsv` pins three rows of it at the kernel's level (the
+`undef` section; `core/ts` has the same count-based close, so the three
+runners agree), with the row beside them that shows the count is the
+whole story: `undef n def n 9` in the body leaves ONE binding for the
+close to take, and the caller's `n` is intact. The Lean specification
+reproduces it (`Engine.lean` `popNames`; `Theorems/Locals.lean`,
+`the_close_takes_one_binding_of_each_name`).
+
+**Proposed verdict:** resolve by fix — the close unbinds each of its
+names down to the depth the name had BEFORE the frame bound it (the
+snapshot one step earlier than the one `truncateFrameDefs` uses), so a
+name the body already unbound costs the caller nothing. The alternative
+is to refuse `undef` of a parameter in the body it belongs to.
+
+---
+
+## NUR407 — tail-call elision changes what a program answers {#nur407}
+
+**Status:** Pending · **Recorded:** 2026-11-27 · measured through the shipped words, and on core/go with elision switched off · silent, and a WRONG VALUE in one form
+
+**Rule:** tail-call elimination is a resource guarantee, not a change of
+meaning. `core/go/engine.go`, where it is done: "A declined call nests as
+before — correctness never depends on firing"; `core/go/fn_frame.go`, on
+the gate: the caller's "bindings are then rebound before the callee body
+runs, so a dynamic read anywhere in the callee chain sees exactly what it
+would have seen under nesting".
+
+**Divergence:** when a call is the last thing a body does and the callee
+installs every name the caller's close removes, the caller's frame is
+closed BEFORE the callee runs — its parameters are unbound and the
+callee's bound in their place. That is the same as nesting for as long as
+the callee's bindings stay where they are. A callee that unbinds its own
+parameter (`undef n`) uncovers what is beneath: under nesting the
+caller's binding, under elision whatever lay beneath the caller's.
+
+```
+def n 8 ; def g fn [[n:Integer][Integer][undef n n]] ;
+          def f fn [[n:Integer][Integer][g 7 add 0]] ; f 5      → 5      (nested: g reads f's n)
+          def f fn [[n:Integer][Integer][g 7]] ; f 5            → 8      (last in f: g reads the global)
+          def f fn [[n:Integer][Integer][(g 7)]] ; f 5          → 8
+def g fn [[n:Integer][Integer][undef n n]] ; def f fn [[n:Integer][Integer][g 7]] ; f 5
+                                                                 → undefined_word: n     (nested: 5)
+```
+
+With `Registry.TCO.Disable` set the kernel answers `5` in every form. The
+unbinding need not be the callee's own: a function further down the chain
+that unbinds `n` twice shows the same difference.
+
+`core/spec/divergent.tsv` pins the two forms — its only rows where the
+Lean specification, which nests every call, agrees with `core/ts` (which
+only nests) and not with `core/go` — and
+`core/go` `TestCoreSpecTailCallsUnobservable` runs every corpus row with
+elision off and holds those two, and no others, to the nested answer.
+
+It is the same opening as NUR406 — `undef` reaching a binding a FRAME
+owns — seen from the caller's side.
+
+**Proposed verdict:** resolve by fix, with NUR406 — a parameter or capture
+of an open frame is not `undef`'s to remove: it ends with its frame (the
+`undef` is an error, or unbinds nothing). Then no body can uncover what
+is beneath a frame's own binding, the eager close is indistinguishable
+from nesting again, and the frame's close has exactly its own bindings to
+take. The alternative that keeps `undef` as it is — the gate declining
+whenever the callee can unbind — cannot be decided before the call: the
+unbinding may be anywhere in what the callee runs.
 
 ---

@@ -81,6 +81,23 @@ def depth (d : Defs) (name : String) : Nat := (d.stack name).length
 def popTo (d : Defs) (name : String) (floor : Nat) : Defs :=
   (List.range (d.depth name - floor)).foldl (fun d _ => d.pop name) d
 
+/-- The table's own bookkeeping — the identity counter, the baselines,
+    the args lists, a pending signal — rides under keys no word can
+    spell: each begins with a space. -/
+def isReserved (name : String) : Bool := name.startsWith " "
+
+/-- THE ENTRY SNAPSHOT of a call frame (core/go `DefTable.Snapshot`): how
+    many bindings every name holds. -/
+def depths (d : Defs) : List (String × Nat) :=
+  (d.filter fun (k, _) => !isReserved k).map fun (k, s) => (k, s.length)
+
+/-- TRUNCATE TO A SNAPSHOT (core/go `truncateFrameDefs`): every name is
+    unbound down to the depth the snapshot recorded for it — to nothing,
+    for a name the snapshot never saw. It only ever unbinds: a name the
+    body UNBOUND below its recorded depth is not bound again. -/
+def truncateTo (d : Defs) (snapshot : List (String × Nat)) : Defs :=
+  d.foldl (fun acc (k, _) => if isReserved k then acc else acc.popTo k ((snapshot.lookup k).getD 0)) d
+
 /-- A FLOW SIGNAL rides in the binding table too (core/go
     `Registry.FlowCtrl`): raised by a word, it is not an error but a
     redirection the run resolves once the step that raised it is done.
@@ -369,7 +386,7 @@ def scanAdmits (defs : Defs) (s : Sig) (fwd : Nat) (tok : Value) : Bool :=
           && !(!s.isTypeArg fwd && rejectsTypeLiteral (.typeLit t) expected)
       | none => sigArgMatches s fwd (.atom w.name) || expected == TAny
   match tok with
-  | .forward _ _ | .endMark | .closeParen | .openParen | .frameOpen _ | .defCleanup _ | .returnCheck _ _
+  | .forward _ _ | .endMark | .closeParen | .openParen | .frameOpen _ | .defCleanup _ _ _ | .returnCheck _ _
   | .mark _ | .move _ _ => false
   | .word w =>
     if s.isQuote fwd then conforms TAtom expected                  -- `/q`: the name is the operand

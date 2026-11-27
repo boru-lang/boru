@@ -24,7 +24,7 @@ REPO = os.path.dirname(SPEC)
 WORDS = ["addq", "negq", "pairq", "sumq", "boomq", "patq", "dupq", "__pa", "undef",
          "qanyq", "bothq", "tyq", "tpatq", "unifyq", "meetq", "meetq", "depthq", "afn", "eachq",
          "forq", "forq", "rangeq", "whileq", "breakq", "contq", "ifq", "ifq", "replayq", "callq", "callq",
-         "argsq"]
+         "argsq", "def", "bindq"]
 LITS = ["0", "1", "2", "5", "7", "-3", "'a'", "'x'", "true", "false", "none", "null"]
 TYPES = ["Integer", "String", "Any", "None", "List", "Map", "Boolean", "Word", "Scalar/String"]
 NAMES = ["x", "y", "n", "nosuchword"]
@@ -58,10 +58,22 @@ def gen_item(rng, depth):
         return out + ["}"]
     if r < 0.50:
         w = rng.choice(WORDS)
+        if w in ("def", "bindq") and depth == 2 and rng.random() < 0.9:
+            # a binding made at RUN TIME: a name and a value. In a function's
+            # body it is the frame's to undo — when the body names a word
+            # the frame analysis knows (`def`), and not when it does not
+            # (`bindq`)
+            return [w, rng.choice(["x", "y", "n", "c", "i", "inc"])] + gen_value(rng, 1) + (
+                [";"] if rng.random() < 0.5 else [])
         if w == "afn" and depth == 2 and rng.random() < 0.8:
             # mostly well-formed: a parameter name and a quoted body (at
             # the top level only — a map member is ONE item)
-            body = rng.choice(["addq n 1", "n", "addq n x", "x", "n n", "", "afn m [q addq n m ]", "negq n"])
+            # a body that is ONE bare container is the deferred residual: an
+            # anonymous function leaves it unevaluated, and its consumer
+            # evaluates it where the parameter is no longer bound
+            body = rng.choice(["addq n 1", "n", "addq n x", "x", "n n", "", "afn m [q addq n m ]", "negq n",
+                               "[ n ]", "{ a: n }", "[ n ] 1", "p( n )", "[ x ]", "[ addq n 1 ]", "[ c ]",
+                               "[ breakq ]", "( [ n ] )", "[ n ] ;", "[q n ]", "[: Integer ]", "[ argsq ]"])
             return ["afn", "n", "[q"] + body.split() + ["]"]
         if w == "eachq" and depth == 2 and rng.random() < 0.85:
             # a driven loop: elements, and a body stepped once per element
@@ -70,7 +82,8 @@ def gen_item(rng, depth):
             body = rng.choice(["negq", "", "dupq", "addq 10", "depthq", "9", "boomq", "(", ")", ";",
                                "addq 1 ;", "addq", "pairq", "[ negq 5 ]", "negq/v", "x", "addq x",
                                "eachq [q 10 20 ] [q addq 1 ]", "afn n [q addq n 1 ]", "unifyq Integer",
-                               "bothq", "n", "inc", "undef x", "( negq )", "negq ("])
+                               "bothq", "n", "inc", "undef x", "( negq )", "negq (",
+                               "def y", "def x ; x", "bindq y", "def y ; y negq"])
             return ["eachq", "[q"] + elems + ["]", "[q"] + body.split() + ["]"]
         if w in ("forq", "rangeq") and depth == 2 and rng.random() < 0.85:
             # a counted loop: `mark body… move` on the caller's own stack,
@@ -100,7 +113,10 @@ def gen_item(rng, depth):
                                "i ifq [q contq ] [q 1 ] [q 2 ]", "replayq [q i ]", "replayq [q i breakq ]",
                                "ifq [q c ] [q undef c ] [q breakq ]", "ifq [q depthq ] [q 1 ] [q 2 ]",
                                "callq i [q 7 ]", "callq i [q breakq ]", "i callq 9 [q contq ] 7",
-                               "callq i [q negq/v ]"])
+                               "callq i [q negq/v ]",
+                               # a binding made in a round, the index's name among them
+                               "def y i ;", "def y i ; y", "bindq y i ;", "def i 9 ; i", "i def i 9 ;",
+                               "def x i ; x breakq", "def c false ; i", "def y i ; contq", "undef y i"])
             if w == "forq":
                 head = ["forq", rng.choice(["0", "1", "2", "2", "3", "-1", "'a'", "x"])]
             else:
@@ -223,11 +239,48 @@ def gen_program(rng, max_len):
                            "[ n breakq ]", "[ n contq ]", "[ forq 2 [q i breakq ] n ]", "[ [ n breakq ] ]",
                            "[ ifq [q n ] [q 1 ] [q 2 ] ]", "[ ifq [q n ] [q n ] [q breakq ] ]", "[ replayq [q n ] ]",
                            "[ argsq ]", "[ __pa argsq ]", "[ __pa n ]", "[ n argsq ]", "[ eachq [q 1 ] [q argsq ] ]",
-                           "[ afn m [q argsq ] ]", "[ argsq breakq ]", "[ __pa afn m [q addq m n ] ]"])
+                           "[ afn m [q argsq ] ]", "[ argsq breakq ]", "[ __pa afn m [q addq m n ] ]",
+                           # BODY-LOCAL definitions: what the body binds, the frame's close
+                           # unbinds — in a frame that took a snapshot
+                           "[ def y 3 ; addq y n ]", "[ def n 9 ; n ]", "[ bindq y 3 ; y ]", "[ bindq n 9 ; n ]",
+                           "[ undef n n ]", "[ undef n 7 ]", "[ undef x n ]", "[ undef x def x 2 ; n ]",
+                           "[ def y n ; afn m [q addq m y ] ]", "[ def x 2 ; n breakq ]", "[ def c false ; n ]",
+                           "[ forq 2 [q def y i ; ] y ]", "[ def y n ; [ y ] ]", "[ def y n ; { a: y } ]",
+                           "[ bindq y 3 ; undef z y ]", "[ def inc 3 ; inc ]", "[ def y 3 ; outer n ]",
+                           "[ def x n ; x ]", "[ bindq x n ; x ]", "[ def y 3 ; boomq 1 ]", "[ def y n ; p( y ) ]",
+                           "[ def y 3 ; def y 4 ; y ]", "[ def y 3 ; undef y undef y n ]", "[ ( def y n ; ) y ]",
+                           "[ eachq [q 1 2 ] [q def y ] n ]", "[ callq n [q def y ] y ]", "[ def n ; n ]",
+                           "[ ifq [q n ] [q def y 1 ; ] [q 0 ] n ]", "[ def y 3 ; contq ]", "[ bindq y 3 ; n breakq ]",
+                           # TAIL CALLS: the function calls itself last, through a branch.
+                           # The kernel closes each frame before the next opens; the model
+                           # nests them; the answers must be one. (No `undef n` among
+                           # these: that is NUR407, where they are not.)
+                           "[ ifq [q n ] [q ( addq n -1 ) inc/s ] [q 0 ] ]",
+                           "[ ifq [q n ] [q ( addq n -1 ) inc/s ] [q argsq ] ]",
+                           "[ ifq [q n ] [q ( addq n -1 ) inc/s ] [q depthq ] ]",
+                           "[ ifq [q n ] [q ( addq n -1 ) inc/s ] [q x ] ]",
+                           "[ ifq [q n ] [q ( addq n -1 ) inc/s ] [q breakq ] ]",
+                           "[ ifq [q n ] [q ( addq n -1 ) inc/s ] [q 'a' ] ]",
+                           "[ def y n ; ifq [q n ] [q ( addq n -1 ) inc/s ] [q y ] ]",
+                           "[ bindq y n ; ifq [q n ] [q ( addq n -1 ) inc/s ] [q y ] ]",
+                           "[ n ifq [q n ] [q ( addq n -1 ) inc/s sumq ] [q 0 ] ]",
+                           "[ ifq [q n ] [q ( addq n -1 ) inc/s ] [q afn m [q addq m n ] ] ]",
+                           "[ ifq [q n ] [q ( addq n -1 ) inc ] [q 0 ] ]",
+                           "[ forq 1 [q ifq [q n ] [q ( addq n -1 ) inc/s ] [q 0 ] ] ]",
+                           "[ outer n ]", "[ ( inc2 n ) ]", "[ inc2 n ]", "[ def y 3 ; inc2 n ]", "[ 7 inc2 n ]"])
         toks += ["def", "inc", "fn(", "n", rng.choice(["Integer", "Any"]),
                  rng.choice(["Integer", "Any"])] + body.split() + [")", ";"]
+        # a second function of the SAME parameter name, which `inc` may call
+        # last: the kernel elides a tail call only when the callee binds
+        # every name the caller's close removes
+        if "inc2" in body or rng.random() < 0.2:
+            body2 = rng.choice(["[ n ]", "[ addq n 1 ]", "[ argsq ]", "[ depthq ]", "[ y ]", "[ n n ]", "[ ]",
+                                "[ def y n ; y ]", "[ 'a' ]", "[ boomq 1 ]", "[ n breakq ]", "[ x ]",
+                                "[ afn m [q addq m n ] ]", "[ negq n ]"])
+            toks += ["def", "inc2", "fn(", "n", rng.choice(["Integer", "Any"]),
+                     rng.choice(["Integer", "Any"])] + body2.split() + [")", ";"]
         if rng.random() < 0.8:
-            toks += ["inc"]
+            toks += rng.choice([["inc"], ["inc"], ["inc", "3"], ["inc", "2"], ["8", "inc", "1"]])
     # a function of UNNAMED parameters: its arguments are the frame's first
     # stack values, and up to that many values beneath its declared return
     # are let pass and dropped
@@ -235,7 +288,8 @@ def gen_program(rng, max_len):
         k = rng.randint(1, 2)
         body = rng.choice(["", "7", "7 8", "7 8 9", "negq/s", "negq/s 7", "dupq/s", "sumq", "depthq", "argsq",
                            "addq 1", "pairq/s", "( )", "[ 1 ]", "breakq", "x", "boomq", "fn( n Integer Integer [ n ] )",
-                           "5 pairq/s", "__pa", "eachq [q 1 ] [q negq ]"])
+                           "5 pairq/s", "__pa", "eachq [q 1 ] [q negq ]",
+                           "def y ; y", "def y ;", "bindq y ; y", "def y 3 ;", "def x ; x x"])
         toks += ["def", "un", "fn("] + ["_", rng.choice(["Any", "Any", "Integer"])] * k + [
             rng.choice(["Any", "Any", "Integer"]), "["] + body.split() + ["]", ")", ";"]
         if rng.random() < 0.8:
@@ -280,6 +334,10 @@ def gen_program(rng, max_len):
                 depth -= 1
             fixed.append(it)
         items = fixed + [[")"]] * depth
+    # a row's LEADING `def NAME item ;` clauses bind before the program
+    # runs; a program that begins with the WORD needs something before it
+    if items and items[0][:1] == ["def"]:
+        items.insert(0, [rng.choice(LITS)])
     for it in items:
         toks += it
     return "run " + " ".join(toks)
@@ -322,7 +380,7 @@ def main():
     # kernel has a step budget and a tape ceiling, the model only fuel. The
     # two engines agree on such a program when both ran out.
     resource = ("ERROR:evaluation_limit", "ERROR:tape_exhausted")
-    diffs, unmodelled, exhausted = [], 0, 0
+    diffs, unmodelled, exhausted, malformed = [], 0, 0, 0
     for i, p in enumerate(progs):
         g = go[i] if i < len(go) else "<missing>"
         l = lean[i] if i < len(lean) else "<missing>"
@@ -332,10 +390,16 @@ def main():
         if g in resource and l in resource:
             exhausted += 1
             continue
+        # a program the notation cannot read is no program: each runner
+        # says so in its own words
+        if g.startswith("NOTATION") and l.startswith("NOTATION"):
+            malformed += 1
+            continue
         if g != l:
             diffs.append((p, g, l))
     print(f"seed {args.seed}: {len(progs)} programs, {len(diffs)} differ, {unmodelled} outside the model"
-          + (f", {exhausted} ran out of a resource in both" if exhausted else ""))
+          + (f", {exhausted} ran out of a resource in both" if exhausted else "")
+          + (f", {malformed} unreadable in both" if malformed else ""))
     diffs.sort(key=lambda d: len(d[0]))
     for p, g, l in diffs[:args.show]:
         print(f"  {p}\n     go   {g}\n     lean {l}")
