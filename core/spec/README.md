@@ -54,9 +54,13 @@ and `v` (the bound value, never a call): `name/s`, `name/2f`, `name/u`,
 which build the modified word a parser would; a slash whose suffix is not
 a modifier (`Scalar/String`) is part of the name. The runners
 register a small fixture vocabulary — `addq` (`Integer Integer -> Integer`)
-and a handful like it, each the smallest word that reaches one dispatch
-shape — so the step loop, the registry, signature matching and dispatch are
-all exercised without pulling in a word library.
+and a word per mechanism after it, each the smallest that reaches one
+dispatch shape — so the step loop, the registry, signature matching and
+dispatch are all exercised without pulling in a word library. (Each is
+declared, with its reason, in the runners. One carries a shipped word's
+name on purpose: `afn n [q body… ]` builds an anonymous one-parameter
+function at run time, which is where closure capture happens, and the
+kernel's frame analysis recognises a function-building body by that name.)
 
 ### The unifier's two words
 
@@ -138,14 +142,15 @@ than silently re-baselined. Each runner also **fails a row whose `go` and
 belongs in, or this stops being an honest debt list. Shrink-only, exactly as
 `parser/spec/divergent.tsv` is.
 
-It holds **99 rows** — every one of them in the ENGINE: the call frame's
+It holds **124 rows** — every one of them in the ENGINE: the call frame's
 return check, a function value standing in the program, the `/v` and `/u`
-modifiers and the function identity a reference carries, the `end` word,
-an unquoted list binding, and an unmatched `(`. 135 were measured on
-2026-08-08, none of them visible to the 1808-row engine crossdiff; the
-file grew again to 165 as the Lean model's differential search, the
-`d( )` / `[: ]` / `{: }` forms and the `/v` and `/u` modifiers opened new
-surface, and 66 of those closed on 2026-11-27 when `core/ts` gained a real
+modifiers and the function identity a reference carries, closures, the
+`end` word, an unquoted list binding, and an unmatched `(`. 135 were
+measured on 2026-08-08, none of them visible to the 1808-row engine
+crossdiff; the file grew again to 190 as the Lean model's differential
+search, the `d( )` / `[: ]` / `{: }` forms, the `/v` and `/u` modifiers and
+`afn` opened new surface, and 66 of those closed on 2026-11-27 when
+`core/ts` gained a real
 unifier (the meet, not a flat predicate), Go's canonical form for a
 resolved disjunct, the whole builtin type table, and leaf-name rendering
 of a function's types. Of the original 135, the last two went
