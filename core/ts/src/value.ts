@@ -1163,6 +1163,44 @@ export function newSplice(payload: Value): Value {
   return new Value(TSplice, { payload });
 }
 
+/** True iff this value is a splice MARKER (not the bare `Splice` type). */
+export function isSplice(v: Value): boolean {
+  return v.vType.equal(TSplice) && v.data !== null;
+}
+
+/**
+ * What a splice marker contributes when it fires: a plain list its
+ * top-level elements, any other value — a scalar, a map, a typed list —
+ * itself. Returned as held, unevaluated; the engine steps over it after
+ * splicing. Mirrors Go's SpliceExpand.
+ */
+export function spliceExpand(v: Value): Value[] {
+  const { payload } = v.data as { payload: Value };
+  if (payload.vType.equal(TList) && Array.isArray(payload.data)) {
+    return payload.data as Value[];
+  }
+  return [payload];
+}
+
+/**
+ * Does a splice marker expand to plain VALUES only — no word, paren
+ * expression, interpolation or further splice at the level it splices. A
+ * data splice contributes the same values wherever it stands, which is
+ * what makes grouping it (`f w ≡ f (w)`) sound; a code-bearing one is a
+ * macro that must run against the live stack. Mirrors Go's spliceIsData.
+ */
+export function spliceIsData(v: Value): boolean {
+  return spliceExpand(v).every(
+    (el) =>
+      !(
+        el.isWord() ||
+        el.isParenExpr() ||
+        el.isInterpString() ||
+        isSplice(el)
+      ),
+  );
+}
+
 /**
  * Dispatch-mod marker (`Word/__DM`): `/v` (take the binding's value,
  * disabling any call) / `/q` (treat the result as data) group

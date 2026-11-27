@@ -59,21 +59,6 @@ run ( boomq	ERROR:signature_error	ERROR:syntax_error	CODE: an unmatched `(` at t
 
 
 
-# --- an unquoted EVAL-LIST def binding: data or code? --------------------
-# Go SUBSTITUTES the list as a value, which then auto-evaluates — `[3]`.
-# core/ts SPLICES it as a code body and runs it in place — `3`. The quoted
-# spelling agrees on both (`[q …]` is opaque data), so the disagreement is
-# exactly about what an UNQUOTED list binding means.
-#
-# Found the moment the corpus could install a def at all, which is the
-# point: this surface had no rows, so nothing had ever compared the two
-# engines on it. core/ts/src/engine.test.ts BASELINES the TS answer in
-# "splices an unquoted eval list as a code body" — the second time on this
-# branch that a per-engine unit test has pinned one engine's behaviour as
-# the contract.
-run def b [ addq 1 2 ] ; b	[3]	3	DATA: Go substitutes the list as a value; TS splices it as a code body.
-run def b [ 1 2 ] ; b	[1 2]	1 2	DATA: same rule with no words in the body — the residual is the list, not its elements.
-
 # --- the UNIFIER's type-constructor surface ---------------------------------
 # Opened on 2026-08-09 by `unifyq` plus the d( ) / [: ] / {: } notation
 # (core/spec/unify.tsv explains both). Until then no corpus row reached

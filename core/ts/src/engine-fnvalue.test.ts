@@ -233,11 +233,19 @@ describe("a function value at the pointer — a word in its window", () => {
     );
   });
 
-  it("takes a word that steps to a VALUE as that value's word", () => {
+  it("binds a word that merely steps to a VALUE as that value", () => {
     // `null` is a keyword the forward scan leaves as a word; stepping it
-    // yields the atom, so it is an argument like any other and the body
-    // resolves it.
+    // yields the atom, so the atom is what arrives and what is bound.
     assert.equal(run([literal(one), newWord("null")]), "null/q");
+  });
+
+  it("binds a word a NAME is bound to as the data it is", () => {
+    // `h` is bound to the word `idq`. The scan resolves the name to its
+    // value — a word, as data — and that settles nothing: it is an
+    // argument, not a function word beginning a dispatch.
+    const r = fixture();
+    r.pushDef("h", newWord("idq"));
+    assert.equal(run([literal(one), newWord("h")], r), "idq");
   });
 
   it("reports an unbound name in the window by name", () => {

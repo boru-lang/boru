@@ -42,6 +42,7 @@ import {
   isCloseParen,
   isEnd,
   isOpenParen,
+  isSplice,
   isSugar,
   newAtom,
   newBoolean,
@@ -63,6 +64,8 @@ import {
   newTypedMap,
   newXml,
   OrderedMap,
+  spliceExpand,
+  spliceIsData,
   Value,
   type WordInfo,
 } from "./value.ts";
@@ -149,6 +152,17 @@ function moreSpecificFirst(
   return 0;
 }
 
+/**
+ * Is the named word a BINDER, whose operand is a word's binding rather
+ * than its expansion: `def y xs`, with `xs` bound to a splice, rebinds the
+ * marker itself, so the new name aliases the splice. The one deliberate
+ * exception to `f w ≡ f (w)`; write `def y ( xs )` to force the
+ * expansion. Mirrors Go's bindsReferent.
+ */
+function bindsReferent(name: string): boolean {
+  return "def" === name;
+}
+
 const STEP_LIMIT = 22222;
 
 export class Engine {
@@ -187,6 +201,28 @@ export class Engine {
    * Throws BoruError on undefined word, signature mismatch, etc.
    */
   run(input: Value[]): Value[] {
+    try {
+      return this.runSteps(input);
+    } catch (e) {
+      // A program that never settles — a list bound to a name the list
+      // itself holds, a function that calls itself with no way out —
+      // nests evaluation without bound. core/go runs every region on the
+      // one tape and reports the tape exhausted; here each region is an
+      // engine of its own, and what runs out is the host's call stack.
+      // The same failure, under the same code — not a host exception
+      // escaping the taxonomy.
+      if (e instanceof RangeError) {
+        throw new BoruError(
+          "tape_exhausted",
+          "evaluation nested too deeply — the program does not settle " +
+            "(a binding that holds its own name, or unbounded recursion?)",
+        );
+      }
+      throw e;
+    }
+  }
+
+  private runSteps(input: Value[]): Value[] {
     // Check mode: strip concrete literals to type-only carriers before
     // execution. The same dispatch/matching machinery then runs over
     // carriers; stepWord short-circuits handlers to carrier returns.
@@ -441,15 +477,11 @@ export class Engine {
       return;
     }
 
-    // Def-stack substitution. Three paths:
-    //   1. FnDef (typed-param fn): match args against the synthesised
-    //      sig from params, bind each param on the def stack, run the
-    //      body in a sub-engine, splice the result back in place of
-    //      the consumed word + prefix + forward args.
-    //   2. List (code body): splice its elements at the pointer to
-    //      execute inline against the current stack.
-    //   3. Anything else (simple value): replace the word with the
-    //      value and let the next iteration pick it up as a literal.
+    // Def-stack substitution. Two paths:
+    //   1. A FUNCTION binding dispatches: the arguments are matched
+    //      against its signatures and the body runs in a call frame.
+    //   2. Anything else is a VALUE binding: the word is replaced by the
+    //      value, which is then stepped as a literal (stepSubstituted).
     const top = this.registry.topOfDefStack(name);
     if (top !== undefined) {
       // Resolving a def is a "use" for check-mode unused-def tracking.
@@ -470,26 +502,23 @@ export class Engine {
         }
         return;
       }
-      if (
-        top.vType.matches(TList) &&
-        Array.isArray(top.data) &&
-        !top.quoted &&
-        top.eval
-      ) {
-        // Unquoted, evaluable list → code body: splice its elements at
-        // the pointer so they execute inline. A quoted list (set via
-        // `quote`) or an inert list bound via a typed-name constraint
-        // (`def xs:[:T] […]`) is data and falls through to the literal-
-        // substitute branch below. Mirrors borueng/go/engine.go's def-sub
-        // `!top.Quoted` check.
-        const elems = top.asList();
-        this.stack.splice(this.pointer, 1, ...elems);
-        // pointer stays — first body token executes next iteration.
-        return;
+      // `f w ≡ f (w)`: a word bound to a DATA splice that a waiting word
+      // is collecting stands as the group `( w )`, so the splice's
+      // values arrive as arguments — several of them fill several slots,
+      // as the written group would. A binder is the one exception:
+      // `def y xs` rebinds the marker itself, so `y` aliases the splice.
+      // A CODE-bearing splice is a macro over the live stack and is never
+      // grouped; it is collected as the marker it is (core/go/engine.go
+      // stepWord, spliceIsData, bindsReferent).
+      if (isSplice(top) && spliceIsData(top)) {
+        const fwdIdx = this.findPendingMarker();
+        if (fwdIdx >= 0 && !bindsReferent(this.stack[fwdIdx]!.asForward().funcName)) {
+          this.stack.splice(this.pointer, 1, newOpenParen(), val, newCloseParen());
+          return;
+        }
       }
       this.stack[this.pointer] = top;
-      // Don't advance: let the value go through literal-handling on
-      // the next loop iteration so a pending forward can pick it up.
+      this.stepSubstituted(top);
       return;
     }
 
@@ -506,6 +535,31 @@ export class Engine {
     }
 
     this.dispatchEntry(name, fn);
+  }
+
+  /**
+   * A binding holds a VALUE, and the value a name was just replaced by is
+   * stepped AS A LITERAL: collected by a waiting word, or placed. It is
+   * not read again as a token. So a word bound to a name is that word, as
+   * data — never looked up, never called — and a list bound to a name is
+   * the list, which is then evaluated where any pending list literal is.
+   * core/go's stepWord: "a def'd word binds a VALUE: push it as-is".
+   *
+   * core/ts used to hand the cell back to the step loop instead, which
+   * re-read the value as a program token: a bound word was dispatched,
+   * and an unquoted list binding was spliced into the program as a code
+   * body. Splicing is what an explicit splice MARKER does (`def name word
+   * [ … ]`), and it does it from the literal step, as any marker fires.
+   *
+   * The forms the literal step itself EXPANDS in place — a paren
+   * expression, a sugar marker, an interpolation — are left where they
+   * are for the loop to expand, exactly as it expands them anywhere.
+   */
+  private stepSubstituted(v: Value): void {
+    if (v.vType.equal(TParenExpr) && !v.quoted && Array.isArray(v.data)) return;
+    if (isSugar(v) && !v.quoted) return;
+    if (v.isInterpString() || v.isXmlInterp()) return;
+    this.stepLiteral();
   }
 
   /**
@@ -544,7 +598,7 @@ export class Engine {
     // Pre-evaluate any paren groups in the forward window so the
     // matcher sees concrete values. The window is bounded by the
     // function's largest forward-eligible arg count across all sigs.
-    this.preEvalParens(fn.maxForwardArgs, fn.signatures);
+    this.preEvalParens(fn.maxForwardArgs, fn.signatures, name);
 
     const matched = matchEntry(fn, this.stack, this.pointer, this.registry);
     const result = asValue && true === matched?.sig.fallback ? null : matched;
@@ -897,8 +951,13 @@ export class Engine {
    *
    * `maxFwd` is the upper bound on how many forward values we might
    * need to resolve — taken from FunctionEntry.maxForwardArgs.
+   * `collector` names the word whose window this is.
    */
-  private preEvalParens(maxFwd: number, sigs?: readonly Signature[]): void {
+  private preEvalParens(
+    maxFwd: number,
+    sigs?: readonly Signature[],
+    collector = "",
+  ): void {
     this.lastPreEvalHadVoid = false;
     if (maxFwd <= 0) return;
     // Keyword slots are decided by the RAW token at their position —
@@ -957,6 +1016,31 @@ export class Engine {
           newCloseParen(),
         );
         continue;
+      }
+      // `f w ≡ f (w)`: a word bound to a DATA splice occupies its forward
+      // position as the group `( w )`, and the '(' arm below evaluates
+      // it — so the splice's values are the arguments. Not where no
+      // still-viable overload consumes the position, not where the
+      // position captures the token itself (a /q name, a type-arg), and
+      // not for a binder, which rebinds the marker. Mirrors Go's
+      // CollectForward (core/go/collect_kernel.go).
+      if (
+        tok.isWord() &&
+        !isRefWord(tok) &&
+        !bindsReferent(collector) &&
+        (viable === undefined ||
+          (viable.some((s) => resolved < (s.barrierPos ?? 0)) &&
+            !viable.some(
+              (s) =>
+                (s.quoteArgs?.has(resolved) ?? false) ||
+                (s.typeArgs?.has(resolved) ?? false),
+            )))
+      ) {
+        const bound = this.registry.topOfDefStack(tok.asWord().name);
+        if (bound !== undefined && isSplice(bound) && spliceIsData(bound)) {
+          this.stack.splice(scanIdx, 1, newOpenParen(), tok, newCloseParen());
+          continue;
+        }
       }
       // A sugar marker in the window expands once per dispatch, BEFORE
       // signature matching (which treats markers as boundaries) —
@@ -1147,7 +1231,7 @@ export class Engine {
   ): FnMatch | null {
     const maxParams = Math.max(0, ...info.sigs.map((s) => s.params.length));
     // Pre-evaluate forward parens so the matcher sees concrete values.
-    this.preEvalParens(maxParams);
+    this.preEvalParens(maxParams, undefined, name);
 
     const m = this.matchFnSigsOn(this.stack, name, info, reduce);
     // A check pass analyses the match as it stands: stranding is a
@@ -1217,16 +1301,27 @@ export class Engine {
     m: FnMatch,
   ): FnMatch | null {
     const { result } = m;
+    // A word the scan could not resolve is still the token it was. A word
+    // that is an argument because a name was BOUND to it is a value like
+    // any other, and settles nothing. A word that merely STEPS to a value
+    // — `null`, a type name in its path form — is that value by the time
+    // it arrives, so it is the value that is bound.
     let at = -1;
     for (let i = 0; i < result.forwardCount && at < 0; i++) {
-      if (result.args[i]!.isWord()) at = i;
+      const arg = result.args[i]!;
+      if (!arg.isWord() || arg !== this.stack[this.pointer + 1 + i]) continue;
+      const stepped = isRefWord(arg) ? undefined : this.wordValue(arg);
+      if (stepped !== undefined) result.args[i] = stepped;
+      else at = i;
     }
     if (at < 0) return m;
     const word = result.args[at]!;
     const wname = word.asWord().name;
-    const kind = isRefWord(word) ? "undefined" : this.wordKind(wname);
-    if ("value" === kind) return m;
-    if ("undefined" === kind) {
+    const isFunction =
+      !isRefWord(word) &&
+      (this.registry.topOfDefStack(wname) !== undefined ||
+        this.registry.lookup(wname) !== undefined);
+    if (!isFunction) {
       throw new BoruError("undefined_word", `undefined word: ${wname}`, wname);
     }
     if (wname.startsWith("__")) {
@@ -1276,18 +1371,22 @@ export class Engine {
   }
 
   /**
-   * What stepping a word of this name would do: substitute a VALUE (a
-   * keyword, a builtin type name, a value binding), dispatch a FUNCTION
-   * (a function binding or a registered word), or fail as UNDEFINED. The
-   * word step's own cascade, asked without stepping.
+   * The value stepping this word would put in its place, when stepping it
+   * does no more than that: a keyword, a builtin type name, a value
+   * binding. `undefined` for a word that dispatches a function and for a
+   * name nothing binds. The word step's own cascade, asked without
+   * stepping.
    */
-  private wordKind(name: string): "value" | "function" | "undefined" {
-    if ("true" === name || "false" === name) return "value";
-    if ("none" === name || "null" === name) return "value";
-    if (resolveBuiltinTypeName(name) !== undefined) return "value";
+  private wordValue(word: Value): Value | undefined {
+    const name = word.asWord().name;
+    if ("true" === name) return newBoolean(true);
+    if ("false" === name) return newBoolean(false);
+    if ("none" === name) return newNone();
+    if ("null" === name) return newAtom("null");
+    const tn = resolveBuiltinTypeName(name);
+    if (tn !== undefined) return newTypeLiteral(tn);
     const top = this.registry.topOfDefStack(name);
-    if (top !== undefined) return top.isFnDef() ? "function" : "value";
-    return this.registry.lookup(name) !== undefined ? "function" : "undefined";
+    return top !== undefined && !top.isFnDef() ? top : undefined;
   }
 
   /**
@@ -1652,6 +1751,16 @@ export class Engine {
       // modifier has nothing to say about a non-function: it is dropped.
       if (val.vType.equal(TDispatchMod)) {
         this.stack.splice(this.pointer, 1);
+        return;
+      }
+      // A SPLICE marker fires where it stands with nothing collecting
+      // it: it is replaced, unevaluated, by what it holds — a plain
+      // list's elements, any other value itself — and the pointer stays,
+      // so the spliced tokens run against the live stack (core/go
+      // stepLiteral, SpliceExpand). With a word collecting, the marker
+      // is an argument like any other value and does not fire.
+      if (isSplice(val)) {
+        this.stack.splice(this.pointer, 1, ...spliceExpand(val));
         return;
       }
       // A function VALUE standing at the pointer is a CALL.

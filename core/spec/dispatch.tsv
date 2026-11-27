@@ -300,6 +300,36 @@ run def x 7 ; { a: x }	{a:7}	a map value resolves through the binding
 run def d [q 1 2 ] ; d	[1 2]	a QUOTED list binding is data, opaque
 run def b [ addq 1 2 ] ; addq b 1	ERROR:signature_error	and a list does not fit an Integer slot
 
+# A binding holds a VALUE, and stepping its name SUBSTITUTES that value and
+# steps it as a literal — collected by a waiting word, or placed. It is
+# never re-read as a program: a list bound to a name is the list, which is
+# then evaluated like any pending list literal (to the list of its
+# residuals); a word bound to a name is the word, as data. Splicing a
+# list's elements into the program is a different binding altogether (the
+# language's `def name word [ … ]`, an explicit splice marker), not what an
+# unquoted list means.
+run def b [ addq 1 2 ] ; b	[3]	a list binding substitutes the LIST, which evaluates where any list literal would
+run def b [ 1 2 ] ; b	[1 2]	with no words in it the residual is still the list, not its elements
+run def b [ ] ; b	[]	and an empty list is an empty list
+run def b [ addq 1 2 ] ; b b	[3] [3]	each read is the list again
+run def b [ addq 1 2 ] ; dupq b	[3] [3]	a waiting word collects the list, evaluated as its argument
+run def b [ addq 1 2 ] ; ( b )	[3]	in a paren group
+run def b [ addq 1 2 ] ; [ b ]	[[3]]	as an element of a list literal
+run def b [ addq 1 2 ] ; { a: b }	{a:[3]}	as a map member
+run def b [ boomq 1 ] ; b	ERROR:fixture_boom	a fault in the list surfaces when the list is evaluated
+run def b [ boomq 1 ] ; def c 5 ; c	5	and never if it is not read
+run def b [ 1 2 ] ; 7 b sumq	ERROR:signature_error	its elements do not reach the stack: sumq finds a list, not two Integers
+run def b { a: [ addq 1 2 ] } ; b	{a:[3]}	a map binding is the map, evaluated the same way
+run def b p( addq 1 2 ) ; b	3	a paren-expression binding is a group: it runs to its results
+run def h negq ; h	negq	a WORD binding substitutes the word as data: it is not called
+run def h negq ; h 5	negq 5	nor called on what follows
+run def h negq ; 5 h	5 negq	or on what lies beneath
+run def h zzz ; h	zzz	and an unbound name inside is never looked up
+run def h x ; def x 5 ; h	x	nor a bound one resolved
+run def h negq ; boomq h	ERROR:fixture_boom	it reaches a waiting word as a value
+run def h negq ; qanyq h	negq	which hands it back, still a word
+run def h negq/v ; h	negq/v	a `/v` word bound to a name is that word too, unread
+
 # --- user-defined FUNCTIONS ----------------------------------------------
 # `fn( NAME PTYPE RTYPE [ body ] )` builds a boru-bodied function value,
 # bound through the def clause. Two things had to exist before a row could
