@@ -81,6 +81,13 @@ values are stepped where it stood. A row that needs a condition to CHANGE
 binds one name several times — `def c false ; def c true ;` — and has the
 body pop it with `undef c`.
 
+Two more words raise the FLOW SIGNALS, which are not errors: `breakq` and
+`contq`. The nearest counted or conditional loop ahead on the tape takes
+one — break ends the loop with what its completed rounds left, continue
+drops the round — and it passes through a group, a container literal, a
+call frame and a driven loop to reach it. With no loop to take it, it is
+`ERROR:flow_error`.
+
 ### The unifier's two words
 
 Unification has no client in a bare core registry (`is`, `case` and typed
@@ -161,14 +168,15 @@ than silently re-baselined. Each runner also **fails a row whose `go` and
 belongs in, or this stops being an honest debt list. Shrink-only, exactly as
 `parser/spec/divergent.tsv` is.
 
-It holds **161 rows**. 138 are a mechanism `core/ts` does not have at
+It holds **209 rows**. 186 are a mechanism `core/ts` does not have at
 all: closures (26 rows, the `afn` fixture); driven loops (35 rows, the
 `eachq` fixture — eight of them the same loop out of a group and inside one
 a waiting word evaluates, where the kernel once stepped the loop's inert
 inputs); counted and conditional loops (73 rows, the `forq`, `rangeq` and
 `whileq` fixtures — six of them NUR400, a full-stack word ending a counted
 loop, and five the index at the edge of the Integer range, two of those
-NUR402, all pinned as the kernel has it); and the arity widening of a value call
+NUR402, all pinned as the kernel has it); break and continue (48 rows, the
+`breakq` and `contq` fixtures); and the arity widening of a value call
 (4 rows, two of them NUR401, pinned as the kernel has it). One is a
 recorded kernel defect pinned as the kernel has
 it — NUR392, an unmatched `(` in a function's body — where `core/ts`

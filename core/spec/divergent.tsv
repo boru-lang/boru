@@ -348,3 +348,75 @@ run rangeq -9223372036854775806 -9223372036854775808 -1 [q i ]	-9223372036854775
 run def c 'x' ; def c 5 ; rangeq 9223372036854775806 9223372036854775807 1 [q negq c undef c ]	-5	ERROR:undefined_word	one round: a step of 1 lands on the bound
 run def c 'x' ; def c 5 ; rangeq 9223372036854775806 9223372036854775807 2 [q negq c undef c ]	ERROR:signature_error	ERROR:undefined_word	NUR402: a step of 2 passes the range, wraps, and a second round runs
 run def c 'x' ; def c 5 ; rangeq -9223372036854775807 -9223372036854775808 -2 [q negq c undef c ]	ERROR:signature_error	ERROR:undefined_word	NUR402: the same, counting down
+#
+# --- break and continue: the nearest counted or conditional loop ahead takes the signal
+# `breakq` and `contq` raise the two FLOW SIGNALS. A signal is not an error:
+# the run resolves it once the step that raised it is done, on the nearest
+# counted or conditional loop whose move stands ahead on the tape. BREAK ends
+# the loop — the values its COMPLETED rounds left stand where it stood, and the
+# round in progress leaves nothing. CONTINUE ends the round — what it left is
+# dropped — and the loop goes on. core/ts has no loop on the tape.
+run forq 2 [q forq 2 [q i breakq ] 7 ]	7 7	ERROR:undefined_word	break ends the INNER loop each time; the outer runs on
+run forq 2 [q forq 2 [q i contq 8 ] 7 ]	7 7	ERROR:undefined_word	continue drops each inner round; the outer leaves its 7
+run forq 2 [q 5 forq 2 [q i contq 8 ] 7 ]	5 7 5 7	ERROR:undefined_word	what the outer round left before the inner loop is kept
+run forq 3 [q i breakq ]		ERROR:undefined_word	the round in progress leaves nothing: not the index it had left
+run forq 3 [q breakq i ]		ERROR:undefined_word	nothing after the signal is reached
+run forq 3 [q i contq 9 ]		ERROR:undefined_word	every round dropped
+run 4 forq 3 [q i breakq ] 7	4 7	ERROR:undefined_word	what stood before the loop, and what follows it, are untouched
+run rangeq 0 10 1 [q i contq ] 9	9	ERROR:undefined_word	ten rounds, each dropped
+run forq 2 [q i ] forq 2 [q breakq ] 7	0 1 7	ERROR:undefined_word	a loop that has ended keeps its values: the signal is the second loop's
+run 4 5 forq 2 [q negq/s breakq ]	4	ERROR:undefined_word	NO PAREN around a round: what the broken round took from beneath the loop is gone with it
+run 4 5 forq 2 [q negq/s contq ]		ERROR:undefined_word	and each continued round takes one more
+run def i 50 ; forq 3 [q breakq ] i	50	ERROR:undefined_word	break unbinds the index, as the loop's own end does
+#
+# A conditional loop takes them the same way — in its body region, and in its
+# condition region too.
+run whileq [q true ] [q 7 breakq ]		ERROR:undefined_word	the only way out of a loop whose condition is always true
+run whileq [q true breakq ] [q 7 ]		ERROR:undefined_word	a break in the CONDITION region ends the loop
+run whileq [q contq ] [q 7 ]	ERROR:runtime_error	ERROR:undefined_word	a continue in the condition region drops the condition's value: no value, an error
+run def c false ; def c true ; def c true ; whileq [q c ] [q undef c 7 contq 8 ]		ERROR:undefined_word	each body round dropped; the condition still ends the loop
+run def c false ; def c true ; def c true ; whileq [q c ] [q 6 undef c contq ]		ERROR:undefined_word	what a dropped round did to the bindings stays done
+run forq 2 [q whileq [q true ] [q i breakq ] 7 ]	7 7	ERROR:undefined_word	the conditional loop is the nearest
+#
+# --- a signal passes THROUGH what is not a counted or conditional loop -----------
+# A group, a container literal, a call frame and a driven loop are no loops
+# for a signal: it goes on to the loop around them, and what it escapes is
+# abandoned whole and closed behind it.
+run forq 3 [q ( i breakq ) ]		ERROR:undefined_word	through a group
+run forq 3 [q i ( contq ) 7 ]		ERROR:undefined_word	continue, through a group
+run forq 2 [q bothq 1 ( i breakq ) 7 ]		ERROR:undefined_word	through a group a waiting word is evaluating: the word is abandoned with it
+run forq 3 [q i negq ( contq ) ]		ERROR:undefined_word	continue, the same
+run forq 2 [q [ i breakq ] 7 ]		ERROR:undefined_word	through a list literal, evaluated when the round is collected: a literal is not a loop
+run forq 2 [q [ i contq ] 7 ]		ERROR:undefined_word	continue, the same: the whole round is dropped, the 7 with it
+run forq 3 [q i { a: contq } 7 ]		ERROR:undefined_word	through a map member
+run forq 2 [q eachq [q 1 2 ] [q breakq ] 7 ]		ERROR:undefined_word	through a DRIVEN loop, which is abandoned
+run forq 2 [q i eachq [q 1 2 ] [q contq ] 7 ]		ERROR:undefined_word	continue, the same
+run eachq [q 1 2 ] [q forq 2 [q i breakq ] ]	[1 2]	ERROR:undefined_word	a counted loop INSIDE a driven region takes its own signal
+run eachq [q 1 2 ] [q forq 2 [q i contq ] 7 ]	[1 7 2 7]	ERROR:undefined_word	and the driven loop collects what is left
+run def f fn( n Any Any [ n breakq ] ) ; forq 3 [q f i ]		ERROR:undefined_word	through a call frame
+run def f fn( n Any Any [ n contq ] ) ; forq 3 [q i f i 9 ]		ERROR:undefined_word	continue, through a call frame
+run def n 50 ; def f fn( n Any Any [ n breakq ] ) ; forq 2 [q f i ] ; n	50	ERROR:undefined_word	the frame is CLOSED behind the signal: the parameter does not stay bound over the caller's n
+run def f fn( n Any Any [ forq 3 [q i breakq ] n ] ) ; f 5	5	ERROR:undefined_word	a loop inside the frame takes its own signal; the frame returns normally
+run forq 2 [q bothq 0 ( afn n [q n breakq ] ) i 7 ]		ERROR:undefined_word	through a closure's frame
+run forq 3 [q ( breakq ]		ERROR:undefined_word	an unmatched ( the signal escapes is discarded with the round
+#
+# --- with no loop to take it, a signal is an error -------------------------------
+run breakq	ERROR:flow_error	ERROR:undefined_word	at the top level
+run contq	ERROR:flow_error	ERROR:undefined_word	continue too
+run 1 breakq 2	ERROR:flow_error	ERROR:undefined_word	between values
+run ( breakq )	ERROR:flow_error	ERROR:undefined_word	in a group
+run [ 1 breakq 2 ]	ERROR:flow_error	ERROR:undefined_word	in a list literal
+run { a: breakq }	ERROR:flow_error	ERROR:undefined_word	in a map member
+run eachq [q 1 2 ] [q breakq ]	ERROR:flow_error	ERROR:undefined_word	in a driven loop with no counted loop around it
+run def f fn( n Any Any [ n breakq ] ) ; f 5	ERROR:flow_error	ERROR:undefined_word	in a function called outside any loop
+run forq 3 [q i ] breakq 7	ERROR:flow_error	ERROR:undefined_word	after a loop that has ended
+run forq 3 [q afn n [q breakq ] ] 5	ERROR:flow_error	ERROR:undefined_word	a closure built in a loop and called after it
+run forq 3 [q 1 breakq/v ]	ERROR:flow_error	ERROR:undefined_word	a /v reference left in the rounds is called when the loop's values are stepped — after the loop
+#
+# A word is still a function word: one that raises a signal closes a waiting
+# collection like any other, before it runs.
+run forq 3 [q i bothq 1 breakq ]	ERROR:signature_error	ERROR:undefined_word	bothq is stranded when breakq begins: the error comes first
+#
+# NUR400 again: the full-stack word took the loop's mark, so the break finds no
+# loop to end.
+run forq 2 [q depthq breakq ]	ERROR:flow_error	ERROR:undefined_word	NUR400: no mark, no loop

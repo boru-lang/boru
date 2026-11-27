@@ -81,6 +81,25 @@ def depth (d : Defs) (name : String) : Nat := (d.stack name).length
 def popTo (d : Defs) (name : String) (floor : Nat) : Defs :=
   (List.range (d.depth name - floor)).foldl (fun d _ => d.pop name) d
 
+/-- A FLOW SIGNAL rides in the binding table too (core/go
+    `Registry.FlowCtrl`): raised by a word, it is not an error but a
+    redirection the run resolves once the step that raised it is done.
+    `true` is break, `false` continue. -/
+def flowKey : String := " flow"
+
+def flow? (d : Defs) : Option Bool :=
+  match d.stack flowKey with
+  | .bool isBreak :: _ => some isBreak
+  | _ => none
+
+/-- Is a signal pending? -/
+def flowing (d : Defs) : Bool := d.flow?.isSome
+
+def raiseFlow (d : Defs) (isBreak : Bool) : Defs :=
+  (flowKey, [.bool isBreak]) :: d.filter (fun (k, _) => k != flowKey)
+
+def takeFlow (d : Defs) : Defs := d.filter (fun (k, _) => k != flowKey)
+
 /-- LOOP MARKS are numbered from a counter in the binding table, as
     function identities are: each round of a loop opens under a mark of
     its own. -/

@@ -16,3 +16,4 @@ import Boru.Core.Theorems.Closure
 import Boru.Core.Theorems.Loop
 import Boru.Core.Theorems.Overload
 import Boru.Core.Theorems.Counted
+import Boru.Core.Theorems.Flow

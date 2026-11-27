@@ -700,6 +700,26 @@ func coreSpecRegistry(t *testing.T) *Registry {
 		}),
 		BarrierPos: 2,
 	})
+	// breakq and contq raise the two FLOW SIGNALS (Registry.FlowCtrl): not
+	// errors, a redirection the run resolves after the step — the nearest
+	// counted or conditional loop ahead on the tape ends, or starts its
+	// next round. With no loop to take it the signal is a flow_error.
+	r.Register("breakq", Signature{
+		Returns: []*Type{},
+		Impl: Go(func(_ []Value, _ map[string]Value, _ []Value, reg *Registry) ([]Value, error) {
+			reg.FlowCtrl = FlowBreak
+			return nil, nil
+		}),
+		BarrierPos: 0,
+	})
+	r.Register("contq", Signature{
+		Returns: []*Type{},
+		Impl: Go(func(_ []Value, _ map[string]Value, _ []Value, reg *Registry) ([]Value, error) {
+			reg.FlowCtrl = FlowContinue
+			return nil, nil
+		}),
+		BarrierPos: 0,
+	})
 	// qanyq is the /q fixture whose name slot is ANY rather than Atom, and
 	// it RETURNS what it captured, so a row can read the capture back. The
 	// pair (undef's Atom slot, this Any one) is what pins /q's conditional
