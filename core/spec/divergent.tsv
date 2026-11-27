@@ -27,7 +27,6 @@
 # Read design/CORE-TS-DIVERGENCES.1.md before assuming which side moves.
 
 
-run [q ( ) ]	[ )]	[( )]	DATA: TS drops an empty paren group and re-associates operands; Go raises no_value_error.
 
 # --- a type-mismatched paren operand: which error ---------------------------
 # Both refuse; they disagree about the code. Go reports signature_error (the
@@ -64,14 +63,6 @@ run [ Module ]	[Module]	ERROR:undefined_word	DATA: core/ts type-name table is na
 # fallthrough would be applying a known defect to the port. The ledger header
 # warns that the go column is the reference "by convention, not by proof";
 # this is the third time on this programme that the warning has paid.
-list (	[]	[(]	RENDER: ADJUDICATED — Go drops the token via the payload-less fallthrough it fixed for `)` and `end`; core/ts is right and stays.
-list ( )	[ )]	[( )]	RENDER: ADJUDICATED — Go drops the token via the payload-less fallthrough it fixed for `)` and `end`; core/ts is right and stays.
-list 1 ( 2	[1  2]	[1 ( 2]	RENDER: ADJUDICATED — Go drops the token via the payload-less fallthrough it fixed for `)` and `end`; core/ts is right and stays.
-list ( ( )	[  )]	[( ( )]	RENDER: ADJUDICATED — Go drops the token via the payload-less fallthrough it fixed for `)` and `end`; core/ts is right and stays.
-list ( ; )	[ end )]	[( end )]	RENDER: ADJUDICATED — Go drops the token via the payload-less fallthrough it fixed for `)` and `end`; core/ts is right and stays.
-list [ ( ) ]	[[ )]]	[[( )]]	RENDER: ADJUDICATED — Go drops the token via the payload-less fallthrough it fixed for `)` and `end`; core/ts is right and stays.
-list { a: ( }	[{a:}]	[{a:(}]	RENDER: ADJUDICATED — Go drops the token via the payload-less fallthrough it fixed for `)` and `end`; core/ts is right and stays.
-typedlist ( 1	[: 1]	[:( 1]	RENDER: ADJUDICATED — Go drops the token via the payload-less fallthrough it fixed for `)` and `end`; core/ts is right and stays.
 
 run ( boomq	ERROR:signature_error	ERROR:syntax_error	CODE: an unmatched `(` at the TOP of the stream. preEvalParens already applies Go’s rule INSIDE a forward window; only the run loop’s arm differs. NOT changed because eng/ts pins the refusal in "a programmatic unmatched open paren refuses in the scanner" — which behaviour is right is a question for that test and its Go twin.
 

@@ -105,3 +105,18 @@ float 1e10	10000000000.0	exponents expand; canon is never scientific
 list addq/2s negq/f sumq/3 Scalar/String	[addq/2s negq/f sumq/3 Scalar/String]	modifiers survive canon; a type path is not one
 list p( 1 ; 2 )	[(1 ; 2)]	inside a paren expression the barrier is written `;`
 list {: Integer a: 1 a: 2 }	[{:Integer a:1 a:2}]	a typed map's retained entries are a LIST: a repeated key is kept twice
+
+# --- the open-paren marker has a source form ---------------------------------
+# A paren MARKER held as data — inside a list or a map value, where nothing
+# steps it — renders as the token that wrote it, as the stray `)` and `end`
+# already did. core/go had no arm for it and rendered the empty string, so
+# `[( )]` came back `[ )]`; these nine rows sat in divergent.tsv,
+# adjudicated against Go, until its renderer gained the arm.
+list (	[(]	
+list ( )	[( )]	
+list 1 ( 2	[1 ( 2]	
+list ( ( )	[( ( )]	
+list ( ; )	[( end )]	
+list [ ( ) ]	[[( )]]	
+list { a: ( }	[{a:(}]	
+typedlist ( 1	[:( 1]	

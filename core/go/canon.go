@@ -102,6 +102,15 @@ func CanonValue(v Value) string {
 	switch {
 	case IsNone(&v):
 		return "none"
+	case IsOpenParen(&v):
+		// The open-paren MARKER as data — inside a list or a map value,
+		// where nothing steps it. Like the stray `)` below it had no arm
+		// and fell through to the payload-less case, which rendered it as
+		// the empty string: `[( )]` came back as `[ )]`, and the source no
+		// longer read back the same. core/spec/divergent.tsv adjudicated
+		// the nine rows against this renderer; they are in canon.tsv and
+		// data.tsv now.
+		return "("
 	case IsCloseParen(&v):
 		// A STRAY `)` — one the parser could not pair, so it survives as a
 		// value rather than closing a group. Canon had no arm, so the

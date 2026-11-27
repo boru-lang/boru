@@ -45,7 +45,8 @@ make -C spec fuzz      # differential search against core/go
 on the model and compares the result with the row's `expected` column —
 the third runner of the corpus, sharing no code with the other two. It
 also reports, for `divergent.tsv` (where `core/go` and `core/ts`
-disagree), which engine the specification sides with.
+disagree), which engine the specification sides with — `core/go`, on
+every row today.
 
 **`verify-typetable`** regenerates `TypeTable.lean` from the Go table and
 fails on any difference: the specification's lattice is the kernel's.
@@ -77,13 +78,14 @@ all tapes are the next steps on this side; `COVERAGE.md` lists them.
 
 ### Where the specification and `core/go` differ
 
-The specification states the contract. It follows `core/go` everywhere
-the two have been compared, with one exception, already adjudicated in
-[`core/spec/divergent.tsv`](../core/spec/divergent.tsv): an open-paren
-marker's canonical form is `(` — `core/go` renders it as nothing.
+Nowhere that has been compared. The specification states the contract and
+`core/go` meets it on every corpus row and every program the search has
+drawn. (The one difference there was — `core/go` rendered an open-paren
+marker as nothing, which `core/spec/divergent.tsv` had adjudicated against
+it — was fixed in the kernel.)
 
 Behaviour the model reproduces because the kernel has it, not because it
-is right, is recorded in [NUR.md](../NUR.md) (NUR385–NUR387) and marked
+is right, is recorded in [NUR.md](../NUR.md) (NUR385–NUR388) and marked
 where it is modelled.
 
 ## Toolchain
