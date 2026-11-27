@@ -26,6 +26,7 @@ theorem, or by the differential search.
 | Slot admission, type-literal rejection, patterns | `signature.go`, `match.go` | `Match.lean` | `dispatch.tsv`; search |
 | The per-candidate scan and the plan (`/q` preference, inside-a-collection rule, zero-argument fallback) | `collect_kernel.go`, `collect_plan.go` | `Match.lean` | `dispatch.tsv`; search; `Theorems/ArgumentRule.lean` |
 | The call-site modifiers `/s`, `/f`, `/N` | `collect_plan.go`, `engine.go` `effectiveForwardLimit` | `Match.lean` | `dispatch.tsv`; search |
+| The `/v` modifier: the bound value, placed or collected, never called | `engine.go` `stepWordVal`, `core_ref.go` `ResolveRef` | `Engine.lean` | `dispatch.tsv`; `divergent.tsv` (Go column); search |
 | The stack-form probe | `signature.go` `MatchSignature` | `Match.lean` | search |
 | The step loop: literals and arrival, word resolution, word literals, undefined words | `engine.go` | `Engine.lean` | corpus; search |
 | Parking and collecting a forward; completion and the stack-only re-dispatch | `engine.go` | `Engine.lean` | corpus; search; theorems |
@@ -49,8 +50,8 @@ no expression in the `core/spec` notation, so specifying them means
 extending the notation and its fixture in all three runners first.
 
 **The step loop**
-- the word modifiers `/v` (the bound value, never a call) and `/u`
-  (usurp): both deliver a function VALUE, which is the next item;
+- the word modifier `/u` (usurp: the bound function with its argument
+  order reversed);
 - anonymous functions and lambdas, an applied mark, closures and capture,
   a function from another registry, arity widening of a value call,
   unnamed parameters and the frame argument span, the args stack and

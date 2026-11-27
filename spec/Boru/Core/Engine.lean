@@ -77,7 +77,7 @@ def tok? (e : Engine) (i : Nat) : Option Value := e.tape[i]?
 def err (code : String) (detail : String := "") : Except BoruError α := throw { code, detail }
 
 /-- Out of step budget. -/
-def outOfFuel : Except BoruError α := err "eval_limit" "step budget exhausted"
+def outOfFuel : Except BoruError α := err "evaluation_limit" "step budget exhausted"
 
 end Engine
 
@@ -134,6 +134,17 @@ def pendingQuoteSlot (tape : List Value) (defs : Defs) (ptr : Nat) : Bool :=
     | some (.forward f) =>
       ((forwardSigs? tape defs f).bind (·[f.sigIdx]?)).any fun s =>
         f.collected < s.arity && s.isQuote f.collected
+    | _ => false
+  | none => false
+
+/-- Is a parked forward still short of its signature's arity — still
+    collecting. -/
+def pendingCollecting (tape : List Value) (defs : Defs) (ptr : Nat) : Bool :=
+  match pendingForwardIdx tape ptr with
+  | some i =>
+    match tape[i]? with
+    | some (.forward f) =>
+      ((forwardSigs? tape defs f).bind (·[f.sigIdx]?)).any fun s => f.collected < s.arity
     | _ => false
   | none => false
 
@@ -250,6 +261,22 @@ def stepToken (nat : Natives) : Nat → Engine → Except BoruError Engine
 def stepWord (nat : Natives) : Nat → Engine → WordInfo → Except BoruError Engine
   | 0, _, _ => Engine.outOfFuel
   | fuel + 1, e, w =>
+    if w.forceVal then
+      -- `/v`: the bound VALUE, never a call. A function binding yields
+      -- the function the name dispatches to, as a value; it is collected
+      -- by a waiting word like any literal, and otherwise simply placed.
+      match e.defs.top? w.name with
+      | none => Engine.err "undefined_word" w.name
+      | some top =>
+        let v :=
+          if top.isFn then (match e.defs.lookup? w.name with
+            | some sigs => Value.fn w.name sigs
+            | none => top)
+          else top
+        let e := { e with tape := setAt e.tape e.ptr v }
+        let collecting := pendingCollecting e.tape e.defs e.ptr
+        if collecting then stepLiteral nat fuel e else pure { e with ptr := e.ptr + 1 }
+    else
     -- a parked forward that captures NAMES takes the word as it is written
     if pendingQuoteSlot e.tape e.defs e.ptr then stepLiteral nat fuel e
     else

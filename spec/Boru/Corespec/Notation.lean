@@ -38,8 +38,8 @@ def int? (s : String) : Option Int :=
     -- a signed 64-bit integer, or the token is a word
     if v < -(2 ^ 63 : Int) || v ≥ (2 ^ 63 : Int) then none else some v
 
-/-- `name/N`, `name/s`, `name/f`, `name/Ns`, `name/Nf` — a word with
-    call-site modifiers. A slash whose suffix is not a modifier
+/-- `name/N`, `name/s`, `name/f`, `name/Ns`, `name/Nf` and `name/v` — a
+    word with call-site modifiers. A slash whose suffix is not a modifier
     (`Scalar/String`) leaves the token a plain word. -/
 def modifiedWord? (tok : String) : Option WordInfo :=
   let cs := tok.toList
@@ -53,6 +53,7 @@ def modifiedWord? (tok : String) : Option WordInfo :=
       if digits.isEmpty then none
       else some (digits.foldl (fun acc c => acc * 10 + (c.toNat - '0'.toNat)) 0)
     match rest with
+    | ['v'] => if digits.isEmpty then some { name := String.ofList name, forceVal := true } else none
     | [] => some { name := String.ofList name, argCount }
     | ['s'] => some { name := String.ofList name, argCount, forceStack := true }
     | ['f'] => some { name := String.ofList name, argCount, forceForward := true }

@@ -129,6 +129,10 @@ function token(tok: string): Value {
   // call-site modifiers, as the parser would hand it over. A slash whose
   // suffix is not a modifier (`Scalar/String`) leaves the token a plain
   // word. Written independently of the Go runner's copy.
+  // `name/v`: the bound VALUE, never a call.
+  if (tok.length > 2 && tok.endsWith("/v")) {
+    return new Value(TWord, { name: tok.slice(0, -2), forceVal: true } satisfies WordInfo);
+  }
   const mod = /^(.+)\/(\d*)([sf]?)$/.exec(tok);
   if (mod !== null && (mod[2] !== "" || mod[3] !== "")) {
     const info: WordInfo = { name: mod[1]! };

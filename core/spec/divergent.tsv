@@ -158,4 +158,12 @@ run fn( n Integer Integer [ addq n 1 ] ) ; 5	fn [[n:Integer][Integer][addq n 1]]
 run fn( n Integer Integer [ addq n 1 ] ) negq 5	ERROR:uncalled_function	fn [[n:Scalar/Number/Integer][Scalar/Number/Integer][addq n 1]] -5	DATA: core/ts never dispatches a function VALUE standing in the program — it is left as data — where Go calls it as its word would (and refuses a named one that matches nothing: uncalled_function).
 run d( {q a: 1 b: 2 } {q b: 2 a: 1 } )	{a:1 b:2}	{a:1 b:2} tor {b:2 a:1}	DATA: core/ts never reduces a disjunct at resolution; Go drops an alternative equal to an earlier one, and two maps are equal whatever their key order.
 run d( [q 1 2 ] [q 1 2 ] 5 )	5 tor [1 2]	[1 2] tor [1 2] tor 5	DATA: core/ts never reduces a disjunct at resolution; Go drops the repeated list and puts the rest in the total order.
-
+run tyq/v	fn [[t:Any][Any][]]	ERROR:signature_error	DATA: core/ts does not read the /v modifier — the word dispatches as a call — where Go resolves it to the bound value and places it.
+run tyq/v 'x'	fn [[t:Any][Any][]] 'x'	ERROR:signature_error	DATA: core/ts does not read the /v modifier — the word dispatches as a call — where Go resolves it to the bound value and places it.
+run ( 'x' tyq/v )	ERROR:uncalled_function	ERROR:signature_error	DATA: core/ts does not read the /v modifier — the word dispatches as a call — where Go resolves it to the bound value and places it.
+run bothq 7 tyq/v	fn [[t:Any][Any][]]	ERROR:signature_error	DATA: core/ts does not read the /v modifier — the word dispatches as a call — where Go resolves it to the bound value and places it.
+run dupq tyq/v	fn [[t:Any][Any][]]	ERROR:signature_error	DATA: core/ts does not read the /v modifier — the word dispatches as a call — where Go resolves it to the bound value and places it.
+run dupq negq/v	ERROR:uncalled_function	ERROR:signature_error	DATA: core/ts does not read the /v modifier — the word dispatches as a call — where Go resolves it to the bound value and places it.
+run negq/v 5	fn [[a:Integer][Integer][]] 5	-5	DATA: core/ts does not read the /v modifier — the word dispatches as a call — where Go resolves it to the bound value and places it.
+run 5 negq/v	5 fn [[a:Integer][Integer][]]	-5	DATA: core/ts does not read the /v modifier — the word dispatches as a call — where Go resolves it to the bound value and places it.
+run [ negq/v 5 ]	[fn [[a:Integer][Integer][]] 5]	[-5]	DATA: core/ts does not read the /v modifier — the word dispatches as a call — where Go resolves it to the bound value and places it.

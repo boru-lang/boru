@@ -47,7 +47,8 @@ expr	expected	note
 `run` tokens: a bare decimal is an Integer, `'…'` is a String, a known builtin
 type name is that type's literal, and anything else is a Word. A word may
 carry call-site modifiers after a slash — `name/s` (stack only), `name/f`
-(forward only), `name/N` (exactly N arguments), and `name/Ns` / `name/Nf` —
+(forward only), `name/N` (exactly N arguments), `name/Ns` / `name/Nf`, and
+`name/v` (the bound value, never a call) —
 which build the modified word a parser would; a slash whose suffix is not
 a modifier (`Scalar/String`) is part of the name. The runners
 register one fixture word, `addq` (`Integer Integer -> Integer`), so the step

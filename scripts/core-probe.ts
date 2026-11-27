@@ -76,6 +76,10 @@ function token(tok: string): Value {
   if (";" === tok) return newEnd();
   // `name/N`, `name/s`, `name/f`, `name/Ns`, `name/Nf` — a modified word
   // (the same reading as core/ts/src/corespec.test.ts's token()).
+  // `name/v`: the bound VALUE, never a call.
+  if (tok.length > 2 && tok.endsWith("/v")) {
+    return new Value(TWord, { name: tok.slice(0, -2), forceVal: true } satisfies WordInfo);
+  }
   const mod = /^(.+)\/(\d*)([sf]?)$/.exec(tok);
   if (mod !== null && (mod[2] !== "" || mod[3] !== "")) {
     const info: WordInfo = { name: mod[1]! };
