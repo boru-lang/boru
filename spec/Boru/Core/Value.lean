@@ -131,7 +131,9 @@ inductive Value where
       read of the parameter can never re-run it. -/
   | quoted (v : Value)
 
-/-- A LOOP ON THE TAPE (core/go `Loop`), in one of its two modes.
+/-- WHAT A MOVE CARRIES. A LOOP ON THE TAPE (core/go `Loop`), in one of
+    its two modes — or one of the two things a move does that are no
+    loop.
 
     COUNTED: the index name, its current value, the exclusive bound and
     the step; the body replayed each round; the values the completed
@@ -144,6 +146,12 @@ inductive Value where
 inductive Loop where
   | counted (index : String) (current stop step : Int) (body results : List Value) (depth : Nat)
   | cond (test body results : List Value) (inBody : Bool)
+  /-- Not a loop at all: the `if` CONTINUATION. The region is a condition,
+      and its last value picks the branch that takes the region's place. -/
+  | branch (thenBranch elseBranch : List Value)
+  /-- The plain mark and move, with no continuation: the move puts `body`
+      — the tokens its mark carried — where the region stood, once. -/
+  | replay (body : List Value)
 
 /-- One parameter of a signature. -/
 inductive Param where

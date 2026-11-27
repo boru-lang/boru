@@ -81,6 +81,13 @@ values are stepped where it stood. A row that needs a condition to CHANGE
 binds one name several times — `def c false ; def c true ;` — and has the
 body pop it with `undef c`.
 
+A move does two things that are no loops, and each has its word:
+`ifq [q cond ] [q then ] [q else ]` is the `if` CONTINUATION — a condition
+region whose last value picks the branch, a paren group, that takes the
+region's place — and `replayq [q body ]` is the plain mark and move, which
+runs its body and then runs it once more in the place of everything the
+first run left.
+
 Two more words raise the FLOW SIGNALS, which are not errors: `breakq` and
 `contq`. The nearest counted or conditional loop ahead on the tape takes
 one — break ends the loop with what its completed rounds left, continue
@@ -168,7 +175,7 @@ than silently re-baselined. Each runner also **fails a row whose `go` and
 belongs in, or this stops being an honest debt list. Shrink-only, exactly as
 `parser/spec/divergent.tsv` is.
 
-It holds **209 rows**. 186 are a mechanism `core/ts` does not have at
+It holds **256 rows**. 233 are a mechanism `core/ts` does not have at
 all: closures (26 rows, the `afn` fixture); driven loops (35 rows, the
 `eachq` fixture — eight of them the same loop out of a group and inside one
 a waiting word evaluates, where the kernel once stepped the loop's inert
@@ -176,7 +183,9 @@ inputs); counted and conditional loops (73 rows, the `forq`, `rangeq` and
 `whileq` fixtures — six of them NUR400, a full-stack word ending a counted
 loop, and five the index at the edge of the Integer range, two of those
 NUR402, all pinned as the kernel has it); break and continue (48 rows, the
-`breakq` and `contq` fixtures); and the arity widening of a value call
+`breakq` and `contq` fixtures); the `if` continuation and the plain mark
+and move (47 rows, the `ifq` and `replayq` fixtures — three of them NUR400
+again); and the arity widening of a value call
 (4 rows, two of them NUR401, pinned as the kernel has it). One is a
 recorded kernel defect pinned as the kernel has
 it — NUR392, an unmatched `(` in a function's body — where `core/ts`

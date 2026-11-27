@@ -57,6 +57,9 @@ def fixtureDefs : Defs :=
     word "forq" [p "n" TInteger, p "body" TList] [] 2,
     word "rangeq" [p "start" TInteger, p "end" TInteger, p "step" TInteger, p "body" TList] [] 4,
     word "whileq" [p "cond" TList, p "body" TList] [] 2,
+    -- the `if` continuation, and the plain mark and move
+    word "ifq" [p "cond" TList, p "then" TList, p "else" TList] [] 3,
+    word "replayq" [p "body" TList] [] 1,
     -- the FLOW SIGNALS: break and continue
     word "breakq" [] [] 0,
     word "contq" [] [] 0,
@@ -139,6 +142,18 @@ def fixtureNatives : Natives :=
       let body ← elemsOf "whileq" (a.getD 1 .none)
       let (id, d) := d.freshMark
       pure (.mark id :: test ++ [.move id (.cond test body [] false)], d)),
+    ("ifq", .plain fun a d => do
+      let test ← elemsOf "ifq" (a.getD 0 .none)
+      let thenB ← elemsOf "ifq" (a.getD 1 .none)
+      let elseB ← elemsOf "ifq" (a.getD 2 .none)
+      -- each branch a paren group of its own, as basic's `if` lays it out
+      let group (b : List Value) : List Value := .openParen :: b ++ [.closeParen]
+      let (id, d) := d.freshMark
+      pure (.mark id :: test ++ [.move id (.branch (group thenB) (group elseB))], d)),
+    ("replayq", .plain fun a d => do
+      let body ← elemsOf "replayq" (a.getD 0 .none)
+      let (id, d) := d.freshMark
+      pure (.mark id :: body ++ [.move id (.replay body)], d)),
     ("breakq", .plain fun _ d => pure ([], d.raiseFlow true)),
     ("contq", .plain fun _ d => pure ([], d.raiseFlow false)),
     ("afn", .plain fun a d =>

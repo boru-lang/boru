@@ -338,8 +338,11 @@ def handleFlow (e : Engine) (limit : Nat) : Option Engine :=
   | some isBreak =>
     let markOf (to : Nat) (upto : Nat) : Option Nat :=
       (List.range upto).find? fun j => match e.tape[j]? with | some (.mark id) => id == to | _ => false
+    -- an `if`'s move and a replay's are no loops: the signal passes them
     let taker := (List.range (min limit e.tape.length)).find? fun i =>
-      i ≥ e.ptr && (match e.tape[i]? with | some (.move to _) => (markOf to i).isSome | _ => false)
+      i ≥ e.ptr && (match e.tape[i]? with
+        | some (.move to (.counted ..)) | some (.move to (.cond ..)) => (markOf to i).isSome
+        | _ => false)
     match taker with
     | none => none
     | some moveIdx =>
@@ -351,6 +354,7 @@ def handleFlow (e : Engine) (limit : Nat) : Option Engine :=
           let (defs, results) := match loop with
             | .counted index _ _ _ _ results depth => (defs.popTo index (depth - 1), results)
             | .cond _ _ results _ => (defs, results)
+            | .branch _ _ | .replay _ => (defs, [])
           some { e with tape := splice e.tape markIdx (moveIdx - markIdx + 1) results,
                         ptr := markIdx, defs := defs }
         else
@@ -867,6 +871,10 @@ def dispatchFnValue (nat : Natives) : Nat → Engine → String → List Sig →
     loop's values replace it; no value at all is an error. The body
     region's values are kept, and the condition replaces it.
 
+    Two moves are no loops. An `if`'s region is a condition: its last
+    value picks the branch that takes the region's place. A plain move
+    replays its mark's body once.
+
     A move whose mark is gone is dropped where it stands. -/
 def stepMove (nat : Natives) : Nat → Engine → Nat → Loop → Except BoruError Engine
   | 0, _, _, _ => Engine.outOfFuel
@@ -915,6 +923,14 @@ def stepMove (nat : Natives) : Nat → Engine → Nat → Loop → Except BoruEr
         | some v =>
           if coerceBoolean v then pure (replay e.defs body (.cond test body results true))
           else pure (finish e.defs results)
+      -- the `if` continuation: the chosen branch takes the region's place
+      -- — the condition's values with it — and is stepped from there
+      | .branch thenBranch elseBranch =>
+        match between.getLast? with
+        | none => Engine.err "runtime_error" "if: condition produced no value"
+        | some v => pure (finish e.defs (if coerceBoolean v then thenBranch else elseBranch))
+      -- the plain move: the mark's body, once more, in the region's place
+      | .replay body => pure (finish e.defs body)
 
 /-- What a round left, as the loop keeps it: a pending container among
     the values is evaluated HERE, while the round's bindings are live —
