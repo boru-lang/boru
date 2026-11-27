@@ -60,7 +60,7 @@ def canon : Value → String
   | .none => "none"
   | .closeParen => ")"
   | .openParen => "("
-  | .frameOpen => "("
+  | .frameOpen _ => "("
   | .dispatchMod val => if val then "/v" else "/q"
   | .endMark => "end"
   | .typeLit t => leafOf t
@@ -83,7 +83,7 @@ def canon : Value → String
   | .fn _ sigs _ => "fn [" ++ " ".intercalate (canonSigs sigs) ++ "]"
   | .forward info _ => "__FW(" ++ info.funcName ++ ")"
   | .defCleanup _ => "__DC"
-  | .returnCheck _ => "__RC"
+  | .returnCheck _ _ => "__RC"
   | .mark _ => "__MK"
   | .move _ _ => "__MV"
   -- a quoted LIST reads back through `quote`; on anything else the
@@ -141,7 +141,9 @@ def canonSigs : List Sig → List String
 
 def canonParams : List Param → List String
   | [] => []
-  | .mk name type _ _ _ :: ps => (name ++ ":" ++ leafOf type) :: canonParams ps
+  -- an unnamed parameter has no name before the colon: `:Integer`
+  | .mk name type _ _ _ :: ps =>
+    (name ++ ":" ++ leafOf type) :: canonParams ps
 
 def canonImpl : Impl → List String
   | .native _ => []

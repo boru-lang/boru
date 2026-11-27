@@ -96,6 +96,20 @@ drops the round — and it passes through a group, a container literal, a
 call frame and a driven loop to reach it. With no loop to take it, it is
 `ERROR:flow_error`.
 
+### A call's arguments
+
+Two words reach what a call keeps of its arguments beside the bindings.
+`argsq` answers the ARGS LIST — every argument of the call a body is
+running in, named or not, in signature order — and is
+`ERROR:fixture_no_args` where there is no call (basic's `args` word
+answers `[]` there; the fixture keeps the two apart). `__pa` is the pop
+of that list, and of the frame's baseline with it, AS A WORD. No frame
+runs it: the kernel's frame close has done the pop itself since
+2026-10-08, and the word outlived its use (basic still registers it). It
+is in the vocabulary for the dispatch rows that want a word of no
+results — and, being a word, a row can call it in a body, where the
+frame's close then pops a second time (NUR405).
+
 ### The unifier's two words
 
 Unification has no client in a bare core registry (`is`, `case` and typed
@@ -136,7 +150,7 @@ built. They nest, and they work in `run` and `list` alike.
 | `d( … )` | a DISJUNCT of the listed items (`d( )` is the empty one) |
 | `[: T … ]` | a typed list: the child constraint, then any retained elements |
 | `{: T k: v … }` | a typed map: the child constraint, then any retained entries |
-| `fn( NAME PTYPE … RTYPE [ body ] )` | a function value: its parameters in signature order — a name and a type each — then one return, and a boru body. All of them may be collected forward. The types are the seven the notation spells as literals, and `Number` and `Scalar`, so a row can declare a chain of types each above the next |
+| `fn( NAME PTYPE … RTYPE [ body ] )` | a function value: its parameters in signature order — a name and a type each — then one return, and a boru body. All of them may be collected forward. The types are the seven the notation spells as literals, and `Number` and `Scalar`, so a row can declare a chain of types each above the next. The name `_` is an UNNAMED parameter: its argument is not bound, and enters the frame as a value |
 
 The bare bracket is always the PARSER's form and the `q` variant the
 runtime's, because that distinction is load-bearing: the step loop
@@ -176,7 +190,7 @@ than silently re-baselined. Each runner also **fails a row whose `go` and
 belongs in, or this stops being an honest debt list. Shrink-only, exactly as
 `parser/spec/divergent.tsv` is.
 
-It holds **282 rows**. 259 are a mechanism `core/ts` does not have at
+It holds **348 rows**. 323 are a mechanism `core/ts` does not have at
 all: closures (26 rows, the `afn` fixture); driven loops (35 rows, the
 `eachq` fixture — eight of them the same loop out of a group and inside one
 a waiting word evaluates, where the kernel once stepped the loop's inert
@@ -186,8 +200,14 @@ loop, and five the index at the edge of the Integer range, two of those
 NUR402, all pinned as the kernel has it); break and continue (48 rows, the
 `breakq` and `contq` fixtures); the `if` continuation and the plain mark
 and move (47 rows, the `ifq` and `replayq` fixtures — three of them NUR400
-again); and the arity widening of a value call
-(4 rows, two of them NUR401, pinned as the kernel has it). One is a
+again); the arity widening of a value call
+(4 rows, two of them NUR401, pinned as the kernel has it); and an unnamed
+parameter's argument as the frame's own stack data (53 rows — `core/ts`
+binds it under the empty name — three of them NUR404, pinned as the kernel
+has it), with 11 more that read the args list or call `__pa` from inside a
+loop, a region, a branch or a closure. Two are a difference in a mechanism
+both have: `core/ts` puts a list argument's quoted BINDING in the args
+list, where the kernel puts the argument. One is a
 recorded kernel defect pinned as the kernel has
 it — NUR392, an unmatched `(` in a function's body — where `core/ts`
 refuses what Go lets through. The other 22 are what a Go-against-TS search

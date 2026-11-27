@@ -18,3 +18,4 @@ import Boru.Core.Theorems.Overload
 import Boru.Core.Theorems.Counted
 import Boru.Core.Theorems.Flow
 import Boru.Core.Theorems.Branch
+import Boru.Core.Theorems.Frame

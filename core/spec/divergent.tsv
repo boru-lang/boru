@@ -516,3 +516,84 @@ run callq 5 [q forq 2 [q i breakq ] ]	5	ERROR:undefined_word	a loop inside the r
 run def f fn( n Any Any [ callq n [q negq ] ] ) ; f 5	-5	ERROR:undefined_word	in a function's body
 run callq 5 [q ifq [q dupq/s ] [q 'y' ] [q 'n' ] ]	'y'	ERROR:undefined_word	an if in the region, whose condition reads the input
 run callq 5 [: Integer ]	5 [:Integer]	ERROR:undefined_word	a body that is not a plain list is the one token it is
+
+# --- UNNAMED parameters: the argument is the frame's own stack data ---------------
+# core/ts binds an unnamed parameter's argument under the empty name and
+# leaves the frame empty, so a body that reads the argument from the stack
+# finds nothing, and one that leaves it as the return has returned nothing.
+# Three of the rows are NUR404, pinned as the kernel has it: the values let
+# pass beneath the returns are counted, not identified.
+run def f fn( _ Any Any [ ] ) ; f 5	5	ERROR:type_error	an empty body: the argument is the frame's one value, and so the return
+run def f fn( _ Any Any [ negq/s ] ) ; f 5	-5	ERROR:signature_error	the body reads the argument from the stack
+run def f fn( _ Any Any [ dupq/s addq/s ] ) ; f 5	10	ERROR:signature_error	and what it leaves there
+run def f fn( _ Any _ Any Any [ sumq ] ) ; f 5 6	11	ERROR:signature_error	two arguments, read by a stack word
+run def f fn( _ Any _ Any Any [ ] ) ; f 5 6	6	ERROR:type_error	SIGNATURE ORDER: the last parameter's argument is on top, and is the return
+run def f fn( _ Any _ Any Any [ negq/s ] ) ; f 5 6	-6	ERROR:signature_error	so a stack word reads the last one
+run def f fn( _ Any _ Any _ Any Any [ ] ) ; f 5 6 7	7	ERROR:type_error	three
+run def f fn( _ Any _ Any Any [ ] ) ; 6 f 5	6	ERROR:type_error	one forward and one from the stack: the forward one is first, so the stack's is on top
+run def f fn( _ Any _ Any Any [ ] ) ; 5 6 f	5	ERROR:type_error	both from the stack: the top of the stack is the FIRST argument, so the deeper one is on top
+run def f fn( _ Any _ Any Any [ ] ) ; 5 6 f/s	5	ERROR:type_error	the same, stack only
+run def f fn( _ Any Any [ ] ) ; f/u 5	5	ERROR:type_error	one argument has no order to reverse
+run def f fn( _ Any _ Any Any [ ] ) ; f/u 5 6	5	ERROR:type_error	reversed: the first written is the last parameter's
+run def f fn( a Any _ Any Any [ ] ) ; f 5 6	6	ERROR:type_error	a named parameter beside it: only the unnamed argument is in the frame
+run def f fn( _ Any b Any Any [ ] ) ; f 5 6	5	ERROR:type_error	in either position
+run def f fn( _ Any b Any Any [ addq b ] ) ; f 5 6	11	ERROR:signature_error	the body uses both — one by name, one from the stack
+run def f fn( _ Integer Integer [ ] ) ; f 5	5	ERROR:type_error	the argument is checked as the return
+run def f fn( _ Any Any [ depthq ] ) ; 9 f 5	9 1	9 0	the frame's stack is its own: the argument, and nothing of the caller's
+run def f fn( _ Any _ Any Any [ depthq ] ) ; 8 9 f 5 6	8 9 2	8 9 0	two arguments deep
+run def f fn( _ Any Any [ ] ) ; ( f 5 )	5	ERROR:type_error	in a group
+run def f fn( _ Any Any [ ] ) ; [ f 5 ]	[5]	ERROR:type_error	in a list literal
+run def f fn( _ Any Any [ ] ) ; 5 f	5	ERROR:type_error	from the stack
+run def f fn( _ Any Any [ ] ) ; 5 f/s	5	ERROR:type_error	stack only
+run def f fn( _ Any Any [ ] ) ; f ( addq 1 2 )	3	ERROR:type_error	a group as the argument is evaluated first
+run def f fn( _ Any Any [ ] ) ; f [ addq 1 2 ]	[3]	ERROR:type_error	an eval list is evaluated; it enters as the list it became
+run def f fn( _ Any Any [ ] ) ; f [q addq 1 2 ]	[addq 1 2]	ERROR:type_error	a quoted list is INERT in the frame: the argument span is not stepped
+run def f fn( _ Any Any [ ] ) ; f fn( n Integer Integer [ addq n 1 ] )	fn [[n:Integer][Integer][addq n 1]]	ERROR:type_error	a function as the argument is inert too — a value, not a call
+run def f fn( _ Any Any [ ] ) ; f negq/v 5	fn [[a:Integer][Integer][]] 5	ERROR:type_error	and a word's function value
+run def f fn( _ Any Any [ ] ) ; f p( addq 1 2 )	3	ERROR:type_error	a paren expression is evaluated on the way in
+run def f fn( _ Any Any [ ] ) ; f d( 1 2 )	1 tor 2	ERROR:type_error	a disjunct
+run def f fn( _ Any Any [ ] ) ; f Integer	Integer	ERROR:type_error	a type
+run def f fn( _ Any Any [ negq/s 7 ] ) ; f 5	7	ERROR:signature_error	NUR404: the body consumed the argument, and the value it computed is dropped as if it were one
+run def f fn( _ Any Any [ dupq/s ] ) ; f 5	5	ERROR:signature_error	NUR404 again: two copies, one dropped
+run def f fn( _ Any _ Any Any [ pairq/s ] ) ; f 5 6	6	ERROR:signature_error	NUR404 beneath two arguments: `6 6` above `5`, and two values are let pass
+run def f fn( _ Any Any [ dupq/s pairq/s ] ) ; f 5	ERROR:type_error	ERROR:signature_error	three values above nothing: one more than the allowance
+run def g fn( _ Any Any [ negq/s ] ) ; def f fn( _ Any Any [ g/s ] ) ; f 5	-5	ERROR:signature_error	a call inside takes the argument from the frame's stack
+run def g fn( _ Any Any [ negq/s ] ) ; def f fn( _ Any Any [ g ] ) ; f 5	-5	ERROR:signature_error	with nothing ahead of it, a bare word does too
+run def g fn( _ Any Any [ negq/s ] ) ; def f fn( _ Any Any [ g 9 ] ) ; f 5	-9	ERROR:signature_error	a forward argument is the inner call's; the outer's is dropped beneath
+run def g fn( _ Any Any [ ] ) ; def f fn( n Any Any [ g n ] ) ; f 5	5	ERROR:type_error	a named frame around an unnamed one
+run def f fn( _ Integer Any [ ] ) ; def f fn( a String Any [ 2 ] ) ; f 5 f 'x'	5 2	ERROR:type_error	two definitions, one of them unnamed
+run def f fn( _ Integer Any [ ] ) ; def f fn( _ Integer _ Integer Any [ sumq ] ) ; f 5 f 5 6	5 11	ERROR:type_error	by arity
+run def f fn( _ Integer Any [ ] ) ; def f fn( _ Integer _ Integer Any [ sumq ] ) ; 6 f/2 5	11	ERROR:signature_error	a forced arity
+run def f fn( _ Any Any [ ( ) ] ) ; f 5	5	ERROR:type_error	an empty group in the body leaves the argument
+run def f fn( _ Any Any [ __pa ] ) ; f 5	5	ERROR:type_error	popping the args list leaves the argument, which is the return
+run def f fn( _ Any Any [ forq 1 [q negq/s ] ] ) ; f 5	-5	ERROR:undefined_word	a counted round reads the argument: the round is on the frame's own stack
+run def f fn( _ Any Any [ forq 2 [q i ] ] ) ; f 5	ERROR:type_error	ERROR:undefined_word	two rounds' values above it is one too many
+run def f fn( _ Any Any [ eachq [q 1 2 ] [q negq ] ] ) ; f 5	[-1 -2]	ERROR:undefined_word	a driven loop's list is the return
+run def f fn( _ Any Any [ ifq [q true ] [q negq/s ] [q 0 ] ] ) ; f 5	ERROR:signature_error	ERROR:undefined_word	a branch is a group, and a group's edge hides the argument
+run def f fn( _ Any Any [ breakq ] ) ; forq 2 [q f i ] 9	9	ERROR:undefined_word	a break out of the frame takes its argument with it
+run def f fn( _ Any Any [ contq ] ) ; forq 2 [q i f i ] 9	9	ERROR:undefined_word	continue, the same
+run def f fn( _ Any Any [ breakq ] ) ; f 5	ERROR:flow_error	ERROR:undefined_word	with no loop, it is an error
+run def f fn( _ Any Any [ afn m [q addq m 1 ] ] ) ; f 5	6	ERROR:undefined_word	a function BUILT in the body stands above the argument, and takes it
+run def f fn( _ Any Any [ ] ) ; callq 5 [q f/s ]	5	ERROR:undefined_word	in a call region, over the region's input
+run def f fn( _ Any Any [ ] ) ; eachq [q 1 2 ] [q f/s ]	[1 2]	ERROR:undefined_word	in a driven loop, over each element
+
+# --- the args list: what core/ts holds differently, and where it has no frame ------
+# The first two are a difference in an engine that HAS the mechanism: core/ts
+# puts the quoted binding in the list where the kernel puts the argument. The
+# rest read the list from inside a loop, a region, a branch or a closure,
+# which core/ts does not have.
+run def f fn( n Any Any [ argsq ] ) ; f [ addq 1 2 ]	[[3]]	[(quote [3])]	a list argument is in the frame as the LIST: the quote is the named binding's, not the argument's
+run def f fn( n Any Any [ argsq ] ) ; f [q 1 2 ]	[[1 2]]	[(quote [1 2])]	a quoted list, the same
+run def f fn( n Any Any [ forq 1 [q argsq ] ] ) ; f 5	[5]	ERROR:undefined_word	a counted round is in the function's frame
+run def f fn( n Any Any [ whileq [q false ] [q 1 ] argsq ] ) ; f 5	[5]	ERROR:undefined_word	after a conditional loop
+run def f fn( n Any Any [ eachq [q 1 ] [q argsq ] ] ) ; f 5	[1 [5]]	ERROR:undefined_word	a driven region is too: a region is not a call
+run def f fn( n Any Any [ callq 1 [q argsq ] ] ) ; f 5	ERROR:type_error	ERROR:undefined_word	a call region
+run def f fn( n Any Any [ ifq [q true ] [q argsq ] [q 0 ] ] ) ; f 5	[5]	ERROR:undefined_word	a branch
+run def f fn( n Any Any [ replayq [q argsq ] ] ) ; f 5	[5]	ERROR:undefined_word	a replay
+run def f fn( n Any Any [ afn m [q argsq ] ] ) ; bothq 0 ( f 5 ) 7	[7]	ERROR:undefined_word	a function BUILT in the frame reads its own call's arguments, not its maker's
+run def f fn( n Any Any [ argsq breakq ] ) ; forq 2 [q f i ] argsq	ERROR:fixture_no_args	ERROR:undefined_word	a break out of the frame unwinds its arguments with it
+run def g fn( m Any Any [ breakq ] ) ; def f fn( n Any Any [ forq 2 [q g i ] argsq ] ) ; f 5	[5]	ERROR:undefined_word	and only the frames it left: the loop's own frame keeps its
+
+# --- `__pa` in a body, where the other mechanisms are needed to see it --------------
+run def f fn( x Any Any [ __pa afn n [q addq n x ] ] ) ; bothq 0 ( f 10 ) 5	ERROR:signature_error	ERROR:undefined_word	the frame's BASELINE goes with its arguments, so a function built after it captures nothing
+run def g fn( m Any Any [ __pa m ] ) ; def f fn( n Any Any [ g n ] ) ; forq 2 [q f i ]	0 1	ERROR:undefined_word	in a loop's rounds

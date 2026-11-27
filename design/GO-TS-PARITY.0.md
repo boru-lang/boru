@@ -425,6 +425,21 @@ Three things from it are worth carrying even if the tables are never read:
   rows, and 26 for call regions); the fixtures `forq`, `rangeq`,
   `whileq`, `breakq`, `contq`, `ifq`, `replayq` and `callq` are the Go
   runner's and the Lean runner's only.
+- **Unnamed parameters, and what the args list holds** (2026-11-27).
+  core/go does not bind an unnamed parameter's argument: it is the
+  frame's own stack data — the frame's first tokens, in signature order,
+  skipped by the step loop — and the return check lets that many values
+  pass beneath the declared returns. core/ts binds it under the EMPTY
+  NAME and leaves the frame empty, so a body that reads the argument from
+  the stack finds nothing (`def f fn( _ Any Any [ negq/s ] ) ; f 5` is
+  `-5` and `signature_error`) and one that leaves it as the return has
+  returned nothing (53 rows in `core/spec/divergent.tsv`, with the
+  frame's own stack depth among them). Separately, in the one mechanism
+  both have: core/ts pushes each argument's quote-wrapped BINDING onto
+  the args list (`engine.ts`, `boundArgs`), where core/go pushes the
+  argument, so a list argument read back through the list is
+  `(quote [1 2])` and `[1 2]` (two rows; `eng/ts`'s `args` fixture reads
+  the same list). The `argsq` fixture is in all three runners.
 - NUR059: canon still renders sugar tags, `/r` and `/N` word modifiers,
   and paren groups in debug spelling. Both engines agree, so it is render
   quality rather than parity — pinned by corpus rows so a one-sided fix

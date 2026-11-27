@@ -126,7 +126,7 @@ def findCloseAfter (tape : List Value) (openIdx : Nat) : Option Nat :=
   let rec go : List Value → Nat → Nat → Option Nat
     | [], _, _ => none
     | .openParen :: rest, i, depth => go rest (i + 1) (depth + 1)
-    | .frameOpen :: rest, i, depth => go rest (i + 1) (depth + 1)
+    | .frameOpen _ :: rest, i, depth => go rest (i + 1) (depth + 1)
     | .closeParen :: rest, i, depth => if depth == 0 then some i else go rest (i + 1) (depth - 1)
     | _ :: rest, i, depth => go rest (i + 1) depth
   go (tape.drop (openIdx + 1)) (openIdx + 1) 0
@@ -138,7 +138,7 @@ def frameOpenBefore (tape : List Value) : Nat → Option Nat
   | 0 => none
   | i + 1 =>
     match tape[i]? with
-    | some .frameOpen => some i
+    | some (.frameOpen _) => some i
     | _ => frameOpenBefore tape i
 
 /-- The nearest open paren before `i`. -/
@@ -146,7 +146,7 @@ def openBefore (tape : List Value) : Nat → Option Nat
   | 0 => none
   | i + 1 =>
     match tape[i]? with
-    | some .openParen | some .frameOpen => some i
+    | some .openParen | some (.frameOpen _) => some i
     | _ => openBefore tape i
 
 /-- Is a parked forward's NEXT slot a name-capturing (`/q`) one. -/
@@ -170,7 +170,7 @@ def pendingCollecting (tape : List Value) (defs : Defs) (ptr : Nat) : Bool :=
 
 /-- A token no forward scan walks past. -/
 def scanBoundary : Value → Bool
-  | .forward _ _ | .defCleanup _ | .returnCheck _ | .endMark | .closeParen
+  | .forward _ _ | .defCleanup _ | .returnCheck _ _ | .endMark | .closeParen
   | .mark _ | .move _ _ => true
   | _ => false
 
@@ -269,7 +269,7 @@ def wouldWiden (tape : List Value) (defs : Defs) (sigs : List Sig) (completed id
   if wider.isEmpty then false
   else match tape[idx]? with
     | none | some .endMark | some .closeParen | some (.forward _ _) | some (.dispatchMod _) => false
-    | some .openParen | some .frameOpen | some (.parenExpr _) => true
+    | some .openParen | some (.frameOpen _) | some (.parenExpr _) => true
     | some (.word w) =>
       if w.forceVal then claims (.fn "" [] 0)
       else match defs.top? w.name with
@@ -306,7 +306,7 @@ def resolveInert : Value → Value
 /-- A frame's cleanup: unbind its names, newest first, and drop the
     baseline it was entered with. -/
 def popNames (defs : Defs) (names : List String) : Defs :=
-  (names.reverse.foldl Defs.pop defs).popBaseline
+  (names.reverse.foldl Defs.pop defs).popArgs.popBaseline
 
 /-- Close the call frames a discarded stretch of tape leaves open: each
     frame's cleanup marker still ahead in it unbinds what the frame bound,
@@ -463,10 +463,13 @@ def stepToken (nat : Natives) : Nat → Engine → Except BoruError Engine
     | none => pure e
     | some (.word w) => stepWord nat fuel e w
     | some (.forward _ _) => pure { e with ptr := e.ptr + 1 }
-    | some .openParen | some .frameOpen => pure { e with ptr := e.ptr + 1 }
+    -- an open paren is stepped PAST, and past the inert arguments a call
+    -- frame's carries (core/go `stepPastOpenParen`)
+    | some .openParen => pure { e with ptr := e.ptr + 1 }
+    | some (.frameOpen span) => pure { e with ptr := e.ptr + 1 + span }
     | some .closeParen => stepCloseParen nat fuel e
     | some .endMark => stepEnd nat fuel e
-    | some (.returnCheck _) => pure { e with ptr := e.ptr + 1 }
+    | some (.returnCheck _ _) => pure { e with ptr := e.ptr + 1 }
     | some (.mark _) => pure { e with ptr := e.ptr + 1 }
     | some (.move to loop) => stepMove nat fuel e to loop
     | some (.defCleanup names) => do
@@ -635,7 +638,7 @@ def collectWalk (nat : Natives) :
       | some tok =>
         if scanBoundary tok then pure e
         else match tok with
-          | .openParen | .frameOpen =>
+          | .openParen | .frameOpen _ =>
             if !consumes then pure e
             else do
               let e ← evalParenGroupAt nat fuel e scanIdx
@@ -690,7 +693,8 @@ def groupLoop (nat : Natives) : Nat → Engine → Nat → Nat → Except BoruEr
     if depth == 0 then pure e
     else match e.tok? e.ptr with
       | none => pure e
-      | some .openParen | some .frameOpen => groupLoop nat fuel { e with ptr := e.ptr + 1 } scanIdx (depth + 1)
+      | some .openParen => groupLoop nat fuel { e with ptr := e.ptr + 1 } scanIdx (depth + 1)
+      | some (.frameOpen span) => groupLoop nat fuel { e with ptr := e.ptr + 1 + span } scanIdx (depth + 1)
       | some .closeParen =>
         if e.sealed && e.ptr + 1 == e.tape.length then pure e
         else do
@@ -1046,7 +1050,8 @@ def regionSteps (nat : Natives) : Nat → Engine → Except BoruError Engine
   | fuel + 1, e =>
     if e.ptr + 1 ≥ e.tape.length then pure e
     else match e.tok? e.ptr with
-      | some .openParen | some .frameOpen => regionSteps nat fuel { e with ptr := e.ptr + 1 }
+      | some .openParen => regionSteps nat fuel { e with ptr := e.ptr + 1 }
+      | some (.frameOpen span) => regionSteps nat fuel { e with ptr := e.ptr + 1 + span }
       | _ => do
         let e ← stepToken nat fuel e
         if e.defs.flowing then pure e else regionSteps nat fuel e
@@ -1081,7 +1086,8 @@ def stepsToClose (nat : Natives) : Nat → Engine → Nat → Except BoruError E
     | some closeIdx =>
       if e.ptr ≥ closeIdx then pure e
       else match e.tok? e.ptr with
-        | some .openParen | some .frameOpen => stepsToClose nat fuel { e with ptr := e.ptr + 1 } openIdx
+        | some .openParen => stepsToClose nat fuel { e with ptr := e.ptr + 1 } openIdx
+        | some (.frameOpen span) => stepsToClose nat fuel { e with ptr := e.ptr + 1 + span } openIdx
         | _ => do
           let e ← stepToken nat fuel e
           if e.defs.flowing then pure e else stepsToClose nat fuel e openIdx
@@ -1103,18 +1109,24 @@ def closeFrame (nat : Natives) : Nat → Engine → Nat → Nat → Except BoruE
       | _ => pure e
     | none =>
       let checkAt := (List.range closeIdx).find? fun i =>
-        i > openIdx && (match e.tape[i]? with | some (.returnCheck _) => true | _ => false)
+        i > openIdx && (match e.tape[i]? with | some (.returnCheck _ _) => true | _ => false)
       match checkAt with
       | some i =>
         match e.tok? i with
-        | some (.returnCheck returns) =>
+        | some (.returnCheck returns unnamed) =>
           let tape := removeAt e.tape i
           let results := (tape.drop (openIdx + 1)).take (closeIdx - 1 - (openIdx + 1))
-          if results.length != returns.length then
+          -- THE DECLARED RETURNS ARE THE TOP of what the frame left. Beneath
+          -- them, up to as many values as the frame had unnamed arguments
+          -- are let pass and DISCARDED, from the bottom — whatever they are
+          -- (NUR404, as the kernel has it: a value the body computed goes
+          -- the same way as an argument it left untouched)
+          let extra := results.length - returns.length
+          if results.length < returns.length || extra > unnamed then
             Engine.err "type_error" "return count"
-          else if !((results.zip returns).all fun (v, t) => v.is t) then
+          else if !(((results.drop extra).zip returns).all fun (v, t) => v.is t) then
             Engine.err "type_error" "return type"
-          else pure { e with tape := tape }
+          else pure { e with tape := splice tape (openIdx + 1) extra [] }
         | _ => pure e
       | none => pure e
 
@@ -1196,19 +1208,26 @@ def execMatch (nat : Natives) :
         | .boru body captured =>
           -- a call frame: bind the named parameters, splice the body in
           -- a paren group closed by the cleanup marker and return check
-          let names := s.params.map Param.name
+          -- a NAMED parameter binds its argument; an UNNAMED one's argument
+          -- is spliced at the head of the frame, in signature order, as
+          -- stack data the step loop skips
+          let pairs := s.params.zip args
+          let named := pairs.filter fun (p, _) => !p.name.isEmpty
+          let unnamed := (pairs.filter fun (p, _) => p.name.isEmpty).map (·.2)
+          let names := named.map fun (p, _) => p.name
           -- the baseline is recorded BEFORE the frame binds anything, so
-          -- what it binds is what a function built in its body captures
-          let defs := e.defs.pushBaseline (bodyNeedsFrameState body)
+          -- what it binds is what a function built in its body captures;
+          -- and the call's arguments, all of them, go on the args stack
+          let defs := (e.defs.pushBaseline (bodyNeedsFrameState body)).pushArgs args
           -- a closure's captures go in first: a parameter of the same
           -- name shadows one
           let defs := captured.foldl (fun d (nm, v) => d.push nm v) defs
           -- a list argument is bound QUOTED: the body reads it as data
           let bind (a : Value) : Value := if a.isListShape && !a.isQuoted then .quoted a else a
-          let defs := (names.zip args).foldl (fun d (nm, a) => d.push nm (bind a)) defs
+          let defs := named.foldl (fun d (p, a) => d.push p.name (bind a)) defs
           let tail := Value.defCleanup (captured.map (·.1) ++ names)
-            :: (if s.returns.isEmpty then [] else [.returnCheck s.returns])
-          pure (.frameOpen :: body ++ tail ++ [.closeParen], defs)
+            :: (if s.returns.isEmpty then [] else [.returnCheck s.returns unnamed.length])
+          pure (.frameOpen unnamed.length :: unnamed ++ body ++ tail ++ [.closeParen], defs)
       let e := { e with defs := defs }
       -- a driven loop a signal passed THROUGH is abandoned where its word
       -- stands: the loop that takes the signal discards the stretch
@@ -1385,7 +1404,8 @@ def orphanSteps (nat : Natives) : Nat → Engine → Except BoruError Engine
   | fuel + 1, e =>
     if e.ptr ≥ e.tape.length then pure e
     else match e.tok? e.ptr with
-      | some .openParen | some .frameOpen => orphanSteps nat fuel { e with ptr := e.ptr + 1 }
+      | some .openParen => orphanSteps nat fuel { e with ptr := e.ptr + 1 }
+      | some (.frameOpen span) => orphanSteps nat fuel { e with ptr := e.ptr + 1 + span }
       | _ => do
         let e ← stepToken nat fuel e
         if e.defs.flowing then pure e else orphanSteps nat fuel e

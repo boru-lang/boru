@@ -131,7 +131,10 @@ function item(toks: string[], st: { i: number }): Value {
     };
     const params: { name: string; type: BoruType }[] = [];
     for (let i = 0; i + 1 < spec.length; i += 2) {
-      params.push({ name: spec[i]!, type: fnType(spec[i + 1]!) });
+      // `_` is the UNNAMED parameter: the empty name, whose argument is
+      // the frame's own stack data rather than a binding.
+      const pname = "_" === spec[i] ? "" : spec[i]!;
+      params.push({ name: pname, type: fnType(spec[i + 1]!) });
     }
     const rtype = fnType(spec[spec.length - 1]!);
     const body = item(toks, st);
@@ -326,12 +329,12 @@ function fixtureRegistry(): Registry {
     ],
   });
   // __pa pops the per-call args frame, and undef removes a def binding.
-  // NEITHER is a core word — basic/go registers both — but every boru fn
-  // body's frame tail emits them (AppendFrameTail), so a bare core
-  // registry cannot run a boru-bodied fn without them. That is why the
-  // engine's fn-dispatch surface was unreachable from this corpus. They
-  // are FIXTURES rather than a port: the mechanisms are core's own (the
-  // args stack, the def table); only the words are basic's.
+  // NEITHER is a core word — basic/go registers both. Go's frame tail
+  // emitted them until 2026-10-08 (its DefCleanup marker does the work
+  // now) and no frame here ever ran them: they are in the vocabulary
+  // because the corpus rows call them. FIXTURES rather than a port: the
+  // mechanisms are core's own (the args stack, the def table); only the
+  // words are basic's.
   r.registerNativeFunc({
     name: "__pa",
     signatures: [
@@ -347,6 +350,33 @@ function fixtureRegistry(): Registry {
         ): Value[] => {
           reg.popArgs();
           return [];
+        },
+      },
+    ],
+  });
+  // argsq reads the per-call args frame: the list a function's body sees
+  // as its own arguments — every one of them, named or not, in signature
+  // order. Outside a function there is none, and the fixture says so
+  // rather than answer an empty list (basic's `args` word answers `[]`;
+  // the fixture keeps the two cases apart).
+  r.registerNativeFunc({
+    name: "argsq",
+    signatures: [
+      {
+        args: [],
+        returns: [TList],
+        barrierPos: 0,
+        handler: (
+          _a: Value[],
+          _c: unknown,
+          _s: Value[],
+          reg: Registry,
+        ): Value[] => {
+          const top = reg.topArgs();
+          if (undefined === top) {
+            throw new BoruError("fixture_no_args", "argsq: not inside a function");
+          }
+          return [newList([...top])];
         },
       },
     ],

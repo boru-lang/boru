@@ -320,7 +320,13 @@ func coreSpecItem(t *testing.T, r *Registry, toks []string, pos int) (Value, int
 			if !ok {
 				t.Fatalf("fn( %s: %q is not a corpus-known type name", spec[i], spec[i+1])
 			}
-			params = append(params, FnParam{Name: spec[i], Type: pt})
+			// `_` declares an UNNAMED parameter: its argument is not bound,
+			// it is spliced at the head of the call frame as stack data
+			name := spec[i]
+			if name == "_" {
+				name = ""
+			}
+			params = append(params, FnParam{Name: name, Type: pt})
 		}
 		rtype, ok := coreSpecFnType(spec[len(spec)-1])
 		if !ok {
@@ -750,6 +756,26 @@ func coreSpecRegistry(t *testing.T) *Registry {
 			return append(toks, NewMove(id, "replayq")), nil
 		}),
 		BarrierPos: 1,
+	})
+	// argsq is the door onto the ARGS STACK (Registry.Args): every call of a
+	// boru-bodied function pushes the list of its arguments, in signature
+	// order, and its frame's cleanup pops it. argsq answers the list of the
+	// call it runs in. The word that reads it is basic's (`args`); the stack,
+	// its push and its pop are the kernel's. (`__pa`, above, is the pop as a
+	// word.)
+	r.Register("argsq", Signature{
+		Returns: []*Type{TList},
+		Impl: Go(func(_ []Value, _ map[string]Value, _ []Value, reg *Registry) ([]Value, error) {
+			top, ok, err := reg.Args.Top()
+			if err != nil {
+				return nil, err
+			}
+			if !ok {
+				return nil, &BoruError{Code: "fixture_no_args", Detail: "argsq: not inside a function"}
+			}
+			return []Value{top}, nil
+		}),
+		BarrierPos: 0,
 	})
 	// breakq and contq raise the two FLOW SIGNALS (Registry.FlowCtrl): not
 	// errors, a redirection the run resolves after the step — the nearest

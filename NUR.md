@@ -123,6 +123,8 @@ list only by becoming **Resolved** (the record is then deleted) or
 | [NUR401](#nur401) | A function value with a narrower and a wider definition drops the argument it collected when the next value fits one slot of the wider definition but the wider definition does not fill: `m.g 5 6` is `5 106` where the word `f 5 6` is `105 6` | the Lean specification's differential fuzzer over `/u` on overloaded words, against core/go (2026-11-27) |
 | [NUR402](#nur402) | A counted loop's index wraps past the Integer range and the loop runs on: `for [9223372036854775806 9223372036854775807 2] [i]` runs to the step limit, where `9223372036854775807 add 1` is `integer_overflow` | review of the Lean specification of the counted loop, checked against core/go (2026-11-27) |
 | [NUR403](#nur403) | An empty list built over a nil slice is not a list to the kernel's readers: `NewList(nil)` and `NewList([]Value{})` render alike and compare equal, but as a loop's body the first is ONE token (itself) and the second none | the Lean specification's differential fuzzer over call regions, against core/go (2026-11-27) |
+| [NUR404](#nur404) | A function with an unnamed parameter drops a value its body COMPUTED: `def f fn [[Integer][String][drop "a" "b"]]` answers `b` for `f 5`, with no error, where the same surplus in a function of named parameters is a `type_error` | the Lean specification's model of the frame's argument span, against core/go (2026-11-27) |
+| [NUR405](#nur405) | The frame-pop word `__pa` is still registered though no frame has emitted it since 2026-10-08, and a program can call it: in a function's body it pops the frame's arguments and capture baseline, and the frame's own close then pops the ENCLOSING call's — `args` there answers "not inside a function", inside a function | the Lean specification's model of the args list, against core/go and the shipped words (2026-11-27) |
 
 Pending records normally use a compact form (rule / divergence /
 evidence / documentation status, plus a proposed verdict where one is
@@ -1723,5 +1725,99 @@ be nil.
 **Proposed verdict:** resolve by fix — `NewList` (and `NewEvalList`) store
 an empty slice for a nil one, so `IsNil` means only what its callers need
 it to mean, "this is not a plain list's payload".
+
+---
+
+## NUR404 — an unnamed parameter's allowance drops a value the body computed {#nur404}
+
+**Status:** Pending · **Recorded:** 2026-11-27 · measured through the shipped words · silent
+
+**Rule:** a function returns what it declares: a body that leaves more
+values than the declared returns is a `type_error` ("expected 1 return
+value(s), got 2"). design/LANGREF.10.md's one sentence on the subject —
+"Unnamed parameters list the expected types positionally", with a body
+that "reads the stack" (REFERENCE.md) — says nothing of an exception.
+
+**Divergence:** an unnamed parameter's argument enters the frame as a
+value, and the body may leave it unread; the return check therefore lets
+up to as many EXTRA values pass as the signature has unnamed parameters,
+and removes them from the bottom of the frame (`core/go/engine.go`, the
+return check in the frame's close: `extra > rc.UnnamedCount`). The
+allowance is a COUNT. Nothing ties the values it removes to the
+arguments, so when the body has consumed an argument, a value the body
+computed is removed in its place:
+
+```
+def f fn [[Integer][String]["a" "b"]] ; f 5        → type_error: expected 1 return value(s), got 2 — ['a' 'b']
+def f fn [[Integer][String][drop "a" "b"]] ; f 5   → b      ('a' is dropped, silently)
+def f fn [[Integer Integer][Integer][100 200 300]] ; f 5 6            → type_error
+def f fn [[Integer Integer][Integer][drop drop 100 200 300]] ; f 5 6  → 300  (100 and 200 dropped)
+def f fn [[n:Integer][String][n drop "a" "b"]] ; f 5                  → type_error (named: no allowance)
+```
+
+The error text shows the model the code has in mind — it reports the
+count and the values ABOVE the first `UnnamedCount`, "the unnamed-arg
+allowance is spent from the BOTTOM" — and the model holds only while the
+arguments are still where they entered. `core/spec/divergent.tsv` pins
+three rows of it at the kernel's level (`fn( _ Any Any [ negq/s 7 ] )`
+over `5` answers `7`; the `-5` the body computed is gone).
+
+The Lean specification reproduces it (`closeFrame`, the return check's
+`unnamed` count), as the kernel has it.
+
+**Proposed verdict:** resolve by fix — the allowance covers the unnamed
+arguments themselves: the values removed beneath the returns must be the
+frame's own argument cells, still unconsumed (the frame knows where its
+argument span ends; a body that has stepped below it has spent the
+allowance). A surplus the body computed is then the `type_error` it is
+everywhere else. The alternative — Allowed, with the rule written down as
+"a function of N unnamed parameters may leave up to N values unreturned" —
+keeps a silent drop in a language whose return check exists to refuse
+one.
+
+---
+
+## NUR405 — the retired frame-pop word `__pa` is callable, and unbalances the frame state {#nur405}
+
+**Status:** Pending · **Recorded:** 2026-11-27 · measured through the shipped words · the error it causes is reported far from its cause
+
+**Rule:** inside a function `args` is the call's arguments, and a function
+built in a body captures what the body's frame bound (REFERENCE.md). A
+frame's bookkeeping — the args list, the capture baseline — is the
+kernel's: `core/go/fn_frame.go` closes a frame "in one Go-side pass"
+(`stepDefCleanup` → `PopFrameArgs`).
+
+**Divergence:** until 2026-10-08 that pop was a WORD, `__pa`, that every
+frame's tail emitted. The frame's `DefCleanup` marker has done the pop
+itself since, and nothing emits the word — but `basic/go`
+(`native_definition.go`) still registers it, over the same
+`PopFrameArgs`, and a leading underscore is an ordinary word character.
+So a program can call it, and a call is one pop the frame's close does
+not know about:
+
+```
+def g fn [[m:Integer][Integer][m]] ;      def f fn [[n:Integer][List][g 9 drop args]] ; f 5   → [5]
+def g fn [[m:Integer][Integer][__pa m]] ; def f fn [[n:Integer][List][g 9 drop args]] ; f 5   → args_error: args: not inside a function
+def mk fn [[x:Integer][Any][fn [[n:Integer][Integer][n add x]]]] ;      def h (mk 10) ; h 5   → 15
+def mk fn [[x:Integer][Any][__pa fn [[n:Integer][Integer][n add x]]]] ; def h (mk 10) ; h 5   → signature_error: cannot call `add`
+```
+
+In the first pair `g`'s body pops its own arguments and `g`'s close pops
+`f`'s; in the second the baseline is gone before the inner function is
+built, so it captures nothing and `x` is unbound when it runs. Neither
+error names `__pa`. `boru describe __pa` answers "not described";
+`design/SIGNATURES.10.md` lists it as "Internal: pops args stack", and
+`design/COMPILER-LANE-REMOVAL.0.md` already notes that it "is registered
+and nothing emits it".
+
+`core/spec/dispatch.tsv` pins nine rows of it and
+`core/spec/divergent.tsv` two (the fixture word is the same
+`PopFrameArgs`), and the Lean specification reproduces them
+(`Theorems/Frame.lean`, `pa_pops_what_the_close_pops`).
+
+**Proposed verdict:** resolve by removal — unregister `__pa` in
+`basic/go` and `test/specfix`: no frame needs it. The corpus rows that
+use it as "a word of no results" (`bothq __pa …`) take another such word,
+and the rows that pin the double pop go with it.
 
 ---

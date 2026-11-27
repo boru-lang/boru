@@ -139,7 +139,8 @@ partial def item : List String → Except String (Value × List String)
     let rec params : List String → Except String (List Param)
       | name :: ty :: more@(_ :: _) =>
         match fnType? ty with
-        | some t => do pure (.mk name t none false false :: (← params more))
+        -- `_` declares an UNNAMED parameter
+        | some t => do pure (.mk (if name == "_" then "" else name) t none false false :: (← params more))
         | none => throw "fn( types must be corpus-known type names"
       | _ => pure []
     let ps ← params spec
