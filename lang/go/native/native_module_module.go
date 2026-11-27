@@ -113,10 +113,8 @@ func runModuleBodyCover(parent *Registry, elems []Value, coverID, coverSrc strin
 	modReg.Output = parent.Output
 	modReg.ErrOutput = parent.ErrOutput
 	modReg.Input = parent.Input
-	// The effect ledger rides with the writers (core effects.go), and so
-	// does the coverage hook: a module body's rows report to the parent's
-	// coverage run.
-	modReg.Effects = parent.Effects
+	// The coverage hook rides with the writers: a module body's rows report
+	// to the parent's coverage run.
 	modReg.InheritObserveHooks(parent)
 	// Coverage (coverage.go): tag the module sub-registry BEFORE its body runs,
 	// so the module-load rows (def / export lines) attribute too — not just the

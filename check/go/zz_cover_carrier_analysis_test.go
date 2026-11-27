@@ -344,48 +344,6 @@ func TestZcaReturnsPreserveListAtElemConstraint(t *testing.T) {
 
 // --- BodyFreeForFallback -----------------------------------------------------
 
-func TestZcaBodyFreeForFallback(t *testing.T) {
-	r := zcaRegistry(t)
-	r.RegisterNativeFunc(core.NativeFunc{
-		Name: "zcanoopq",
-		Signatures: []core.Signature{{
-			Returns:    []*core.Type{core.TInteger},
-			BarrierPos: -1,
-			Impl:       zcaGoImpl(func(_ []core.Value) []core.Value { return []core.Value{core.NewInteger(0)} }),
-		}},
-	})
-
-	// Registered natives and known bare literals resolve: free.
-	free := core.NewList([]core.Value{
-		core.NewWord("zcanoopq"), core.NewWord("true"), core.NewWord("Integer"),
-	})
-	if !BodyFreeForFallback(r, free) {
-		t.Error("a body of registered / literal words must be island-free")
-	}
-	// A flow-control sentinel declines: the VM cannot propagate it across
-	// the island boundary.
-	for _, w := range []string{"break", "continue", "return"} {
-		if BodyFreeForFallback(r, core.NewList([]core.Value{core.NewWord(w)})) {
-			t.Errorf("a body holding %q must decline the island", w)
-		}
-	}
-	// Context-dependent words (args / __pa) read the interpreter's
-	// per-call args stack the VM does not maintain: decline.
-	for _, w := range []string{"args", "__pa"} {
-		if BodyFreeForFallback(r, core.NewList([]core.Value{core.NewWord(w)})) {
-			t.Errorf("a body holding %q must decline the island", w)
-		}
-	}
-	// After one unresolvable word flips the verdict, later words take the
-	// short-circuit exit and cannot flip it back.
-	poisoned := core.NewList([]core.Value{
-		core.NewWord("zca-unbound-q"), core.NewWord("zcanoopq"),
-	})
-	if BodyFreeForFallback(r, poisoned) {
-		t.Error("an unresolvable word must poison the whole body")
-	}
-}
-
 // --- resolveTypeNameArgs -----------------------------------------------------
 
 func TestZcaResolveTypeNameArgs(t *testing.T) {

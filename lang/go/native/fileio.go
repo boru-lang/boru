@@ -438,7 +438,6 @@ func doWrite(r *Registry, path, content, enc, format, mode, nl string, atomic, e
 		}
 		return []Value{NewString(path)}, nil
 	}
-	r.NoteEffect()
 	// write_error for the same reason the {exclusive} branch above already
 	// gives: a coded BoruError is a deliberate compile failure the compiled runtime
 	// surfaces, where a foreign error triggers an interpreter re-run that
@@ -465,7 +464,6 @@ func writeExclusive(r *Registry, path string, data []byte) error {
 	if err != nil {
 		return err // EEXIST (or a gate compile failure): nothing was created
 	}
-	r.NoteEffect() // the file now exists — an observable effect
 	_, werr := h.Write(data)
 	cerr := h.Close()
 	if werr != nil {

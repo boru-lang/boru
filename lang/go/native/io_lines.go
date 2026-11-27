@@ -65,15 +65,6 @@ import (
 //   - A sub-engine (Vm.run / Vm.run-sandbox) gets a fresh capability
 //     registry and the default os.Stdin, so it never shares this holder.
 //     That is isolation by construction, not by arrangement.
-//   - Reads do NOT call r.NoteEffect(), and that is a deliberate C2
-//     non-change rather than an oversight. Consuming stdin is genuinely
-//     non-idempotent, so a silent interpreter re-run after a compiled-mode
-//     bail would re-read an already-drained reader and see none where the
-//     first attempt saw a line. But no read in this package notes an effect
-//     (fileio.go's read path has none), so arming it here alone would leave
-//     the same hole for `IO.read (IO.stdin)` while changing the effect
-//     ledger's meaning for one word. Fixing it belongs to a change that
-//     covers the whole read family.
 
 // stdinLines is the single buffered reader over a registry's stdin, plus the
 // identity of the reader it wraps so a swapped r.Input is detected.

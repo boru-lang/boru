@@ -142,7 +142,6 @@ func doMmapWord(args []Value, r *Registry, mmapType *Type) ([]Value, error) {
 		}
 		writable = mapBoolOpt(args[1], "writable", false)
 	}
-	r.NoteEffect()
 	region, err := EffectiveFileOps(r).Mmap(path, offset, length, writable)
 	if err != nil {
 		return nil, r.BoruError("mmap_error", fmt.Sprintf("mmap: %v", err), "mmap")
@@ -208,7 +207,6 @@ func writeMmapWord(args []Value, r *Registry) ([]Value, error) {
 			offset = int(o)
 		}
 	}
-	r.NoteEffect()
 	if err := mi.write(data, offset); err != nil {
 		return nil, r.BoruError("write_error", fmt.Sprintf("write: %v", err), "write")
 	}

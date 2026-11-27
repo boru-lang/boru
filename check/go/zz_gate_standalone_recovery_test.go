@@ -46,33 +46,6 @@ func TestGateStandaloneConcreteEvalEscapedFlow(t *testing.T) {
 	}
 }
 
-// ShareCheckStateFrom is the exported share the compiler's cross-registry
-// closure compile uses: while it holds, the owner registry runs on the
-// caller's check state; the restore puts the owner's own back. A caller not
-// in check mode shares nothing.
-func TestGateStandaloneShareCheckStateFromExport(t *testing.T) {
-	owner := newTestRegistry(t)
-	caller := newTestRegistry(t)
-	own := owner.Check
-
-	idle := ShareCheckStateFrom(owner, caller)
-	if owner.Check != own {
-		t.Error("a caller outside check mode shares nothing")
-	}
-	idle()
-
-	done := caller.Check.Begin()
-	defer done()
-	restore := ShareCheckStateFrom(owner, caller)
-	if owner.Check != caller.Check {
-		t.Fatal("the owner must run on the caller's check state")
-	}
-	restore()
-	if owner.Check != own {
-		t.Error("the restore must put the owner's own check state back")
-	}
-}
-
 func gsPickReturnsFn(s *core.Signature) bool { return s.ReturnsFn != nil && !s.Fallback }
 
 // recoverUserFn refuses a window whose written operands reach past the

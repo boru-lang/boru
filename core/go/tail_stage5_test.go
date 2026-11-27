@@ -14,31 +14,6 @@ import (
 
 // --- effects.go -----------------------------------------------------------
 
-func TestX5EffectLedgerNoteCount(t *testing.T) {
-	var nilLedger *EffectLedger
-	nilLedger.Note() // nil-safe
-	if nilLedger.Count() != 0 {
-		t.Fatal("nil ledger counts 0")
-	}
-	l := &EffectLedger{}
-	l.Note()
-	l.Note()
-	if l.Count() != 2 {
-		t.Fatalf("expected 2 effects, got %d", l.Count())
-	}
-}
-
-func TestX5RegistryNoteEffect(t *testing.T) {
-	var nilReg *Registry
-	nilReg.NoteEffect() // nil-safe
-	r := x5reg(t)
-	before := r.Effects.Count()
-	r.NoteEffect()
-	if r.Effects.Count() != before+1 {
-		t.Fatal("NoteEffect marks the registry ledger")
-	}
-}
-
 // --- tape.go --------------------------------------------------------------
 
 func x5Vals(n int) []Value {

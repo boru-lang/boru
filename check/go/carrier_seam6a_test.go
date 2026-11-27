@@ -158,19 +158,6 @@ func registerPlainWord(t *testing.T, r *core.Registry, name string, argc int, ba
 	return &r.Lookup(name).Signatures[0]
 }
 
-func TestS6aBodyFreeForFallbackLiteralAndTypeWords(t *testing.T) {
-	r := newTestRegistry(t)
-	if !BodyFreeForFallback(r, core.NewList([]core.Value{core.NewWord("true"), core.NewWord("false")})) {
-		t.Error("bare literal words are VM-resolvable")
-	}
-	if !BodyFreeForFallback(r, core.NewList([]core.Value{core.NewWord("Integer")})) {
-		t.Error("type-name words are VM-resolvable")
-	}
-	if BodyFreeForFallback(r, core.NewList([]core.Value{core.NewWord("s6a_no_such")})) {
-		t.Error("an unresolvable word must fail the body scan")
-	}
-}
-
 // --- disjunctPartitionReturns ------------------------------------------------------
 
 func strictDisjunct(alts ...core.Value) core.Value {
@@ -451,28 +438,3 @@ func TestS6aRefineRecursiveSummaryJoinsRounds(t *testing.T) {
 }
 
 // --- RunFnBodyOnce / AnalyseFnBody -----------------------------------------------------------
-
-func TestS6aIsDeferredWordListShapes(t *testing.T) {
-	// Parent=TList with a non-list payload: AsList fails.
-	bad := core.NewValueRaw(core.TList, core.IntPayload{N: 1})
-	core.SetEval(&bad, true)
-	if IsDeferredWordList(bad) {
-		t.Error("a non-list payload must decline")
-	}
-
-	// A nested list containing a word: deferred.
-	inner := core.NewList([]core.Value{core.NewWord("w")})
-	core.SetEval(&inner, true)
-	outer := core.NewList([]core.Value{inner})
-	core.SetEval(&outer, true)
-	if !IsDeferredWordList(outer) {
-		t.Error("a nested word-bearing list is deferred")
-	}
-
-	// No words anywhere: not deferred.
-	plain := core.NewList([]core.Value{core.NewInteger(1), core.NewList([]core.Value{core.NewInteger(2)})})
-	core.SetEval(&plain, true)
-	if IsDeferredWordList(plain) {
-		t.Error("a word-free list is not deferred")
-	}
-}

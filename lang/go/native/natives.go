@@ -607,9 +607,6 @@ func doFolder(p PathonInfo, parents bool, reg *Registry) ([]Value, error) {
 	ops := EffectiveFileOps(reg)
 	pathStr := p.String()
 
-	// effect ledger: directory creation mutates the filesystem — noted on
-	// the attempt, since MkdirAll can create some parents before failing.
-	reg.NoteEffect()
 	if parents {
 		if err := ops.MkdirAll(pathStr, 0755); err != nil {
 			return []Value{NewError(fmt.Errorf("folder: %w", err))}, nil

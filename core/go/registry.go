@@ -67,13 +67,6 @@ type Registry struct {
 	Output    io.Writer // output writer for print/printstr and stdout
 	ErrOutput io.Writer // error output writer for stderr
 	Input     io.Reader // input reader for stdin
-	// Effects is the observable-side-effect ledger the compiled-mode
-	// fallback fence reads (effects.go, design/RUNTIME-INDEPENDENCE-
-	// COMPLETION-PLAN.0.md C1): a silent interpreter re-run is permitted
-	// only while the count is unchanged since before the check pass.
-	// Shared by pointer into forks (ForkConcurrent's shallow copy) and
-	// module sub-registries (RunModuleBody threads it with Output).
-	Effects *EffectLedger
 	// coverHook is the arm-able boru-source line-coverage seam (coverage.go),
 	// powering boru:test's coverage feature. Pointer-shared into forks and
 	// inherited by module sub-registries via InheritObserveHooks; inert (one
@@ -711,7 +704,6 @@ func NewRegistry() (*Registry, error) {
 		Output:       os.Stdout,
 		ErrOutput:    os.Stderr,
 		Input:        os.Stdin,
-		Effects:      &EffectLedger{},
 		coverHook:    &coverHook{},
 		coverSources: &coverSources{},
 		SDKCache:     make(map[string]any),

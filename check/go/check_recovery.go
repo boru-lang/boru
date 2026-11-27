@@ -403,28 +403,6 @@ func shareCheckState(e *core.Engine, capturedReg *core.Registry) func() {
 	return shareCheckStateFrom(capturedReg, e.Registry)
 }
 
-// shareCheckStateFrom is the registry-level mechanism behind shareCheckState:
-// it points owner's Check at caller's for the duration (restore via the
-// returned func), no-op when the registries coincide, either is nil, or the
-// caller is not in check mode. Split out so the MERGED-WORD seam can share at
-// the ReturnsFn boundary itself (BuildFnBodyReturnsFn — Stage M1,
-// design/legacy/STAGE3-INLINING-DESIGN-ROUND.0.ignore §5): a transplanted word-extension
-// sig dispatches as a BARE word on the importer's engine, where no
-// execFnDefLiteral wrapper exists to share around the call, and the sig's
-// owning registry is known only to the ReturnsFn closure (the transplant
-// clone's FnDefInfo.Registry is deliberately nil — see TransplantExtension).
-// Idempotent under nesting: when an enclosing dispatch already shared, the
-// swap is pointer-equal and the restore puts back the same shared state.
-// ShareCheckStateFrom is shareCheckStateFrom exported for the COMPILER's
-// cross-registry closure compile (compiler/go/callable_words.go): a foreign
-// fn value's body must resolve its free words in the DEFINING registry while
-// the analysis it drives — params, carriers, the recorder — stays the
-// CALLER's, because the unit it produces has to land in the caller's program.
-// Same mechanism, same restore contract, same idempotence under nesting.
-func ShareCheckStateFrom(owner, caller *core.Registry) func() {
-	return shareCheckStateFrom(owner, caller)
-}
-
 func shareCheckStateFrom(owner, caller *core.Registry) func() {
 	if owner == nil || caller == nil || owner == caller || !caller.Check.IsActive() {
 		return func() {}

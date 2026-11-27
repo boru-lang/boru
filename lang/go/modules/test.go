@@ -119,10 +119,7 @@ func BuildTestModule(parent *native.Registry) (native.ModuleDesc, error) {
 	modReg.Output = parent.Output
 	modReg.ErrOutput = parent.ErrOutput
 	modReg.Input = parent.Input
-	// Ledger rides with the writers so this sub-registry's effects count
-	// against the parent's compiled-mode fallback fence (eng effects.go);
-	// the observability hooks ride along for the same reason.
-	modReg.Effects = parent.Effects
+	// The observability hooks ride with the writers.
 	modReg.InheritObserveHooks(parent)
 	modReg.ParseFunc = parent.ParseFunc
 	modReg.BaseDir = parent.BaseDir

@@ -123,51 +123,6 @@ func TestGateStandaloneContagionWidensUnknownSibling(t *testing.T) {
 	}
 }
 
-// FnPredicateOverloadHazard over a refinement whose bound only the run
-// knows (`def T (Integer gt (size s))`, NUR308): its check-mode match
-// admits every value, the same leniency as a predicate type, so with two
-// reachable arms the overload set is a hazard — whether the refinement is
-// the slot's type node or the param's pattern. A refinement over a
-// compile-time-known bound matches self-contained: no hazard.
-func TestGateStandaloneHazardUnknownRefinement(t *testing.T) {
-	r := newTestRegistry(t)
-	unknownBound := func() core.Value { return core.NewDepScalar(core.DepGT, core.NewCarrier(core.TInteger)) }
-	sibling := core.Signature{Args: []*core.Type{core.TInteger}, Returns: []*core.Type{core.TInteger}, BarrierPos: 1, Impl: gsGoImpl()}
-
-	unknownNode := r.Types.MintType("ZgsRunBound", core.TInteger)
-	unknownNode.SetTypeBody(unknownBound())
-	knownNode := r.Types.MintType("ZgsKnownBound", core.TInteger)
-	knownNode.SetTypeBody(core.NewDepScalar(core.DepGT, core.NewInteger(3)))
-	pattern := unknownBound()
-
-	r.RegisterNativeFunc(core.NativeFunc{Name: "zgsrunnodeq", Signatures: []core.Signature{
-		{Args: []*core.Type{unknownNode}, Returns: []*core.Type{core.TInteger}, BarrierPos: 1, Impl: gsGoImpl()},
-		sibling,
-	}})
-	r.RegisterNativeFunc(core.NativeFunc{Name: "zgsknownnodeq", Signatures: []core.Signature{
-		{Args: []*core.Type{knownNode}, Returns: []*core.Type{core.TInteger}, BarrierPos: 1, Impl: gsGoImpl()},
-		sibling,
-	}})
-	r.RegisterNativeFunc(core.NativeFunc{Name: "zgsrunpatq", Signatures: []core.Signature{
-		{Params: []core.FnParam{{Type: core.TInteger, Pattern: &pattern}}, Returns: []*core.Type{core.TInteger}, BarrierPos: 1, Impl: gsGoImpl()},
-		{Args: []*core.Type{core.TNumber}, Returns: []*core.Type{core.TNumber}, BarrierPos: 1, Impl: gsGoImpl()},
-	}})
-	if err := r.Err(); err != nil {
-		t.Fatalf("register: %v", err)
-	}
-
-	dynInt := []core.Value{core.NewDynamicCarrier(core.TInteger)}
-	if !FnPredicateOverloadHazard(r, "zgsrunnodeq", dynInt) {
-		t.Error("a run-bound refinement slot type beside a reachable sibling is a hazard")
-	}
-	if !FnPredicateOverloadHazard(r, "zgsrunpatq", dynInt) {
-		t.Error("a run-bound refinement PATTERN beside a reachable sibling is a hazard")
-	}
-	if FnPredicateOverloadHazard(r, "zgsknownnodeq", dynInt) {
-		t.Error("a refinement over a known bound matches self-contained: no hazard")
-	}
-}
-
 // ReturnsFreshInstance over a NAMED constructor target — the minted node a
 // name evaluates to (the Stage 2 flip): the structure the model inspects is
 // the node's recorded declaration, so a record node's field schema rides

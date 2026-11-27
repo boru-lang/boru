@@ -279,12 +279,9 @@ func (ft FetchModuleTypes) doFetch(reqOM ReadMap, r *Registry) ([]Value, error) 
 			"fetch: tls: "+err.Error(), "fetch")
 	}
 
-	// Execute request. effect ledger (core effects.go): once Do runs, the
-	// request may have reached the peer even when it returns an error (sent,
-	// response lost), so the effect is noted on the attempt — everything
-	// before this point (policy denial, a malformed request) provably sent
-	// nothing and stays uncounted.
-	r.NoteEffect()
+	// Execute request. Once Do runs, the request may have reached the peer
+	// even when it returns an error (sent, response lost); everything before
+	// this point (policy denial, a malformed request) provably sent nothing.
 	client := &http.Client{Timeout: timeout, Transport: transport}
 	resp, err := client.Do(req)
 	if err != nil {

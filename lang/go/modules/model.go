@@ -193,13 +193,7 @@ func modelNewHandlerFor(tModel *native.Type) native.Handler {
 
 		// Every file operation goes through the active boru:io FileOps so a test
 		// can run the model on an in-memory FS (capabilities.NewMem).
-		// The note captures the LEDGER POINTER at construction (the writer-
-		// fence discipline): a watch-goroutine rebuild then marks the ledger
-		// of the request that BUILT the model, never the live registry field
-		// — which a later request's per-request swap mutates concurrently
-		// (the TestModelWatchForkNoRace data race).
-		led := r.Effects
-		fs := &fileOpsFS{ops: native.EffectiveFileOps(r), dry: ps.dryrun, mem: map[string][]byte{}, note: led.Note}
+		fs := &fileOpsFS{ops: native.EffectiveFileOps(r), dry: ps.dryrun, mem: map[string][]byte{}}
 
 		path, base := ps.path, ps.base
 		if ps.hasInline {
@@ -538,11 +532,6 @@ type fileOpsFS struct {
 	dry bool
 	mu  sync.Mutex
 	mem map[string][]byte
-	// note marks the C1 effect ledger (eng effects.go) when a write reaches
-	// the underlying FileOps — dryrun overlay writes stay uncounted (they
-	// never leave the handle, so a fallback re-run cannot duplicate them).
-	// Nil for handles assembled without a registry (unit tests).
-	note func()
 }
 
 func (f *fileOpsFS) key(name string) string {
@@ -575,18 +564,12 @@ func (f *fileOpsFS) WriteFile(name string, data []byte, _ os.FileMode) error {
 		f.mu.Unlock()
 		return nil
 	}
-	if f.note != nil {
-		f.note()
-	}
 	return f.ops.WriteFile(name, data, 0o644)
 }
 
 func (f *fileOpsFS) MkdirAll(path string, _ os.FileMode) error {
 	if f.dry {
 		return nil
-	}
-	if f.note != nil {
-		f.note()
 	}
 	return f.ops.MkdirAll(path, 0o755)
 }

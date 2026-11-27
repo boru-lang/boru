@@ -55,7 +55,6 @@ func BuildVaultTuiModule(parent *native.Registry) (native.ModuleDesc, error) {
 	modReg.Output = parent.Output
 	modReg.ErrOutput = parent.ErrOutput
 	modReg.Input = parent.Input
-	modReg.Effects = parent.Effects
 	modReg.InheritObserveHooks(parent)
 	// Coverage attribution: the app's fn bodies run on this registry
 	// (coverage.go). Inert unless a coverage hook is armed.

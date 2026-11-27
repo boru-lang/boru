@@ -423,33 +423,40 @@ func TestModelWave4FileOpsFSDelegate(t *testing.T) {
 	}
 }
 
-// TestModelWave4FileOpsFSNotesEffects pins the C1 effect seam: a non-dry
-// write/mkdir reaching the underlying FileOps notes the ledger callback
-// exactly once each; dryrun overlay writes never leave the handle and stay
-// uncounted.
-func TestModelWave4FileOpsFSNotesEffects(t *testing.T) {
+// TestModelWave4FileOpsFSDryStaysInHandle: a non-dry write/mkdir reaches the
+// underlying FileOps; a dryrun write stays in the handle's overlay and a
+// dryrun mkdir creates nothing.
+func TestModelWave4FileOpsFSDryStaysInHandle(t *testing.T) {
 	mem := capabilities.NewMem()
-	notes := 0
-	f := &fileOpsFS{ops: mem, mem: map[string][]byte{}, note: func() { notes++ }}
+	f := &fileOpsFS{ops: mem, mem: map[string][]byte{}}
 	if err := f.WriteFile("/d/a.txt", []byte("x"), 0o600); err != nil {
 		t.Fatalf("write: %v", err)
 	}
 	if err := f.MkdirAll("/d/sub", 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
-	if notes != 2 {
-		t.Errorf("notes = %d, want 2 (one write + one mkdir)", notes)
+	if data, err := mem.ReadFile("/d/a.txt"); err != nil || string(data) != "x" {
+		t.Errorf("a non-dry write must reach the underlying ops: %q / %v", data, err)
+	}
+	if _, err := mem.Stat("/d/sub", true); err != nil {
+		t.Errorf("a non-dry mkdir must reach the underlying ops: %v", err)
 	}
 
-	fd := &fileOpsFS{ops: mem, dry: true, mem: map[string][]byte{}, note: func() { notes++ }}
+	fd := &fileOpsFS{ops: mem, dry: true, mem: map[string][]byte{}}
 	if err := fd.WriteFile("/d/b.txt", []byte("y"), 0o600); err != nil {
 		t.Fatalf("dry write: %v", err)
 	}
 	if err := fd.MkdirAll("/d/sub2", 0o755); err != nil {
 		t.Fatalf("dry mkdir: %v", err)
 	}
-	if notes != 2 {
-		t.Errorf("dry ops noted the ledger: notes = %d, want still 2", notes)
+	if _, err := mem.ReadFile("/d/b.txt"); err == nil {
+		t.Error("a dry write must not reach the underlying ops")
+	}
+	if data, err := fd.ReadFile("/d/b.txt"); err != nil || string(data) != "y" {
+		t.Errorf("a dry write is read back from the handle: %q / %v", data, err)
+	}
+	if _, err := mem.Stat("/d/sub2", true); err == nil {
+		t.Error("a dry mkdir must not reach the underlying ops")
 	}
 }
 

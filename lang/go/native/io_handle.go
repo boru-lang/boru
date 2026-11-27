@@ -167,7 +167,6 @@ func doOpenWord(args []Value, r *Registry, fileType *Type) ([]Value, error) {
 		}
 		opts = parsed
 	}
-	r.NoteEffect()
 	h, err := EffectiveFileOps(r).Open(path, opts)
 	if err != nil {
 		return nil, r.BoruError("open_error", fmt.Sprintf("open: %v", err), "open")
@@ -285,7 +284,6 @@ func writeHandleWord(args []Value, r *Registry) ([]Value, error) {
 			offset = o
 		}
 	}
-	r.NoteEffect()
 	if offset >= 0 {
 		_, err = fh.h.WriteAt(data, offset)
 	} else {
