@@ -159,10 +159,16 @@ describe("resolveWordsDeep", () => {
     const out = resolveWordsDeep(written);
     assert.equal(out.vType.equal(TEnum), true);
     assert.equal(out.toString(), "blue tor red");
-    // A list alternative always counts as changed: resolution rebuilds a
-    // container, and a container is itself only by identity.
+    // A list alternative counts as changed: resolution rebuilds a
+    // container, and a container is itself only by identity — a map too.
     const withList = newEnum([newList([newInteger(2n)]), newInteger(1n)]);
     assert.equal(resolveWordsDeep(withList).toString(), "1 tor [2]");
+    const withMap = newEnum([newMap(new OrderedMap()), newInteger(1n)]);
+    assert.equal(resolveWordsDeep(withMap).toString(), "1 tor {}");
+    // The EMPTY list is the exception: it has no store to be identical by,
+    // so every empty list is the one empty list, and nothing changed.
+    const withEmpty = newEnum([newList([]), newInteger(1n)]);
+    assert.equal(resolveWordsDeep(withEmpty), withEmpty);
     // A typed-container alternative is rebuilt too, but to an EQUAL value:
     // that is not a change, and the enum is left alone.
     const withTyped = newEnum([

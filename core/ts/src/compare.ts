@@ -261,20 +261,31 @@ function sizeOf(v: Value): number {
  * valuesEqual is VALUE equality — what a disjunct's alternatives are
  * deduplicated by, and what two same-typed values must have to unify.
  * Structural: lists element by element, maps key by key whatever their
- * insertion order, typed containers by constraint and retained members, a
- * disjunct by its alternatives in order. A function is equal only to
- * itself: two structurally identical fn literals are two functions.
+ * insertion order. A function is equal only to itself: two structurally
+ * identical fn literals are two functions.
  *
  * It does NOT cross types — the Integer 1 and the Float 1.0 are two
  * values (the order ties them; equality does not), and so are the atom
  * `a` and the string 'a'.
  *
- * ONE deliberate difference from core/go: two typed containers are equal
- * here only when what they RETAIN is equal too. Go's ValuesEqual compares
- * the child constraint alone, so `[:Integer 1]` and `[:Integer 2]` are
- * one alternative there and `d( [: Integer 1 ] [: Integer 2 ] )` reduces
- * to `[:Integer 1]`. The Lean model (spec/Boru/Core/Compare.lean) keeps
- * both, as this does; no corpus row depends on the difference.
+ * Two TYPED containers are equal when their child constraints are: what
+ * each RETAINS is not compared, exactly as it is not part of the type when
+ * two of them unify. That is core/go's ValuesEqual, and it has a visible
+ * edge — `[:Integer 1]` and `[:Integer 2]` are one alternative, so
+ * `d( [: Integer 1 ] [: Integer 2 ] )` reduces to `[:Integer 1]`. The
+ * Lean model (spec/Boru/Core/Compare.lean) compares the retained members
+ * too and keeps both; no corpus row sits on the difference.
+ *
+ * Two DISJUNCTS are equal when their alternatives PRINT alike, in order.
+ * That too is core/go's rule — it has no arm for a disjunct and compares
+ * the two payloads as Value.String renders them (toString here) — and it
+ * is coarser than structure in one direction and finer in the other:
+ * `d( d( 1 ) )` equals `d( 1 )`, and two functions of the same parameter
+ * types are one alternative once each is nested in a disjunct, while two
+ * maps that differ only in key order are two, and an unresolved word is
+ * not the value it will resolve to. It is reached only for a disjunct
+ * held INSIDE another value (a nested alternative, a list element); the
+ * Lean model compares those by structure.
  */
 export function valuesEqual(a: Value, b: Value): boolean {
   if (a.data === null || b.data === null) {
@@ -303,19 +314,10 @@ export function valuesEqual(a: Value, b: Value): boolean {
     });
   }
   if (a.data instanceof ChildType && b.data instanceof ChildType) {
-    const [ac, bc] = [a.data, b.data];
-    return (
-      valuesEqual(ac.child, bc.child) &&
-      listsEqual(ac.elements, bc.elements) &&
-      ac.entries.length === bc.entries.length &&
-      ac.entries.every((e, i) => {
-        const o = bc.entries[i]!;
-        return e.key === o.key && valuesEqual(e.value, o.value);
-      })
-    );
+    return valuesEqual(a.data.child, b.data.child);
   }
   if (a.isDisjunct() && b.isDisjunct()) {
-    return listsEqual(a.asDisjunct().alternatives, b.asDisjunct().alternatives);
+    return disjunctText(a) === disjunctText(b);
   }
   // A structured scalar (a BigDecimal, a path) and a word are the value
   // their canonical text spells. Everything else left — a function, a
@@ -324,6 +326,11 @@ export function valuesEqual(a: Value, b: Value): boolean {
   if (typeof a.data !== "object" || typeof b.data !== "object") return false;
   if (!a.vType.pathSubtype(TScalar) && !a.vType.pathSubtype(TWord)) return false;
   return canonValue(a) === canonValue(b);
+}
+
+/** A disjunct as its alternatives print, in order — its equality key. */
+function disjunctText(v: Value): string {
+  return v.asDisjunct().alternatives.map(String).join(" ");
 }
 
 function listsEqual(a: Value[], b: Value[]): boolean {
@@ -369,9 +376,20 @@ export function simplifyDisjunctAlts(alts: Value[]): Value[] {
         ct.matches(other.vType),
     );
   });
-  // Array.prototype.sort is stable, so alternatives the order cannot
-  // separate at all keep the order they were written in.
-  return kept.sort(compareAlternatives);
+  // A stable INSERTION sort, written out rather than Array.prototype.sort:
+  // it is the algorithm Go's sort.SliceStable runs below twenty elements.
+  // Over a transitive order every stable sort agrees and the choice would
+  // not matter — but this order is not quite one. A typed list against a
+  // plain list of the same size falls to canonical text while two plain
+  // lists compare member by member, and the two can disagree in a cycle:
+  // `[foo/q]` < `[(1)]` < `[:Any 0]` < `[foo/q]`. On such alternatives the
+  // result depends on the algorithm, so the port runs Go's.
+  for (let i = 1; i < kept.length; i++) {
+    for (let j = i; j > 0 && compareAlternatives(kept[j]!, kept[j - 1]!) < 0; j--) {
+      [kept[j - 1], kept[j]] = [kept[j]!, kept[j - 1]!];
+    }
+  }
+  return kept;
 }
 
 /**

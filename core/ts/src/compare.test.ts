@@ -286,19 +286,24 @@ describe("valuesEqual", () => {
     assert.equal(valuesEqual(ab, mapOf([["a", int(1)], ["b", int(3)]])), false);
   });
 
-  it("compares typed containers by constraint AND what they retain", () => {
+  it("compares typed containers by their child constraint alone", () => {
     const t = (...elems: Value[]): Value => newTypedList(lit(TInteger), elems);
     assert.equal(valuesEqual(t(), t()), true);
     assert.equal(valuesEqual(t(int(1)), t(int(1))), true);
-    assert.equal(valuesEqual(t(int(1)), t(int(2))), false);
+    // What a typed container RETAINS is not part of the type, and not
+    // part of this equality either — core/go's rule, edge and all:
+    // `d( [: Integer 1 ] [: Integer 2 ] )` keeps only the first.
+    assert.equal(valuesEqual(t(int(1)), t(int(2))), true);
+    assert.equal(valuesEqual(t(int(1)), t()), true);
+    assert.equal(canonical([t(int(1)), t(int(2))]), "[:Integer 1]");
     assert.equal(valuesEqual(t(), newTypedList(lit(TString))), false);
     assert.equal(valuesEqual(t(), newList([])), false);
     const m = (k: string, v: Value): Value =>
       newTypedMap(lit(TInteger), [{ key: k, value: v }]);
-    assert.equal(valuesEqual(m("a", int(1)), m("a", int(1))), true);
-    assert.equal(valuesEqual(m("a", int(1)), m("b", int(1))), false);
-    assert.equal(valuesEqual(m("a", int(1)), m("a", int(2))), false);
-    assert.equal(valuesEqual(m("a", int(1)), newTypedMap(lit(TInteger))), false);
+    assert.equal(valuesEqual(m("a", int(1)), m("b", int(2))), true);
+    assert.equal(valuesEqual(m("a", int(1)), newTypedMap(lit(TString))), false);
+    // A typed list and a typed map are two types whatever their child.
+    assert.equal(valuesEqual(t(), newTypedMap(lit(TInteger))), false);
     // A typed container's unresolved child is still a bare word, and two
     // words are the value their text spells.
     assert.equal(
@@ -307,12 +312,37 @@ describe("valuesEqual", () => {
     );
   });
 
-  it("compares disjuncts by their alternatives in order", () => {
+  it("compares two disjuncts as their alternatives print, in order", () => {
     const d = (...a: Value[]): Value => newDisjunct(a);
     assert.equal(valuesEqual(d(int(1), int(2)), d(int(1), int(2))), true);
     assert.equal(valuesEqual(d(int(1), int(2)), d(int(2), int(1))), false);
     // An Enum and a plain disjunct are two types.
     assert.equal(valuesEqual(d(int(1)), newEnum([int(1)])), false);
+    // core/go's rule, edges and all — it compares the two payloads as
+    // rendered. A one-alternative nesting prints as its alternative...
+    assert.equal(valuesEqual(d(d(int(1))), d(int(1))), true);
+    assert.equal(valuesEqual(d(d()), d()), true);
+    // ...two maps that differ in key order print differently...
+    const ab = mapOf([["a", int(1)], ["b", int(2)]]);
+    const ba = mapOf([["b", int(2)], ["a", int(1)]]);
+    assert.equal(valuesEqual(ab, ba), true);
+    assert.equal(valuesEqual(d(ab), d(ba)), false);
+    // ...an unresolved word is not the value it resolves to...
+    assert.equal(valuesEqual(d(newWord("false")), d(newBoolean(false))), false);
+    // ...and two functions print as their parameter types, though they
+    // are two functions.
+    const sig = { params: [], returns: [], body: [] };
+    const [f, g] = [newFnDef({ sigs: [sig] }), newFnDef({ sigs: [sig] })];
+    assert.equal(valuesEqual(f, g), false);
+    assert.equal(valuesEqual(d(f), d(g)), true);
+    const taking = (t: typeof TInteger): Value =>
+      newFnDef({ sigs: [{ params: [{ name: "n", type: t }], returns: [], body: [] }] });
+    assert.equal(valuesEqual(d(taking(TInteger)), d(taking(TInteger))), true);
+    assert.equal(valuesEqual(d(taking(TInteger)), d(taking(TString))), false);
+    // So, as alternatives of an outer disjunct: one, two, one.
+    assert.equal(canonical([d(d(int(1))), d(int(1))]), "1");
+    assert.equal(canonical([d(ab), d(ba)]), "{a:1 b:2} tor {b:2 a:1}");
+    assert.equal(canonical([d(f), d(g)]), "fn [[][][]]");
   });
 
   it("gives a function, an error and a class of payload identity only", () => {

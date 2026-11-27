@@ -541,6 +541,19 @@ export class Value {
       const parts = m.keys().map((k) => `${k}:${m.get(k)!.toString()}`);
       return `{${parts.join(" ")}}`;
     }
+    // A function renders as a one-line summary of its overloads' parameter
+    // types — `fn (Integer)`, `fn (Integer, String) or (Float)`, a bare
+    // `fn` when no overload takes anything — which is Go's FormatFnDef
+    // (core/go/value.go) for a function with no name: the body and the
+    // returns are deliberately not in it. There was no arm, so a function
+    // fell to String(FnDefInfo) and printed '[object Object]'.
+    if (this.isFnDef()) {
+      const taking = this.asFnDef().sigs.filter((s) => s.params.length > 0);
+      const shapes = taking.map(
+        (s) => `(${s.params.map((p) => p.type.leaf()).join(", ")})`,
+      );
+      return shapes.length === 0 ? "fn" : `fn ${shapes.join(" or ")}`;
+    }
     // A disjunction renders as its alternatives joined by ` tor `, matching
     // Go's kernelFormatDefault (core/go/value.go:3660). Without this arm the
     // fallthrough below reached String(DisjunctInfo) and produced the literal

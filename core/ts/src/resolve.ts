@@ -119,12 +119,13 @@ export function resolveWordsDeep(v: Value, registry?: Registry): Value {
  * Did resolution leave this alternative as it was? Go asks ExactEqual
  * (core/go/compare.go): a scalar or a type is itself by VALUE, a list or a
  * map only by IDENTITY — and resolution always rebuilds a container, so a
- * list or map alternative always counts as changed.
+ * map or a non-empty list alternative always counts as changed. The EMPTY
+ * list is the exception: it has no backing store to be identical by, so
+ * every empty list is the one empty list.
  */
 function sameAlternative(before: Value, after: Value): boolean {
   if (before === after) return true;
-  if (after.data instanceof OrderedMap || Array.isArray(after.data)) {
-    return false;
-  }
+  if (after.data instanceof OrderedMap) return false;
+  if (Array.isArray(after.data)) return after.data.length === 0;
   return before.vType.equal(after.vType) && valuesEqual(before, after);
 }

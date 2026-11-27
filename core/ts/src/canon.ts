@@ -276,9 +276,13 @@ export function canonValue(v: Value): string {
     // and canon rendered only the latter — so `{:Integer a:1}` came out
     // `{:Integer}` with the entries silently gone. Both are rendered here,
     // mirroring Value.toString and core/go/canon.go's ChildTypeInfo arm.
+    // The retained elements render as a plain list's do — a disjunct
+    // element GROUPED, so `[:Any (1 tor 2)]` reads back as one element
+    // where `[:Any 1 tor 2]` reads as three tokens. They went through
+    // canonValue, which leaves a top-level union bare.
     const parts = [
       `:${canonTypeTag(ct.child)}`,
-      ...ct.elements.map(canonValue),
+      ...canonSeqParts(ct.elements, canonChild),
       ...ct.entries.map((e) => `${canonKey(e.key)}:${canonChild(e.value)}`),
     ];
     return `${open}${joinCanonParts(parts)}${close}`;
