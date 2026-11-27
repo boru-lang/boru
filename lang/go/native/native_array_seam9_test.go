@@ -9,7 +9,7 @@ import (
 
 // Coverage for the error/edge arms of the array words (native_array.go):
 // shape/reshape helpers, take/shed boundary maths, the arrCompareValues
-// error fallback, cross-collection redirects, the reach-form lens error
+// error fallback, the reach-form lens error
 // arms, and the inner/eachrank/foldaxis body-run failure arms. Handlers
 // and their pure helpers are driven directly with crafted args.
 
@@ -144,23 +144,6 @@ func TestW9ListLengthMismatches(t *testing.T) {
 	// replicate: length mismatch.
 	if _, err := replicateHandler([]Value{two, one}, nil, nil, r); err == nil {
 		t.Fatalf("replicate length mismatch: expected error")
-	}
-}
-
-func TestW9CrossCollectionRedirects(t *testing.T) {
-	r := w9Reg(t)
-	m := w9Map("a", NewInteger(1))
-
-	// each / fold / scan handlers redirect to their Map twin when the
-	// runtime collection turns out to be a concrete Map.
-	if _, err := eachHandler([]Value{w9List(), m}, nil, nil, r); err != nil {
-		t.Fatalf("eachHandler map redirect: %v", err)
-	}
-	if _, err := foldNoInitHandler([]Value{w9List(), m}, nil, nil, r); err != nil {
-		t.Fatalf("foldNoInitHandler map redirect: %v", err)
-	}
-	if _, err := scanHandler([]Value{w9List(), m}, nil, nil, r); err != nil {
-		t.Fatalf("scanHandler map redirect: %v", err)
 	}
 }
 

@@ -127,7 +127,7 @@ func ParseRange(elems []Value) (start, end, step int64, err error) {
 	}
 }
 
-// break and continue words now live in eng/go/flowctrl.go; they raise
+// break and continue words now live in core/go/flowctrl.go; they raise
 // a FlowCtrl signal on the Registry rather than returning a sentinel
 // error. FlowCtrl / FlowBreak / FlowContinue are re-exported via
 // aliases.go.

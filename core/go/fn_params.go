@@ -388,7 +388,7 @@ func PatternsFromParams(params []FnParam) map[int]Value {
 
 // keywordParam builds a KEYWORD-slot param: a /q slot whose concrete
 // Atom pattern (`kw`) admits exactly the literal word `kw` at dispatch
-// (patternsOk's keyword branch, eng/go/match.go). It is the boru-source
+// (patternsOk's keyword branch, core/go/match.go). It is the boru-source
 // spelling of the def constructor forms' keyword slots — an atom `kw/q`
 // (or `name:kw/q`) whose name is NOT a type. Binding-agnostic like every
 // /q slot: the captured value is the Atom `kw`, bound to `name` when

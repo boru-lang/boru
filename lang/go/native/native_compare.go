@@ -34,8 +34,8 @@ import (
 // dispatch wiring.
 var comparisonNatives = []NativeFunc{
 	{
-		Name:          "lt",
-		CompileEffect: CompileScalarFold,
+		Name:      "lt",
+		ConstFold: true,
 
 		Signatures: []Signature{
 			core.MakeDepScalarSig("lt", core.DepLT),
@@ -48,8 +48,8 @@ var comparisonNatives = []NativeFunc{
 		},
 	},
 	{
-		Name:          "gt",
-		CompileEffect: CompileScalarFold,
+		Name:      "gt",
+		ConstFold: true,
 
 		Signatures: []Signature{
 			core.MakeDepScalarSig("gt", core.DepGT),
@@ -62,8 +62,8 @@ var comparisonNatives = []NativeFunc{
 		},
 	},
 	{
-		Name:          "lte",
-		CompileEffect: CompileScalarFold,
+		Name:      "lte",
+		ConstFold: true,
 
 		Signatures: []Signature{
 			core.MakeDepScalarSig("lte", core.DepLTE),
@@ -76,8 +76,8 @@ var comparisonNatives = []NativeFunc{
 		},
 	},
 	{
-		Name:          "gte",
-		CompileEffect: CompileScalarFold,
+		Name:      "gte",
+		ConstFold: true,
 
 		Signatures: []Signature{
 			core.MakeDepScalarSig("gte", core.DepGTE),
@@ -94,8 +94,8 @@ var comparisonNatives = []NativeFunc{
 		// Integer -1, 0, or 1 for a sorting before / with / after b.
 		// Family-restricted — cross-family operands raise
 		// [boru/incomparable]; use tcmp for a cross-type total order.
-		Name:          "cmp",
-		CompileEffect: CompileScalarFold,
+		Name:      "cmp",
+		ConstFold: true,
 
 		Signatures: []Signature{{
 			Args:      []*Type{TAny, TAny},
@@ -110,14 +110,13 @@ var comparisonNatives = []NativeFunc{
 		// lattice total order (the order sort and the collection
 		// words use). Reach for it when you want cross-type ordering
 		// that cmp declines, e.g. `1 tcmp "a"`.
-		Name:          "tcmp",
-		CompileEffect: CompileIslandPure | CompileScalarFold,
+		Name:      "tcmp",
+		ConstFold: true,
 
 		Signatures: []Signature{{
 			Args:    []*Type{TAny, TAny},
 			Impl:    Go(core.TcmpHandler),
 			Returns: []*Type{TInteger}, BarrierPos: -1,
-			CompileEffect: CompileReadsFn, // type-algebra reads fn-value types, never invokes
 		}},
 	},
 	{
@@ -132,36 +131,33 @@ var comparisonNatives = []NativeFunc{
 		}},
 	},
 	{
-		Name:          "eq",
-		CompileEffect: CompileScalarFold,
+		Name:      "eq",
+		ConstFold: true,
 
 		Signatures: []Signature{{
 			Args:    []*Type{TAny, TAny},
 			Impl:    Go(core.EqHandler),
 			Returns: []*Type{TBoolean}, BarrierPos: -1,
-			CompileEffect: CompileReadsFn, // reads a fn value's identity/content, never invokes it
 		}},
 	},
 	{
-		Name:          "neq",
-		CompileEffect: CompileScalarFold,
+		Name:      "neq",
+		ConstFold: true,
 
 		Signatures: []Signature{{
 			Args:    []*Type{TAny, TAny},
 			Impl:    Go(core.NeqHandler),
 			Returns: []*Type{TBoolean}, BarrierPos: -1,
-			CompileEffect: CompileReadsFn, // reads a fn value's identity/content, never invokes it
 		}},
 	},
 	{
-		Name:          "deq",
-		CompileEffect: CompileScalarFold,
+		Name:      "deq",
+		ConstFold: true,
 
 		Signatures: []Signature{{
 			Args:    []*Type{TAny, TAny},
 			Impl:    Go(core.DeqHandler),
 			Returns: []*Type{TBoolean}, BarrierPos: -1,
-			CompileEffect: CompileReadsFn, // reads a fn value's identity/content, never invokes it
 		}},
 	},
 }

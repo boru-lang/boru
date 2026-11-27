@@ -1306,7 +1306,7 @@ func inLoopBody(stack []native.Value, pointer int) bool {
 // liveFrames scans the tape snapshot for fn frames opened below the
 // pointer whose matching close paren is at/after it — calls still in
 // flight, mirroring the liveness rule of the engine's own
-// unwindLiveFrames (eng/go/fn_frame.go).
+// unwindLiveFrames (core/go/fn_frame.go).
 func liveFrames(stack []native.Value, pointer int) []frameInfo {
 	if pointer > len(stack) {
 		pointer = len(stack)

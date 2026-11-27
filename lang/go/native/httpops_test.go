@@ -140,7 +140,6 @@ func TestFetchTransportErrorIsUnsent(t *testing.T) {
 	SetHostHTTPOps(r, stubHTTPOps{err: errors.New("no transport for you")})
 
 	ft := MintFetchTypes(r)
-	before := r.Effects.Count()
 	_, fErr := ft.fetchStringHandler(
 		[]Value{NewString("https://stub.invalid/thing")}, nil, nil, r)
 	if fErr == nil {
@@ -159,9 +158,6 @@ func TestFetchTransportErrorIsUnsent(t *testing.T) {
 	}
 	if ae.Code != "transport" {
 		t.Errorf("error code = %q, want \"transport\"", ae.Code)
-	}
-	if after := r.Effects.Count(); after != before {
-		t.Errorf("effects %d → %d: a declined transport sent nothing", before, after)
 	}
 }
 

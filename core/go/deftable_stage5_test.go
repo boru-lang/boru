@@ -91,30 +91,6 @@ func TestStage5DefTableSetEmptyBodies(t *testing.T) {
 	}
 }
 
-// Entries is the bind-twin replay's read: the full DefEntry stack —
-// TypeDef and Minted included — where Stack drops to bodies. The copy is
-// caller-owned: mutating it must not reach the table.
-func TestDefTableEntries(t *testing.T) {
-	var nilDT *DefTable
-	if nilDT.Entries("x") != nil {
-		t.Fatal("nil table must answer nil")
-	}
-	dt := NewDefTable()
-	if dt.Entries("missing") != nil {
-		t.Fatal("unbound name must answer nil")
-	}
-	dt.Push("x", NewInteger(1))
-	dt.PushType("x", TInteger, NewInteger(2))
-	es := dt.Entries("x")
-	if len(es) != 2 || es[0].TypeDef != nil || es[1].TypeDef != TInteger || !es[1].Minted {
-		t.Fatalf("entries = %+v, want a value entry under a minted type entry", es)
-	}
-	es[0].Body = NewInteger(99)
-	if fresh := dt.Entries("x"); fresh[0].Body.Data() != (IntPayload{N: 1}) {
-		t.Fatalf("the returned slice must be a copy; table saw %v", fresh[0].Body)
-	}
-}
-
 // SnapshotEntries / RestoreEntriesSnapshot is the CONTENT-preserving region
 // restore (macro template runs, the dynamic-help eval): unlike the depth
 // restore it recreates popped entries and same-depth replacements, unlike a

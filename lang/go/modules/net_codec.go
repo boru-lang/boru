@@ -1032,17 +1032,17 @@ func jsonReady(v any) any {
 // codecNatives lists the Tier-2 words BuildNetModule registers.
 func codecNatives() []native.NativeFunc {
 	T := func(ts ...*native.Type) []*native.Type { return ts }
-	return native.SideEffecting([]native.NativeFunc{
+	return []native.NativeFunc{
 		{Name: "listen", Signatures: []native.Signature{
 			// listen {tcp: port codec: c} <service> — expose a service on
 			// the wire (appends to the Tier-1 listen registration).
 			{Args: T(native.TMap, native.TService), Impl: native.Go(listenSvcHandler), Returns: T(TListener),
-				BarrierPos: -1, CompileEffect: native.CompileStoresFn},
+				BarrierPos: -1},
 		}},
 		{Name: "connect", Signatures: []native.Signature{
 			// connect {tcp: "host:port" codec: c} -> Endpoint.
 			{Args: T(native.TMap), Impl: native.Go(connectHandler), Returns: T(native.TService),
 				ReturnsFn: connectCodecMirror(), BarrierPos: -1},
 		}},
-	})
+	}
 }

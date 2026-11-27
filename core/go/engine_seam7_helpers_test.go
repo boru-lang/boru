@@ -257,11 +257,11 @@ func TestS7SingleOverloadRecoverableDispatchSemantics(t *testing.T) {
 	}
 }
 
-// TestS7TryRecordRecoveredUserFnUnderArity — an under-arity call (`al ds`
+// TestS7TryRecoverUserFnUnderArity — an under-arity call (`al ds`
 // against a sole two-param sig) is the interpreter's signature_error, never
 // a recovery: the recorder refuses a window shorter than the sig (a Codex
 // review of #509).
-func TestS7TryRecordRecoveredUserFnUnderArity(t *testing.T) {
+func TestS7TryRecoverUserFnUnderArity(t *testing.T) {
 	sole := Signature{
 		Params:     []FnParam{{Name: "xs", Type: TList}, {Name: "n", Type: TInteger}},
 		Impl:       Boru([]Value{NewInteger(1)}),
@@ -277,7 +277,7 @@ func TestS7TryRecordRecoveredUserFnUnderArity(t *testing.T) {
 	prev := CheckBraid.SpliceCheckResults
 	CheckBraid.SpliceCheckResults = func(e *Engine, positions []int, results []Value) { spliced++ }
 	t.Cleanup(func() { CheckBraid.SpliceCheckResults = prev })
-	if e.TryRecordRecoveredUserFn(&fn.Signatures[1], fn, []Value{NewList(nil)}, 0, []int{0}) {
+	if e.TryRecoverUserFn(&fn.Signatures[1], fn, []Value{NewList(nil)}, 0, []int{0}) {
 		t.Error("one operand against a two-param sig must decline")
 	}
 	if spliced != 0 {

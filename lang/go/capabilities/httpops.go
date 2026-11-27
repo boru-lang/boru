@@ -38,7 +38,7 @@ type HTTPOps interface {
 // The zero value means "Go's defaults": verify against the system root
 // pool, no server-name override, Go's minimum protocol version. Note
 // which way the Insecure field points — per the no-zero-value-overload
-// rule (eng/go/CLAUDE.md), the SAFE state is the zero value, so a
+// rule (core/go/CLAUDE.md), the SAFE state is the zero value, so a
 // profile nobody configured cannot silently skip verification.
 //
 // Every field is comparable so the whole struct can be a map key.

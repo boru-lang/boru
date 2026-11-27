@@ -30,48 +30,6 @@ func TestCheckFnCarrierBindTable(t *testing.T) {
 	}
 }
 
-// TestCheckFnCarrierBindDepth: the table keeps the OUTERMOST fn-body depth
-// a name was bound at (NUR192's shadow test) — a deeper rebind does not
-// hide the enclosing bind, a shallower one lowers it — and the depth goes
-// with the bind on undef and on the pass-scoped reset.
-func TestCheckFnCarrierBindDepth(t *testing.T) {
-	r := covRegistry(t, nil)
-	if _, bound := CheckFnCarrierBindDepth(r, "a"); bound {
-		t.Error("an unbound name has no depth")
-	}
-	r.Check.FnBodyDepth = 0
-	NoteCheckFnCarrierBind(r, "a", NewCarrier(TFunction))
-	r.Check.FnBodyDepth = 1
-	NoteCheckFnCarrierBind(r, "a", NewCarrier(TFunction))
-	NoteCheckFnCarrierBind(r, "b", NewCarrier(TFunction))
-	if d, bound := CheckFnCarrierBindDepth(r, "a"); !bound || d != 0 {
-		t.Errorf("the outermost depth stays: got %d %v, want 0", d, bound)
-	}
-	if d, bound := CheckFnCarrierBindDepth(r, "b"); !bound || d != 1 {
-		t.Errorf("a name first bound in a fn body records that depth: got %d %v, want 1", d, bound)
-	}
-	r.Check.FnBodyDepth = 0
-	NoteCheckFnCarrierBind(r, "b", NewCarrier(TFunction))
-	if d, _ := CheckFnCarrierBindDepth(r, "b"); d != 0 {
-		t.Errorf("a shallower bind lowers the depth: got %d, want 0", d)
-	}
-	DropCheckFnCarrierBind(r, "a")
-	if _, bound := CheckFnCarrierBindDepth(r, "a"); bound {
-		t.Error("undef drops the depth with the bind")
-	}
-	ResetCheckFnCarrierBinds(r)
-	if _, bound := CheckFnCarrierBindDepth(r, "b"); bound {
-		t.Error("the reset clears the depths with the table")
-	}
-	// A registry without a check state records depth 0.
-	r2 := covRegistry(t, nil)
-	r2.Check = nil
-	NoteCheckFnCarrierBind(r2, "c", NewCarrier(TFunction))
-	if d, bound := CheckFnCarrierBindDepth(r2, "c"); !bound || d != 0 {
-		t.Errorf("no check state: depth 0, got %d %v", d, bound)
-	}
-}
-
 // TestStepWordCarrierIsData — a word-TYPED CARRIER at the pointer is DATA,
 // not a token. `IsWord` classifies on the parent type alone, so a carrier of
 // type Word used to be dispatched as a word; it has no WordInfo, so the name
@@ -98,20 +56,23 @@ func TestStepWordCarrierIsData(t *testing.T) {
 	}
 }
 
-// TestCheckFnCarrierBindDepthWithoutDepthTable pins the depth read's second
-// guard: a name the BINDS table holds while its depth twin is absent (the
-// two are separate registry capabilities — a writer that sets one alone, or
-// a partial reset, leaves exactly this state) reads as bound at no depth
-// rather than panicking on a nil map or inventing depth 0.
-func TestCheckFnCarrierBindDepthWithoutDepthTable(t *testing.T) {
+// TestDropCheckFnCarrierBind: an undef drops the name's carrier from the
+// pass-scoped table and leaves every other name bound; dropping a name the
+// table does not hold, or with no table at all, changes nothing.
+func TestDropCheckFnCarrierBind(t *testing.T) {
 	r := covRegistry(t, nil)
-	if err := r.Capabilities.Set(capCheckFnCarrierBinds, map[string]Value{"solo": NewCarrier(TFunction)}); err != nil {
-		t.Fatalf("Capabilities.Set: %v", err)
+	DropCheckFnCarrierBind(r, "a") // no table yet: a no-op
+	NoteCheckFnCarrierBind(r, "a", NewCarrier(TFunction))
+	NoteCheckFnCarrierBind(r, "b", NewCarrier(TFunction))
+	DropCheckFnCarrierBind(r, "never-bound")
+	if _, bound := CheckFnCarrierBind(r, "a"); !bound {
+		t.Fatal("dropping another name must leave a bound")
 	}
-	if _, bound := CheckFnCarrierBind(r, "solo"); !bound {
-		t.Fatal("the binds table alone resolves the bind")
+	DropCheckFnCarrierBind(r, "a")
+	if _, bound := CheckFnCarrierBind(r, "a"); bound {
+		t.Error("undef drops the bind")
 	}
-	if d, bound := CheckFnCarrierBindDepth(r, "solo"); bound || d != 0 {
-		t.Errorf("no depth table: the name has no bind depth, got %d %v", d, bound)
+	if _, bound := CheckFnCarrierBind(r, "b"); !bound {
+		t.Error("the drop reaches the named bind only")
 	}
 }

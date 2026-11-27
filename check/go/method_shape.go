@@ -196,7 +196,7 @@ func shapedMethodApplyWindow(e *core.Engine, valIdx int, member core.Value) (*co
 		// overload the moment the member lands — the miscompile-E family
 		// (Span.finish, Rand.bool). Model it as an arity-0 apply through
 		// the member's 0-arg signature; a member without a genuine 0-arg
-		// overload stays data in both engines.
+		// overload stays data.
 		if !core.FnValueZeroArg(member) {
 			return nil, nil, false
 		}
@@ -296,9 +296,6 @@ func allZeroArgSigs(fn *core.FnDefInfo) bool {
 func shapedMethodReturnArity(e *core.Engine, sig *core.Signature, args []core.Value, pos core.SrcPos) int {
 	if sig.ReturnsFn != nil {
 		e.Registry.Check.CurCallPos = pos
-		// No WORD dispatched this apply, so the ReturnsFn's region claim must
-		// miss rather than key on whatever the previous dispatch published.
-		e.Registry.Check.CurCallWord = ""
 		return len(sig.ReturnsFn(args, e.Registry))
 	}
 	return len(sig.Returns)
@@ -357,7 +354,7 @@ func tryDynamicFnValueDispatch(e *core.Engine, valIdx int) bool {
 		return false
 	}
 	if winEnd == valIdx {
-		return false // no args — a bare dynamic fn value stays data (both engines)
+		return false // no args — a bare dynamic fn value stays data
 	}
 	e.Tape.Splice(valIdx, 1+(winEnd-valIdx), core.NewDynamicCarrier(core.TAny))
 	return true

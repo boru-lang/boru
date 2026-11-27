@@ -59,11 +59,6 @@ var unpackNatives = []NativeFunc{
 				Impl:       Go(unpackHandler, RunInCheck()),
 				Returns:    []*Type{},
 				BarrierPos: -1,
-				// S2b's declaration: the list is the NAMES of the bindings —
-				// keys the handler reads, as def's quoted name is
-				// (CompileQuoteKey); the binds are lowered by the run-time
-				// bind / binder hooks, never as a body.
-				CompileEffect: CompileQuoteKey,
 			},
 			// `unpack {renames} map`: the first map's entries drive the
 			// bindings (srcKey → localName). NoEvalMapArgs[0] keeps the
@@ -83,13 +78,6 @@ var unpackNatives = []NativeFunc{
 				Impl:       Go(unpackAllHandler, RunInCheck()),
 				Returns:    []*Type{},
 				BarrierPos: -1,
-				// The handler-contract declaration (design/HANDLER-MIGRATION-
-				// LINE.0.md, the quoted class, S2a): the quoted `all` is a
-				// literal keyword the handler consumes verbatim — inert data.
-				// The word runs in check mode (the bindings must exist for the
-				// checker), so the recorder never reaches it through the
-				// quoted-operand gates; the flag answers the census.
-				CompileEffect: CompileQuoteInert,
 			},
 			// `unpack 'boru:time-util'`: import a module and bind every word
 			// of every export namespace as a bare local — `now`, `sleep`, …
@@ -116,10 +104,6 @@ var unpackNatives = []NativeFunc{
 				Impl:       Go(unpackModuleExportHandler, RunInCheck()),
 				Returns:    []*Type{},
 				BarrierPos: -1,
-				// The quoted export name is the KEY the handler reads to select
-				// one export namespace of the module (see `unpack all`'s note on
-				// why the flag answers the census rather than lowering).
-				CompileEffect: CompileQuoteKey,
 			},
 		},
 	},
@@ -276,15 +260,10 @@ func bindUnpackEntry(r *Registry, localName, srcKey string, get func(string) (Va
 				core.CheckAddUniqueDiagnostic(r, "unpack_error",
 					"unpack: key "+srcKey+" not found in source", "unpack", pos)
 			}
-			// Lenient binding either way, but the interpreter errors at
-			// runtime — ONLY against a PROVEN source, so the pass latches the
-			// suppressed-runtime-error flag for one. An UNPROVEN source (a
-			// carrier Map — a param, a fn's result) misses through the stub
-			// getter whatever it holds, and the run-time unpack over the real
-			// value succeeds or raises on its own.
-			if proven {
-				r.Check.SuppressedRuntimeError = true
-			}
+			// Lenient binding either way: an UNPROVEN source (a carrier Map —
+			// a param, a fn's result) misses through the stub getter whatever
+			// it holds, and the run-time unpack over the real value succeeds
+			// or raises on its own.
 		} else {
 			return r.BoruError("unpack_error", "unpack: key "+srcKey+" not found in source", "unpack")
 		}

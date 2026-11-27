@@ -21,8 +21,7 @@ import (
 //	[10,20] 5 getr     → ERROR (index out of bounds)
 var accessorNatives = []NativeFunc{
 	{
-		Name:          "getr",
-		CompileEffect: CompileModuleFold | CompileIslandPure,
+		Name: "getr",
 		// getr EVALUATES its key (the strict sibling of `get`); the
 		// bare-word-quoting atom sigs live on `dotr`, which the `!.` sugar
 		// lowers to. `m getr "k"` / `m getr <int>` work; a literal field
@@ -30,8 +29,7 @@ var accessorNatives = []NativeFunc{
 		Signatures: stripQuoteArgs(accessorGetrSignatures()),
 	},
 	{
-		Name:          "dotr",
-		CompileEffect: CompileModuleFold | CompileIslandPure,
+		Name: "dotr",
 		// dotr is `getr` PLUS the bare-word-quoting atom sigs — the strict
 		// (`!.`) dot-sugar target. `m!.a` ≡ `m dotr a` reads the literal
 		// field "a" and raises if absent.
@@ -51,13 +49,13 @@ var accessorNatives = []NativeFunc{
 		//	{a:1}    has 'b'     → false  (absent)
 		//	[10,20]  has 1       → true
 		//	none     has a/q     → false
+		//
+		// A pure presence reader. `has` EVALUATES its key exactly as `get`
+		// does (2026-08-21, get-parity ruling): a bare bound word supplies
+		// its value, an unbound bare word is an undefined_word error, and a
+		// literal field name is spelled `'k'` or `k/q`. The TAtom overloads
+		// still match an EVALUATED Atom key.
 		Name: "has",
-		// CompileModuleFold: a pure presence reader. `has` EVALUATES its key
-		// exactly as `get` does (2026-08-21, get-parity ruling): a bare
-		// bound word supplies its value, an unbound bare word is an
-		// undefined_word error, and a literal field name is spelled `'k'`
-		// or `k/q`. The TAtom overloads still match an EVALUATED Atom key.
-		CompileEffect: CompileModuleFold,
 
 		Signatures: []Signature{
 			// [Key | Node] — Map, List, Options, record-shape

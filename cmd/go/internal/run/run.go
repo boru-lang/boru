@@ -267,9 +267,8 @@ func EvalWithPolicy(w io.Writer, source string, registry string, seed int64, pol
 
 // EvalOptions runs source under the full Options set (registry, seed,
 // policy, tape bounds). The CLI builds Options from its flags —
-// including --options — and calls this. There is one engine: the program
-// compiles and its bytecode runs, or it does not compile and that is an
-// error.
+// including --options — and calls this. There is one engine: the
+// interpreter.
 func EvalOptions(w io.Writer, source string, o lang.Options) error {
 	return buildrt.Eval(w, source, o)
 }

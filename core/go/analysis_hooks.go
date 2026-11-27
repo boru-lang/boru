@@ -30,18 +30,6 @@ func (r *Registry) noteAnalysisUse(name string) { r.Check.recordUse(name) }
 // at the top level or outside check).
 func (r *Registry) noteAnalysisFnBinder(name string) { r.Check.RecordFnBinder(name) }
 
-// EnterSpecArm brackets the analysis of a branch arm; the returned func
-// leaves it. known is whether the model decides the condition (a literal
-// Boolean — the arm runs or not, exactly as the model has it): a known
-// arm takes no bracket, an undecidable one raises SpecArmDepth.
-func (r *Registry) EnterSpecArm(known bool) func() {
-	if known {
-		return func() {}
-	}
-	r.Check.SpecArmDepth++
-	return func() { r.Check.SpecArmDepth-- }
-}
-
 // analysisSnapshot captures the checker's per-call state for the
 // predicate sandbox; restoreAnalysisSnapshot rolls it back IN PLACE
 // (not by swapping the pointer) so a module sub-registry transiently
@@ -56,13 +44,6 @@ func (r *Registry) restoreAnalysisSnapshot(s *CheckState) {
 		r.Check = s
 	}
 }
-
-// noteSuppressedRuntimeError latches the checker's runtime-suppression
-// flag (a would-be runtime error absorbed by the model).
-func (r *Registry) noteSuppressedRuntimeError() { r.Check.SuppressedRuntimeError = true }
-
-// noteAmbiguousGradualSplit latches the gradual-split ambiguity flag.
-func (r *Registry) noteAmbiguousGradualSplit() { r.Check.AmbiguousGradualSplit = true }
 
 // analysisStepMeter advances the check-mode step budget. It reports
 // EXCEEDED (the run should stop) after emitting the one budget
@@ -117,12 +98,6 @@ func (r *Registry) analysisCarrierResults(word string, sig *Signature, args []Va
 	return AnalysisImpl.CarrierResults(r, word, sig, args, pos, ownerReg, tailConsumed)
 }
 
-// analysisMixedConform reports whether v is a genuinely MIXED gradual
-// carrier conforming to t (matchSignature's gradual arm).
-func (r *Registry) analysisMixedConform(v Value, t *Type) bool {
-	return AnalysisImpl.MixedConform(v, t)
-}
-
 // analysisValueCarriesCarrier reports whether v transitively contains
 // a carrier (the interp-string dynamic-collapse probe).
 func (r *Registry) analysisValueCarriesCarrier(v Value) bool {
@@ -152,17 +127,15 @@ var AnalysisImpl = struct {
 	ReturnsFn           func(r *Registry, name string, s FnSig, fnDef FnDefInfo) ReturnsFunc
 	StripToCarriers     func(in []Value) []Value
 	CarrierResults      func(r *Registry, word string, sig *Signature, args []Value, pos SrcPos, ownerReg *Registry, tailConsumed bool) []Value
-	MixedConform        func(v Value, t *Type) bool
 	ValueCarriesCarrier func(v Value) bool
 	AtUncaughtTopLevel  func(r *Registry) bool
 	AnalyseFnBody       func(r *Registry, name string, paramNames []string, body []Value, args []Value, captures []CapturedBinding, declared []*Type, anonymous bool) []Value
-	AnalyseLoopBody     func(r *Registry, body Value, bindNames []string, bindVals []Value, provenTrips bool) []Value
+	AnalyseLoopBody     func(r *Registry, body Value, bindNames []string, bindVals []Value) []Value
 }{
 	FnConstructionPass:  inactiveFnConstructionPass,
 	ReturnsFn:           inactiveReturnsFn,
 	StripToCarriers:     inactiveStripToCarriers,
 	CarrierResults:      inactiveCarrierResults,
-	MixedConform:        inactiveMixedConform,
 	ValueCarriesCarrier: inactiveValueCarriesCarrier,
 	AtUncaughtTopLevel:  inactiveAtUncaughtTopLevel,
 	AnalyseFnBody:       inactiveAnalyseFnBody,
@@ -178,13 +151,12 @@ func inactiveStripToCarriers(in []Value) []Value                        { return
 func inactiveCarrierResults(*Registry, string, *Signature, []Value, SrcPos, *Registry, bool) []Value {
 	return nil
 }
-func inactiveMixedConform(Value, *Type) bool    { return false }
 func inactiveValueCarriesCarrier(Value) bool    { return false }
 func inactiveAtUncaughtTopLevel(*Registry) bool { return false }
 func inactiveAnalyseFnBody(*Registry, string, []string, []Value, []Value, []CapturedBinding, []*Type, bool) []Value {
 	return nil
 }
-func inactiveAnalyseLoopBody(*Registry, Value, []string, []Value, bool) []Value { return nil }
+func inactiveAnalyseLoopBody(*Registry, Value, []string, []Value) []Value { return nil }
 
 // RunFnBodyAnalysis and RunLoopBodyAnalysis are the EXPORTED accessors
 // for the two body-model slots — the S1 twins of the EmitRecorder seam,
@@ -208,9 +180,8 @@ func RunFnBodyAnalysis(r *Registry, name string, paramNames []string, body []Val
 	return AnalysisImpl.AnalyseFnBody(r, name, paramNames, body, args, captures, declared, anonymous)
 }
 
-func RunLoopBodyAnalysis(r *Registry, body Value, bindNames []string, bindVals []Value,
-	provenTrips bool) []Value {
-	return AnalysisImpl.AnalyseLoopBody(r, body, bindNames, bindVals, provenTrips)
+func RunLoopBodyAnalysis(r *Registry, body Value, bindNames []string, bindVals []Value) []Value {
+	return AnalysisImpl.AnalyseLoopBody(r, body, bindNames, bindVals)
 }
 
 // NoteFnBodyPending queues a constructed fn VALUE for the end-of-pass body

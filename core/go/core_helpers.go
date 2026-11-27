@@ -205,10 +205,9 @@ func UninstallDef(r *Registry, name string) {
 // WrapperUnderName is the module-wrapper rebinding (installDef's own case)
 // as a value: a FOREIGN trivial-delegation wrapper — what `import` produces
 // for each export — bound under name is the INNER native's overloads under
-// that name, exactly as dot-access dispatches it. The compiled frame binds a
-// wrapper for a named param the same way (eng's nameFrameFns), so `(f
-// MathUtil.sqrt/v) 16.0` renders the param's name over the inner overloads
-// on both lanes (NUR123). ok is false for anything else.
+// that name, exactly as dot-access dispatches it, so `(f MathUtil.sqrt/v)
+// 16.0` renders the param's name over the inner overloads (NUR123). ok is
+// false for anything else.
 func WrapperUnderName(r *Registry, name string, fnDef FnDefInfo) (Value, bool) {
 	if !FnHomeForeign(r, &fnDef) {
 		return Value{}, false
@@ -263,7 +262,7 @@ func WrapperUnderName(r *Registry, name string, fnDef FnDefInfo) (Value, bool) {
 // consolidation). `s` is the signature; `fnDefCopy` supplies Captured;
 // `meta` is the overload identity stamped on each spliced frame's open
 // paren (the same pointer the compile boundary stores in
-// Signature.FnFrame — see eng/go/fn_frame.go).
+// Signature.FnFrame — see core/go/fn_frame.go).
 func buildFnBodyHandler(r *Registry, name string, s FnSig, fnDefCopy FnDefInfo, meta *FnFrameMeta) Handler {
 	// Computed ONCE at construction: does this body install any body-local
 	// def or construct an inner fn? A generic fn always does (it installs

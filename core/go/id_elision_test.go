@@ -10,9 +10,6 @@ import "testing"
 
 func TestIDElisionMatrix(t *testing.T) {
 	// Runtime concrete mint: elided.
-	if CheckPassActive() {
-		t.Fatal("no pass should be live at test entry")
-	}
 	if v := NewInteger(7); IDOf(&v) != "" {
 		t.Errorf("runtime concrete mint carries ID %q, want elided", IDOf(&v))
 	}
@@ -27,9 +24,6 @@ func TestIDElisionMatrix(t *testing.T) {
 	// Inside a pass: minted.
 	c := &CheckState{}
 	done := c.Begin()
-	if !CheckPassActive() {
-		t.Error("CheckPassActive must report a live pass")
-	}
 	if v := NewInteger(7); IDOf(&v) == "" {
 		t.Error("mint inside a pass must carry an ID")
 	}

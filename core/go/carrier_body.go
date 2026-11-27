@@ -3,15 +3,13 @@ package core
 // The carrier BODY RUNNERS (ADR-013, 2026-08-08 amendment): running a
 // nested body — a branch arm, a loop body, a `do`, an `if` condition —
 // through a fresh sub-engine under analysis, and reporting what it left
-// behind. Four entry points over one implementation, differing only in
-// whether the body's defs roll back (a conditional arm) or leak (`do`),
-// and whether the run raises CondBodyDepth (a condition fragment runs
-// unconditionally exactly once, so it does not).
+// behind. Three entry points over one implementation, differing only in
+// whether the body's defs roll back (a conditional arm, a speculative
+// region) or leak (`do`).
 //
 // This is core, not check, because everything it touches is core-owned:
-// the sub-engine (New), the def table (r.Defs), the checker's STATE
-// (r.Check — CheckState lives in check_state.go here), and the emit
-// recorder interface. A word library's control words need it to carry
+// the sub-engine (New), the def table (r.Defs) and the checker's STATE
+// (r.Check — CheckState lives in check_state.go here). A word library's control words need it to carry
 // their analysis half; see carrier_join.go's header.
 
 // RunCarrierBody runs a list body (a Value with Parent=TList) through a
@@ -37,7 +35,7 @@ func RunCarrierBody(r *Registry, body Value) []Value {
 // Defs.IsType skip). Branch / loop / quotation bodies keep the rollback —
 // their execution is conditional and their defs are join-managed.
 func RunCarrierBodyKeepDefs(r *Registry, body Value) []Value {
-	stk, _ := runCarrierBodyDefsAdds(r, body, true, false)
+	stk, _ := runCarrierBodyDefsAdds(r, body, true)
 	return stk
 }
 
@@ -52,95 +50,37 @@ func RunCarrierBodyKeepDefs(r *Registry, body Value) []Value {
 // pushes and pops for the same name, the net change is zero and
 // the name is not in the returned map.
 func RunCarrierBodyWithDefs(r *Registry, body Value) ([]Value, map[string]Value) {
-	stk, adds, _ := runCarrierBody(r, body, false, false)
-	return stk, adds
+	return runCarrierBodyDefsAdds(r, body, false)
 }
 
-// RunCarrierArmBody is RunCarrierBodyWithDefs for a SPLICED branch arm — an
-// `if` arm, which the interpreter splices onto its enclosing tape as a paren
-// group — reporting also the observable pending literals the run's
-// end-of-run sweep evaluated (PendingResidue). The interpreter leaves such a
-// literal pending past the arm, to be evaluated where a word takes it or
-// where the enclosing run ends; the model evaluated it at the arm, so the
-// recorder must prove nothing between could tell (NUR356).
-func RunCarrierArmBody(r *Registry, body Value) ([]Value, map[string]Value, PendingResidue) {
-	return runCarrierBody(r, body, false, false)
-}
-
-// RunCarrierCondBody is RunCarrierBodyWithDefs for an `if` CONDITION or a
-// `case` code-body scrutinee: the fragment runs unconditionally exactly
-// once BEFORE the branch decision, so it does NOT raise CondBodyDepth —
-// an in-place fn redefinition there is not path-dependent and stays
-// compilable (the paren-`do` condition twin compiles it with parity).
-// Defs still roll back keep=false-style, exactly as before.
-func RunCarrierCondBody(r *Registry, body Value) ([]Value, map[string]Value) {
-	stk, adds := runCarrierBodyDefsAdds(r, body, false, true)
-	return stk, adds
-}
-
-// RunCarrierCondBodyKeepDefs is RunCarrierCondBody WITHOUT the def rollback
-// (NUR212): an `if` condition or a `case` code-body scrutinee runs
-// unconditionally, exactly once, BEFORE the branch decision — the
-// interpreter runs it inline (a Mark/Move over the tape) — so every binding
-// it makes is REAL on both engines and stands for the arms and for
-// everything after the construct. The run therefore keeps its defs like
-// `do`'s (RunCarrierBodyKeepDefs), and its installs are ledgered like any
-// straight-line install, but it takes the branch-capture guard, not the
-// keep-defs one: the body records into the condition FRAGMENT the lowering
-// runs inline, so each install's bind twin is placed inside that fragment at
-// its own site rather than adopted after a closure call.
-func RunCarrierCondBodyKeepDefs(r *Registry, body Value) []Value {
-	stk, _ := runCarrierBodyDefsAdds(r, body, true, true)
-	return stk
-}
-
-func runCarrierBodyDefsAdds(r *Registry, body Value, keep, condFrag bool) ([]Value, map[string]Value) {
-	stk, adds, _ := runCarrierBody(r, body, keep, condFrag)
-	return stk, adds
-}
-
-// runCarrierBody is the one body runner; residue is the ArmBody run's
-// Engine.armResidue (none for a kept or condition run).
-func runCarrierBody(r *Registry, body Value, keep, condFrag bool) (stk []Value, adds map[string]Value, residue PendingResidue) {
+// runCarrierBodyDefsAdds is the one body runner.
+func runCarrierBodyDefsAdds(r *Registry, body Value, keep bool) (stk []Value, adds map[string]Value) {
 	if body.Data() == nil {
-		return nil, nil, residue
+		return nil, nil
 	}
 	elems, err := AsList(body)
 	if err != nil || elems.IsNil() {
-		return nil, nil, residue
+		return nil, nil
 	}
 
 	// Snapshot def-stack depths (all known names).
 	snapshot := r.Defs.Snapshot()
 
 	sub := New(r)
-	sub.ArmBody = !keep && !condFrag
 	// Every body through here is a NESTED region (branch / loop /
 	// quotation) — reached-conditionally by construction. Mark the depth
 	// so unconditional-only diagnostics (unconditional_raise) stay silent.
-	// A def-rolled-back body (keep=false — a branch arm or loop body) also
-	// raises CondBodyDepth: unlike `do` (keep=true, which leaks its defs
-	// unconditionally), its bindings are conditional, so an in-place fn
-	// redefinition that clobbers an enclosing overload there is unsound to
-	// compile (installDef consults CondBodyDepth to decline it). Condition/
-	// scrutinee fragments (condFrag — RunCarrierCondBody) are exempt: they
-	// run unconditionally exactly once before the branch decision, so a
-	// redefinition there is not path-dependent.
 	r.Check.NestedBodyDepth++
-	raiseCond := !keep && !condFrag
-	if raiseCond {
-		r.Check.CondBodyDepth++
-		// A rolled-back CONDITIONAL body is a speculative region: an
-		// `undef` of an enclosing binding inside it must not leak the
-		// deletion into the model (SpecUndefBlocked — the wrapped-undef FP
-		// class). keep=true (`do`) leaks by design; a condition fragment
-		// runs unconditionally, so its undefs are real on both engines.
+	if !keep {
+		// A rolled-back CONDITIONAL body (a branch arm or loop body) is a
+		// speculative region: an `undef` of an enclosing binding inside it
+		// must not leak the deletion into the model (SpecUndefBlocked — the
+		// wrapped-undef FP class). keep=true (`do`) leaks by design.
 		r.Check.PushSpecBaseline(snapshot)
 	}
 	result, err := sub.Run(elems.Elems())
-	if raiseCond {
+	if !keep {
 		r.Check.PopSpecBaseline()
-		r.Check.CondBodyDepth--
 	}
 	r.Check.NestedBodyDepth--
 	if err != nil {
@@ -154,7 +94,7 @@ func runCarrierBody(r *Registry, body Value, keep, condFrag bool) (stk []Value, 
 	// Keep-defs mode (`do` — leak fidelity): the body's bindings stay,
 	// exactly as the runtime leaves them; nothing to report.
 	if keep {
-		return result, nil, residue
+		return result, nil
 	}
 	// Collect the top of each def stack whose depth grew, then
 	// restore depths back to snapshot.
@@ -168,5 +108,5 @@ func runCarrierBody(r *Registry, body Value, keep, condFrag bool) (stk []Value, 
 			r.Defs.Truncate(k, before)
 		}
 	}
-	return result, adds, sub.armResidue
+	return result, adds
 }

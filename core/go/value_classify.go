@@ -1,9 +1,8 @@
 package core
 
 // Core value classifiers (Stage 3a of the four-piece split): pure
-// predicates over core Values and registry scope state that the compiler,
-// checker, AND interpreter all consult. Moved down from the compiler-piece
-// files — they carry no recording or emission behavior.
+// predicates over core Values and registry scope state that the checker
+// and the interpreter both consult.
 
 // materialiseMember materialises one container member and reports whether it
 // CHANGED — a stripped carrier recovered to a concrete original (different
@@ -389,10 +388,8 @@ func TypeIsFnShape(t *Type) bool {
 // baked /v reference) or a Function-typed value (carrier or not). Used to
 // keep a fn value out of the trailing-arg positions of a leading-fn apply.
 func IsFnValueResidual(v Value) bool {
-	// One body with the VM's runtime test (isAppliableFn, vm.go): the
-	// recorder's residual question and the VM's apply question are the
-	// SAME question, and post-ADR-011 both reduce to Function
-	// conformance (the payload arm covers values mid-construction).
+	// Post-ADR-011 the question reduces to Function conformance (the
+	// payload arm covers values mid-construction).
 	return IsAppliableFn(v)
 }
 
@@ -765,9 +762,9 @@ func IsInertConstMember(v Value) bool {
 
 // isDelegationFnDef reports whether a Function VALUE is a trivial-delegation
 // wrapper — EVERY own sig is a `[Word(inner)]` pass-through to an inner native
-// (a module method like rand-int / MathUtil.sqrt), safely dispatched VM-native
-// via tryNativeFnApply. A user fn carries a REAL body, so it is NOT a delegation
-// and must island instead. An anonymous lambda or a sig-less value is not one.
+// (a module method like rand-int / MathUtil.sqrt). A user fn carries a REAL
+// body, so it is NOT a delegation. An anonymous lambda or a sig-less value is
+// not one.
 func IsDelegationFnDef(fd FnDefInfo) bool {
 	sigs := fd.OwnSigs()
 	if len(sigs) == 0 {
@@ -775,94 +772,6 @@ func IsDelegationFnDef(fd FnDefInfo) bool {
 	}
 	for i := range sigs {
 		if _, ok := trivialDelegationTarget(&sigs[i]); !ok {
-			return false
-		}
-	}
-	return true
-}
-
-// IsNativeWordFnDef reports whether a Function VALUE is a parked reference to a
-// REGISTERED NATIVE word — `add/v`, `sub/v`, the value a `def m {a:add/v}` map
-// hands back through `m.a`. No own sig carries a *BoruImpl body, which is
-// exactly the shape tryNativeFnApply can run without a sub-engine: a Go
-// handler reads host state off the dispatching registry and resolves no body
-// words. Whether a matched sig actually HAS a handler is checked where it is
-// called, not here — duplicating it would add an arm nothing can reach.
-//
-// The boru-body exclusion is the whole content of the predicate, and it is the
-// same line IsDelegationFnDef draws for a different reason. A user fn's handler
-// is InstallFnDef's body-splicing wrapper, which expects the dispatch frame the
-// interpreter builds around it; calling it directly diverges. So a value with
-// ANY boru-bodied own sig stays on the island, which runs the body faithfully
-// as a nested Run.
-//
-// Measured shape (the census's largest single cluster, path-modifier.tsv):
-//
-//	add/v                      -> 9 own sigs, every one a Go handler  -> true
-//	def d fn [[n:Integer]…]  d/v -> 1 own sig, *BoruImpl              -> false
-func IsNativeWordFnDef(fd FnDefInfo) bool {
-	sigs := fd.OwnSigs()
-	if len(sigs) == 0 {
-		return false
-	}
-	for i := range sigs {
-		if _, isBoru := sigs[i].Impl.(*BoruImpl); isBoru {
-			return false
-		}
-	}
-	return true
-}
-
-// IsSelfContainedGoFnDef reports whether a Function VALUE is a SELF-CONTAINED
-// Go-implemented fn: anonymous, wrapping nothing, with at least one own
-// signature and every one of them a Go handler — the wrapper a fn-util word
-// PRODUCES (`(FnUtil.const 7)`, `(FnUtil.on gt2/v sq/v)`: goFnValue's
-// shape). Such a value dispatches on ITS OWN signatures, which is the
-// interpreter's rule for an anonymous value (execFnDefLiteral: a
-// self-contained Function value is a stable handle, compiled and dispatched
-// from its own sigs, never a fresh registry lookup).
-//
-// It is NOT IsNativeWordFnDef's parked-native class, though it passes that
-// predicate: a parked native resolves by NAME through the live registry, and
-// a self-contained value's Name is a LABEL that may coincide with a
-// registered word — fn-util's `const` wrapper shares its name with the
-// singleton-type maker — so resolving it there dispatches the wrong word.
-// Measured: `((FnUtil.const 7) 99)` compiled to 99 for the interpreter's 7
-// through exactly that lookup (eng's vmNativeApplicable / tryNativeFnApply).
-//
-// A modifier wrapper (usurp, `/u`, `/s`, `/f` — Wraps set, and usurp's
-// ArgsReversed mark) is excluded: its handler returns TOKENS for a tape,
-// and the VM re-dispatches what it wraps instead (UnwrapModifierChain). A
-// macro is data, applied only by name.
-func IsSelfContainedGoFnDef(fd FnDefInfo) bool {
-	if !fd.Anonymous || fd.Macro || fd.Wraps != nil || fd.ArgsReversed {
-		return false
-	}
-	return IsNativeWordFnDef(fd)
-}
-
-// RegisteredWordIsNative reports whether name's LIVE binding in r is native
-// through and through — it exists, and no overload carries a *BoruImpl body.
-//
-// It pairs with IsNativeWordFnDef, which asks the same question of a parked
-// VALUE. Both have to hold before that value may be dispatched straight to a Go
-// handler, because the two can disagree: a value parked while `size` was purely
-// native keeps six native sigs, and a later `def size fn [[n:Pos] …]` extension
-// (the only way the language lets a core word be rebound — see the
-// `extend_owner` guard) adds a boru overload to the NAME. A consumer that
-// resolves by name would then reach a boru body without the dispatch frame its
-// handler expects. Requiring both keeps such a word on the interpreter, which
-// runs it the way it was built to run.
-func RegisteredWordIsNative(r *Registry, name string) bool {
-	if r == nil {
-		return false
-	}
-	inner := r.Lookup(name)
-	if inner == nil {
-		return false
-	}
-	for i := range inner.Signatures {
-		if _, isBoru := inner.Signatures[i].Impl.(*BoruImpl); isBoru {
 			return false
 		}
 	}

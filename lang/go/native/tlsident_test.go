@@ -403,12 +403,8 @@ func TestFetchRejectsBadTLSMap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	before := r.Effects.Count()
 	_, fErr := tlsFetch(t, r, "https://stub.invalid/x", tlsOpt("verifiy", NewBoolean(false)))
 	if fErr == nil || !strings.Contains(fErr.Error(), `unknown option "verifiy"`) {
 		t.Fatalf("got %v, want an unknown-option error", fErr)
-	}
-	if after := r.Effects.Count(); after != before {
-		t.Errorf("effects %d → %d: a rejected option map sends nothing", before, after)
 	}
 }

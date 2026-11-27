@@ -13,12 +13,12 @@ import (
 
 // TestFixedIDStability is the regression gate for type-identity
 // FixedIDs. FixedIDs are baked into serialised Value IDs (see
-// eng/go/typetable.go::formatFixedID), so changing an existing
+// core/go/typetable.go::formatFixedID), so changing an existing
 // type's FixedID can break round-tripping for any caller that
 // persists or transports a Value ID.
 //
 // Every known *Type with a non-zero FixedID — both kernel
-// builtins (declared in eng/go/typetable.go::builtinDecls) and
+// builtins (declared in core/go/typetable.go::builtinDecls) and
 // externally-registered types (Fetch in lang/go/native, the
 // Tensor/Matrix/Vector kinds in lang/go/modules, Timeout/Interval
 // and the Time family in lang/go/native) — is checked against the
@@ -31,7 +31,7 @@ import (
 // range, then add the path → FixedID mapping below.
 func TestFixedIDStability(t *testing.T) {
 	expected := map[string]int{
-		// --- Kernel builtins (eng/go/typetable.go::builtinDecls) ---
+		// --- Kernel builtins (core/go/typetable.go::builtinDecls) ---
 		"Any":                             1,
 		"None":                            2,
 		"Scalar":                          3,

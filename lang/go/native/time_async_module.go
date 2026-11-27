@@ -17,7 +17,7 @@ package native
 // Parameterised by the per-import temporal mints (tt) — the Timeout /
 // Interval handles the timer words return carry that import's types.
 func TimeAsyncModuleNatives(tt TemporalModuleTypes) []NativeFunc {
-	return SideEffecting([]NativeFunc{
+	return []NativeFunc{
 		{
 			Name: "now",
 			Signatures: []Signature{{
@@ -35,25 +35,24 @@ func TimeAsyncModuleNatives(tt TemporalModuleTypes) []NativeFunc {
 			}},
 		},
 		{
-			Name: "timeout",
-			// The /q'd body (a code list, or an atom naming a fn) is inert data the
-			// handler stores in the Timeout instance; it bakes + CALL_NATIVE (the body
-			// still runs interpreted when the timer fires). The list body is also
-			// NoEvalArgs: the execMatch auto-eval gate keys ONLY off NoEvalArgs (not
-			// QuoteArgs), so without it `TimeUtil.timeout 1000 [body]` — dispatched
-			// via the module wrapper's trivial delegation, which runs execMatch on
+			// The /q'd body (a code list, or an atom naming a fn) is data the
+			// handler stores in the Timeout instance; it runs when the timer
+			// fires. The list body is also NoEvalArgs: the execMatch
+			// auto-eval gate keys ONLY off NoEvalArgs (not QuoteArgs), so
+			// without it `TimeUtil.timeout 1000 [body]` — dispatched via the
+			// module wrapper's trivial delegation, which runs execMatch on
 			// THIS sig — would sub-Run the body eagerly instead of storing it.
-			CompileEffect: CompileQuoteInert,
+			Name: "timeout",
 			Signatures: []Signature{
 				{Args: []*Type{TInteger, TList}, QuoteArgs: map[int]bool{1: true}, NoEvalArgs: map[int]bool{1: true}, Impl: Go(timeoutListHandler(tt)), Returns: []*Type{tt.Timeout}, BarrierPos: -1},
 				{Args: []*Type{TInteger, TAtom}, QuoteArgs: map[int]bool{1: true}, Impl: Go(timeoutWordHandler(tt)), Returns: []*Type{tt.Timeout}, BarrierPos: -1},
 			},
 		},
 		{
+			// Like timeout: the /q'd body is data stored in the Interval, and
+			// the list body is NoEvalArgs so the wrapper does not eagerly
+			// sub-Run it.
 			Name: "interval",
-			// Like timeout: the /q'd body is inert data stored in the Interval, and
-			// the list body is NoEvalArgs so the wrapper does not eagerly sub-Run it.
-			CompileEffect: CompileQuoteInert,
 			Signatures: []Signature{
 				{Args: []*Type{TInteger, TList}, QuoteArgs: map[int]bool{1: true}, NoEvalArgs: map[int]bool{1: true}, Impl: Go(intervalListHandler(tt)), Returns: []*Type{tt.Interval}, BarrierPos: -1},
 				{Args: []*Type{TInteger, TAtom}, QuoteArgs: map[int]bool{1: true}, Impl: Go(intervalAtomHandler(tt)), Returns: []*Type{tt.Interval}, BarrierPos: -1},
@@ -61,11 +60,6 @@ func TimeAsyncModuleNatives(tt TemporalModuleTypes) []NativeFunc {
 		},
 		{
 			Name: "await",
-			// The parallels list's ELEMENTS are branch code-bodies stored to run
-			// later on per-branch forks: the recorder compiles each to its own
-			// 0-param unit (the spawn pattern, per element) and runParallelBranch
-			// runs the carriers via RunUnit; declined elements interpret unchanged.
-			CompileEffect: CompileStoresBodyList,
 			Signatures: []Signature{
 				{Args: []*Type{TOptions, TList}, NoEvalArgs: map[int]bool{1: true}, Impl: Go(awaitWithOptsHandler), ReturnsFn: awaitModeMirror(), Returns: []*Type{TAny}, BarrierPos: -1},
 				{Args: []*Type{TList}, NoEvalArgs: map[int]bool{0: true}, Impl: Go(awaitDefaultHandler), ReturnsFn: awaitDefaultReturns, Returns: []*Type{TAny}, BarrierPos: -1},
@@ -78,5 +72,5 @@ func TimeAsyncModuleNatives(tt TemporalModuleTypes) []NativeFunc {
 				{Args: []*Type{tt.Interval}, Impl: Go(cancelIntervalofHandler), Returns: []*Type{}, BarrierPos: -1},
 			},
 		},
-	})
+	}
 }

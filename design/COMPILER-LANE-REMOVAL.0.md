@@ -99,28 +99,15 @@ cut: a dead arm cannot be stubbed, it has to go, which is why the removal
 reached into every handler that had a compiled twin rather than
 switching the lane off.
 
-## 4. Follow-ups — residue to prune, not to build on
+## 4. Follow-ups — the residue, and what pruned it
 
-What remains of the recording pass in core, each a candidate for deletion
-in its own change:
+The recording pass left a surface behind in core, check and lang. Three
+sweeps pruned it; what the third left standing, and why, closes the
+section.
 
-- `BeginCompilePass` and the compile-pass fields `CheckState` still
-  carries; `Registry.Effects` / `NoteEffect` / `EffectLedger`.
-- The `CompileEffect` flags on signatures (~100 registrations); the check
-  pass still reads `CompileScalarFold`, `CompileDynBody` and
-  `CompileFallbackBody`, so these go when check stops reading them.
-- `RunCarrierArmBody`, `PendingResidue`, `armResidue`, `Engine.ArmBody`,
-  `pendingResidueOf` (`pending_literal.go`); `VMDefer` / `IsVMDefer`;
-  `TypedBindSpec`, `RunTypedBind`, `RunTypedBindCons`, `RunTypeInstall`;
-  the Go-side loop drive (`Invoker`, `StartLoop`, `InvokeBody`), reached
-  now only by the fixtures; `TryRecordRecoveredUserFn` (a rename).
-- `RuntimeMirror` and `InheritObserveHooks` stay: the check pass and the
-  langspec false-positive gate read the first, and the second has coverage.
-- `lang/go/native/aliases.go` still re-exports a few names only the lane
-  needed; the `unused` lint is the guide.
-
-The first sweep with that guide (`golangci-lint run --tests=false`, which
-reports a helper only tests still reach) ran in the removal's own PR,
+The first sweep followed the `unused` lint (`golangci-lint run
+--tests=false`, which reports a helper only tests still reach) and ran in
+the removal's own PR,
 once the standalone gates were back at 100%: it deleted the thirteen core
 helpers the lane's callers had orphaned — the written-window rematch
 (`rematchWritten`, `rematchWrittenSplit`, `withGradualWrittenOperands`,
@@ -155,6 +142,73 @@ What no program could reach any more was deleted:
   concrete Boolean first; only an armed recorder used to skip it.
 - Alias wrappers that no caller named: basic's `IsSplice`, `IsNone` and
   `IsReach`, and native's `SetID`.
+
+The third sweep (2026-11-27) took the list this section used to open
+with, and then what the lint cannot see: a field something writes and
+nothing reads, a hook that only notes, an export hidden behind a
+re-export, a method only its own test calls, a parameter every caller
+passes the same constant. It was a deletion pass — no program's behaviour
+changed — and removed about 7,700 lines net, 4,200 outside the tests and
+3,500 in them:
+
+- **The compile-effect flags.** `CompileEffect`, its twenty flags and
+  `CompileDefault` are gone from every registration, and `SideEffecting`
+  with them. One capability was live — the check pass folds a comparison
+  over known scalars — and it is a plain field now: `Signature.ConstFold`
+  (`NativeFunc.ConstFold` on a word).
+- **The effect ledger**: `EffectLedger`, `Registry.Effects`, `NoteEffect`
+  and every note site in the IO words.
+- **The typed-bind and type-install runners**: `RunTypedBind`,
+  `RunTypedBindCons`, `TypedBindSpec`, `RunTypeInstall` and the forwarding
+  type it minted, `ApplyResidentBind` and its type twin, the bind-twin
+  sandbox (`binding_sandbox.go`), `TokenBodyKey`, `BodyHasReplayHazard`,
+  the module-export growth ledger and the dispatch probe.
+- **The arm and condition runners**: `RunCarrierArmBody`,
+  `RunCarrierCondBody`, `PendingResidue`, `Engine.ArmBody`, the residual
+  sweep, `BranchJoin`.
+- **The VM's error and flow marks**: `BoruError.VMDefer`, `DeferAlt` and
+  `AnchorFinal`, `IsVMDefer`, `IsInternalErr`, `Engine.FlowUnwind` and
+  the island flag, `Registry.FlowAtSet`, `Registry.NoteVMCoverage`.
+- **Function identity for the closure pool**: `NewFnIdentity`,
+  `WithFreshFnIdentity`, `FnIdentityKey`; with it `FnDispatchSigs`,
+  `UnwrapModifierChain`, `StampedModuleCall` and the forward-fit test
+  (`ForwardValueFits`).
+- **Write-only pass state**: ten `CheckState` fields (`CurCallWord`,
+  `DefsDone`, `ValuelessDoBodies`, `CondBodyDepth`, `LoopBodyDepth`,
+  `SpecArmDepth`, `UnsealedArmDepth`, `ArmResidualSweep`,
+  `SuppressedRuntimeError`, `AmbiguousGradualSplit`), the paren-placement
+  records, the engine's def-read ledger, the fn-carrier bind-depth table
+  and the `AnalysisImpl.MixedConform` slot.
+- **Constant parameters**: `PlanMatch` and `CollectCandidateScan` lost
+  `compiling`; `AnalyseLoopBody` lost `provenTrips`.
+- **In check**: `BodyFreeForFallback`, `BodyHasSentinelDeep` and its
+  callee scan, `FnPredicateOverloadHazard`,
+  `DynamicReachableOverloadCount`, `AnyNonConcreteOperand`,
+  `IsDeferredWordList`, `ShareCheckStateFrom`.
+- **In lang**: the cross-collection redirects of `each`, `fold` and
+  `scan` (a list overload handed a Map, and back), which only the
+  compiler's committed overload reached; eighteen re-exports nothing
+  named.
+- `TryRecordRecoveredUserFn` is `TryRecoverUserFn`.
+
+What the third sweep left, and why:
+
+- `StartLoop`, `InvokeBody` and `CallRegion` are the interpreter's own
+  loop and body entries. The registry `Invoker` they once ran under is
+  gone.
+- `RuntimeMirror` and `InheritObserveHooks` stay: the check pass and the
+  langspec false-positive gate read the first, and the second has
+  coverage.
+- `Engine.StepBudget`, `ArgsStack.Depth` and `CheckState.FnShapeArity`
+  have no production caller. Each is the seam a test of live behaviour
+  reads.
+- The `__pa` word is registered and nothing emits it. It is not the
+  lane's: it was the interpreter's own frame pop until 2026-10-08, and
+  the `core/spec` rows call it.
+- Commentary. The sweep reworded the comments it met that described a
+  VM, a compiled twin or an island. Several hundred comment lines across
+  core, check and lang still tell their history in the lane's words;
+  they describe no code that runs.
 
 `TagDeterminedSigs` and `TagKeyable` in `signature.go` were the VM's
 inline-cache soundness predicate. Nothing in production calls them now.

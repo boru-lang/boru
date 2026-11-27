@@ -603,10 +603,10 @@ func tuiWireReader(hub *tuiViewerHub, id int, conn net.Conn) {
 // tuiServeNatives lists the remote-tier words.
 func tuiServeNatives() []native.NativeFunc {
 	T := func(ts ...*native.Type) []*native.Type { return ts }
-	return native.SideEffecting([]native.NativeFunc{
+	return []native.NativeFunc{
 		{Name: "serve", Signatures: []native.Signature{
 			{Args: T(native.TMap, native.TMap), Impl: native.Go(tuiServeHandler), Returns: T(native.TAny),
-				ReturnsFn: tuiServeMirror(), BarrierPos: -1, CompileEffect: native.CompileStoresFn},
+				ReturnsFn: tuiServeMirror(), BarrierPos: -1},
 		}},
-	})
+	}
 }

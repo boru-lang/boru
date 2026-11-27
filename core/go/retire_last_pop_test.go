@@ -25,7 +25,9 @@ func TestMintedNodeRetiredByTheLastPop(t *testing.T) {
 	if !r.Defs.HoldsType(node) {
 		t.Fatal("the surviving level must still hold the node")
 	}
-	PopLiveBinding(r, "Big")
+	if !UninstallType(r, "Big") {
+		t.Fatal("the last pop must find a binding")
+	}
 	if got := r.Types.LookupByID(IDOf(node)); got != nil {
 		t.Fatalf("the last pop must retire the node: LookupByID = %v", got)
 	}

@@ -101,8 +101,7 @@ func sharedMutableKind(v Value) string {
 }
 
 // branchTokens returns a branch element's body tokens for either shape:
-// the raw token list (interpreted) or the BoruImpl body carried by a
-// compiled fn-value (the shape runParallelBranch unwraps via RunUnit).
+// the raw token list, or the BoruImpl body a fn value carries.
 func branchTokens(elem Value) []Value {
 	if fd, ok := elem.Data().(*core.FnDefInfo); ok {
 		for i := range fd.Signatures {

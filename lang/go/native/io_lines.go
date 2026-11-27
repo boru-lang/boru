@@ -65,15 +65,6 @@ import (
 //   - A sub-engine (Vm.run / Vm.run-sandbox) gets a fresh capability
 //     registry and the default os.Stdin, so it never shares this holder.
 //     That is isolation by construction, not by arrangement.
-//   - Reads do NOT call r.NoteEffect(), and that is a deliberate C2
-//     non-change rather than an oversight. Consuming stdin is genuinely
-//     non-idempotent, so a silent interpreter re-run after a compiled-mode
-//     bail would re-read an already-drained reader and see none where the
-//     first attempt saw a line. But no read in this package notes an effect
-//     (fileio.go's read path has none), so arming it here alone would leave
-//     the same hole for `IO.read (IO.stdin)` while changing the effect
-//     ledger's meaning for one word. Fixing it belongs to a change that
-//     covers the whole read family.
 
 // stdinLines is the single buffered reader over a registry's stdin, plus the
 // identity of the reader it wraps so a swapped r.Input is detected.
@@ -318,7 +309,7 @@ func lineReaderFor(v Value, r *Registry) (lineSource, error) {
 // ttyHandler implements IO.is-tty: is this stream a terminal?
 //
 // The word is `is-tty`, not the `tty?` of design/CLI-PROGRAMS.0.md §5. `?` is
-// rejected in a word name at registration (eng/go/word_name.go's
+// rejected in a word name at registration (core/go/word_name.go's
 // ValidateWordName), and its doc states both the rule and the replacement:
 // "the Lisp/Scheme/Ruby `?` predicate suffix is NOT allowed; predicates use
 // the `is-` prefix convention instead". It is also unlexable inside a word —
@@ -350,7 +341,7 @@ func ttyHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Val
 // that redirected a stream therefore gets the honest answer for free.
 //
 // Engine-side wrappers are unwrapped first. Every concurrency fork rewraps
-// the output writers in an core.SyncWriter (eng/go/process.go), which is a
+// the output writers in an core.SyncWriter (core/go/process.go), which is a
 // serialization detail the program never chose — without unwrapping, IO.is-tty
 // would answer FALSE for a genuine terminal inside any forked context, and
 // answer it silently.

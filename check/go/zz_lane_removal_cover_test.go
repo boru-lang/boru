@@ -17,7 +17,7 @@ import (
 	core "github.com/boru-lang/boru/core/go"
 )
 
-// lrFoldSig is an unregistered CompileScalarFold signature over nargs
+// lrFoldSig is an unregistered ConstFold signature over nargs
 // Integer params whose Go handler is f — the shape tryFoldScalarConst is
 // handed by CarrierResults, without a registry round trip.
 func lrFoldSig(nargs int, f func(args []core.Value) ([]core.Value, error)) *core.Signature {
@@ -26,8 +26,8 @@ func lrFoldSig(nargs int, f func(args []core.Value) ([]core.Value, error)) *core
 		args[i] = core.TInteger
 	}
 	return &core.Signature{
-		Args:          args,
-		CompileEffect: core.CompileScalarFold,
+		Args:      args,
+		ConstFold: true,
 		Impl: core.Go(func(a []core.Value, _ map[string]core.Value, _ []core.Value, _ *core.Registry) ([]core.Value, error) {
 			return f(a)
 		}),
@@ -43,7 +43,7 @@ func lrQuoted(elems ...core.Value) core.Value {
 
 // ─── scalar_fold.go ──────────────────────────────────────────────────
 
-// A CompileScalarFold dispatch over compile-time-known scalars runs for
+// A ConstFold dispatch over check-time-known scalars runs for
 // real and its concrete result replaces the declared-type carrier
 // (`(n eq 0)` with a const n reads as a known Boolean downstream); a
 // carrier operand keeps the declared carrier.
@@ -53,7 +53,7 @@ func TestLaneRemovalScalarFoldReplacesDeclaredCarrier(t *testing.T) {
 			Name: "lreq",
 			Signatures: []core.Signature{{
 				Args: []*core.Type{core.TInteger, core.TInteger}, Returns: []*core.Type{core.TBoolean},
-				BarrierPos: -1, CompileEffect: core.CompileScalarFold,
+				BarrierPos: -1, ConstFold: true,
 				Impl: core.Go(func(a []core.Value, _ map[string]core.Value, _ []core.Value, _ *core.Registry) ([]core.Value, error) {
 					x, _ := core.AsInteger(a[0])
 					y, _ := core.AsInteger(a[1])
@@ -99,7 +99,7 @@ func TestLaneRemovalScalarFoldGuards(t *testing.T) {
 	one, two := core.NewInteger(1), core.NewInteger(2)
 
 	plain := lrFoldSig(2, func(a []core.Value) ([]core.Value, error) { return []core.Value{a[1]}, nil })
-	plain.CompileEffect = 0
+	plain.ConstFold = false
 	noEval := lrFoldSig(2, func(a []core.Value) ([]core.Value, error) { return []core.Value{a[1]}, nil })
 	noEval.NoEvalArgs = map[int]bool{0: true}
 	for name, c := range map[string]struct {
@@ -306,7 +306,7 @@ func TestLaneRemovalLoopJoinSkipsNarrowingOnlyAdd(t *testing.T) {
 			}, core.RunInCheck()),
 		}},
 	})
-	AnalyseLoopBody(r, core.NewList([]core.Value{core.NewWord("lrrefq")}), nil, nil, false)
+	AnalyseLoopBody(r, core.NewList([]core.Value{core.NewWord("lrrefq")}), nil, nil)
 	if d := r.Defs.Depth("lrnq"); d != 1 {
 		t.Fatalf("a narrowing-only body add is not re-pushed after the loop: depth = %d, want 1", d)
 	}
@@ -328,7 +328,7 @@ func TestLaneRemovalLoopBindNameDefNotJoined(t *testing.T) {
 		core.NewWord("pushq"), core.NewWord("lraccq"), core.NewInteger(7),
 		core.NewWord("pushq"), core.NewWord("lrfreshq"), core.NewInteger(3),
 	})
-	AnalyseLoopBody(r, body, []string{"lriq"}, []core.Value{core.NewCarrier(core.TInteger)}, true)
+	AnalyseLoopBody(r, body, []string{"lriq"}, []core.Value{core.NewCarrier(core.TInteger)})
 	if got, ok := r.Defs.Top("lriq"); !ok || !core.IsConcrete(&got) || core.IDOf(&got) != core.IDOf(&outer) {
 		t.Errorf("the pre-loop binding of the loop's own bind name survives untouched, got %#v", got)
 	}
@@ -372,7 +372,7 @@ func TestLaneRemovalLoopSpecUndefReRounds(t *testing.T) {
 		defer r.Check.Begin()()
 		r.Defs.Push("lrk", core.NewInteger(5))
 		body := core.NewList([]core.Value{core.NewWord("lrundefq"), core.NewWord("lrk")})
-		AnalyseLoopBody(r, body, []string{"lri"}, []core.Value{core.NewCarrier(core.TInteger)}, true)
+		AnalyseLoopBody(r, body, []string{"lri"}, []core.Value{core.NewCarrier(core.TInteger)})
 		if undef {
 			if k, ok := r.Defs.Top("lrk"); !ok || core.IsConcrete(&k) {
 				t.Errorf("the speculative undef keeps the binding as a carrier, got %#v", k)

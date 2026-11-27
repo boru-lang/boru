@@ -38,21 +38,21 @@ func (f FlowCtrl) String() string {
 	}
 }
 
-// HoldFlowAt records where the run that let the pending signal out stood —
-// pos, and whether it stood on a token at all (set) — unless an inner run
-// already holds it (Registry.FlowAtHeld): the innermost position is the one
-// the `outside loop` report points at (NUR355, NUR358).
-func (r *Registry) HoldFlowAt(pos SrcPos, set bool) {
+// HoldFlowAt records where the run that let the pending signal out stood
+// (the zero position when it stood on no token) unless an inner run already
+// holds it (Registry.FlowAtHeld): the innermost position is the one the
+// `outside loop` report points at (NUR355, NUR358).
+func (r *Registry) HoldFlowAt(pos SrcPos) {
 	if r.FlowAtHeld {
 		return
 	}
-	r.FlowAt, r.FlowAtSet, r.FlowAtHeld = pos, set, true
+	r.FlowAt, r.FlowAtHeld = pos, true
 }
 
 // TakeFlow clears the pending signal and the position held with it.
 func (r *Registry) TakeFlow() {
 	r.FlowCtrl = FlowNone
-	r.FlowAt, r.FlowAtSet, r.FlowAtHeld = SrcPos{}, false, false
+	r.FlowAt, r.FlowAtHeld = SrcPos{}, false
 }
 
 // RaiseFlowOutsideLoop takes the pending signal and returns the `<ctrl>

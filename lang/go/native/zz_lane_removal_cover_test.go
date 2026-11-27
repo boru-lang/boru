@@ -12,36 +12,6 @@ import (
 // a registry that never registered a hook. Every negative row has its
 // positive twin beside it, per lang/go/CLAUDE.md.
 
-// The cross-collection redirects (collIsConcreteList): a map overload of
-// fold / scan handed a concrete LIST delegates to the list handler, so the
-// one handler drives either shape. The matcher never routes a List to a Map
-// signature, so the redirect is driven directly, as its each twin is.
-func TestMapIterHandlersRedirectAConcreteList(t *testing.T) {
-	r := w9Reg(t)
-	drive := w9Driven(r)
-	xs := w9List(NewInteger(1), NewInteger(2), NewInteger(3))
-	add := w9List(NewWord("add"))
-
-	out, err := drive(foldMapInitHandler([]Value{add, xs, NewInteger(10)}, nil, nil, r))
-	if err != nil || len(out) != 1 || out[0].String() != "16" {
-		t.Fatalf("fold with a seed over a list: %v / %v, want 16", out, err)
-	}
-	out, err = drive(foldMapNoInitHandler([]Value{add, xs}, nil, nil, r))
-	if err != nil || len(out) != 1 || out[0].String() != "6" {
-		t.Fatalf("fold over a list: %v / %v, want 6", out, err)
-	}
-	out, err = drive(scanMapHandler([]Value{add, xs}, nil, nil, r))
-	if err != nil || len(out) != 1 || out[0].String() != "[1 3 6]" {
-		t.Fatalf("scan over a list: %v / %v, want [1 3 6]", out, err)
-	}
-	// The map shape stays on the map path.
-	m := w9Map("a", NewInteger(1), "b", NewInteger(2))
-	out, err = drive(foldMapInitHandler([]Value{add, m, NewInteger(10)}, nil, nil, r))
-	if err != nil || len(out) != 1 || out[0].String() != "13" {
-		t.Fatalf("fold with a seed over a map: %v / %v, want 13", out, err)
-	}
-}
-
 // requireConcreteMap refuses a concrete value that is neither collection
 // with the dispatcher's own signature_error; a carrier keeps the word's
 // error, and a real map passes.

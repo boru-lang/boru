@@ -186,8 +186,7 @@ func fixForReturnsFn(args []core.Value, r *core.Registry) []core.Value {
 		}
 	}
 
-	provenTrips := staticCount >= 1
-	stk := check.AnalyseLoopBody(r, body, []string{"i"}, []core.Value{iter}, provenTrips)
+	stk := check.AnalyseLoopBody(r, body, []string{"i"}, []core.Value{iter})
 	out := core.NewCarrier(core.TList)
 	if len(stk) > 0 {
 		top := stk[len(stk)-1]
@@ -293,7 +292,6 @@ func registerEngSpecCallable(r *core.Registry) {
 			NoEvalArgs: map[int]bool{0: true},
 			Impl:       core.Go(fixDoHandler),
 			ReturnsFn:  fixDoReturnsFn, BarrierPos: -1,
-			CompileEffect: core.CompileFallbackBody,
 		}},
 	})
 	r.RegisterNativeFunc(core.NativeFunc{
@@ -303,7 +301,6 @@ func registerEngSpecCallable(r *core.Registry) {
 			NoEvalArgs: map[int]bool{0: true},
 			Impl:       core.Go(fixDoHandler),
 			ReturnsFn:  fixDoReturnsFn, BarrierPos: -1,
-			CompileEffect: core.CompileFallbackBody | core.CompileDynBody,
 		}},
 	})
 }
@@ -404,8 +401,7 @@ func fixForRangeReturnsFn(args []core.Value, r *core.Registry) []core.Value {
 			}
 		}
 	}
-	provenTrips := staticBounds && staticCount >= 1
-	stk := check.AnalyseLoopBody(r, body, []string{"i"}, []core.Value{iter}, provenTrips)
+	stk := check.AnalyseLoopBody(r, body, []string{"i"}, []core.Value{iter})
 	out := core.NewCarrier(core.TList)
 	if len(stk) > 0 {
 		top := stk[len(stk)-1]
@@ -446,11 +442,10 @@ func registerEngSpecBaking(r *core.Registry) {
 	r.RegisterNativeFunc(core.NativeFunc{
 		Name: "bakefnq",
 		Signatures: []core.Signature{{
-			Args:          []*core.Type{core.TFunction},
-			Impl:          core.Go(fixBakeFnHandler),
-			Returns:       []*core.Type{core.TAny},
-			BarrierPos:    -1,
-			CompileEffect: core.CompileStoresFn,
+			Args:       []*core.Type{core.TFunction},
+			Impl:       core.Go(fixBakeFnHandler),
+			Returns:    []*core.Type{core.TAny},
+			BarrierPos: -1,
 		}},
 	})
 	r.RegisterNativeFunc(core.NativeFunc{
@@ -460,7 +455,6 @@ func registerEngSpecBaking(r *core.Registry) {
 			NoEvalArgs: map[int]bool{0: true},
 			Impl:       core.Go(fixDoHandler),
 			ReturnsFn:  fixDoReturnsFn, BarrierPos: -1,
-			CompileEffect: core.CompileStoresBody,
 		}},
 	})
 }
@@ -511,8 +505,7 @@ func fixEachReturnsFn(args []core.Value, r *core.Registry) []core.Value {
 // word (quotation and Function forms).
 func registerEngSpecHigherOrder(r *core.Registry) {
 	r.RegisterNativeFunc(core.NativeFunc{
-		Name:          "eachq",
-		CompileEffect: core.CompileFallbackBody,
+		Name: "eachq",
 		Signatures: []core.Signature{
 			{
 				Args:       []*core.Type{core.TList, core.TList},

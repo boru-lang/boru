@@ -63,7 +63,6 @@ func BuildCliModule(parent *native.Registry) (native.ModuleDesc, error) {
 	modReg.Output = parent.Output
 	modReg.ErrOutput = parent.ErrOutput
 	modReg.Input = parent.Input
-	modReg.Effects = parent.Effects
 	modReg.InheritObserveHooks(parent)
 	// Coverage tagging (coverage.go): cli's fn bodies run on this registry, so
 	// a coverage run attributes their executed rows to "boru:cli", and

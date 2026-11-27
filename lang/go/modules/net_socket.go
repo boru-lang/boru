@@ -921,7 +921,7 @@ func netAddrMirror(word string, listening bool, result *native.Type) native.Retu
 // socketNatives lists the Tier-1 words BuildNetModule registers.
 func socketNatives() []native.NativeFunc {
 	T := func(ts ...*native.Type) []*native.Type { return ts }
-	return native.SideEffecting([]native.NativeFunc{
+	return []native.NativeFunc{
 		{Name: "listen", Signatures: []native.Signature{
 			{Args: T(native.TMap), Impl: native.Go(listenHandler), Returns: T(TListener),
 				ReturnsFn: netAddrMirror("listen", true, TListener), BarrierPos: -1},
@@ -936,7 +936,7 @@ func socketNatives() []native.NativeFunc {
 		}},
 		{Name: "serve-raw", Signatures: []native.Signature{
 			{Args: T(native.TMap, native.TAny), Impl: native.Go(serveRawHandler), Returns: T(TListener),
-				BarrierPos: -1, CompileEffect: native.CompileStoresFn},
+				BarrierPos: -1},
 		}},
 		{Name: "recv", Signatures: []native.Signature{
 			{Args: T(TSocket, native.TInteger, native.TMap), Impl: native.Go(recvHandler), Returns: T(native.TBytes), BarrierPos: -1},
@@ -975,5 +975,5 @@ func socketNatives() []native.NativeFunc {
 			// bind reads its real port here).
 			{Args: T(TListener), Impl: native.Go(addrHandler), Returns: T(native.TMap), BarrierPos: -1},
 		}},
-	})
+	}
 }

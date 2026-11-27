@@ -120,11 +120,9 @@ func usurpOver(orig Value, fnDef FnDefInfo) Value {
 		}
 		// A Go re-dispatch wrapper: it re-dispatches the ORIGINAL (which carries
 		// its own frame) via a Go handler, so it is a GoImpl — replacing any
-		// inherited boru impl. RunInCheck lets the carrier compiler step the
-		// re-dispatch and compile the original call directly — `usurp (valof f) a
-		// b` lowers exactly like `f b a` — instead of declining the opaque
-		// wrapper dispatch. Soundness rides the differential (the compiled
-		// re-dispatch is byte-identical to the runtime one).
+		// inherited boru impl. RunInCheck lets the check pass step the
+		// re-dispatch and analyse the original call directly — `usurp (valof f)
+		// a b` is checked exactly like `f b a`.
 		rev.Impl = Go(usurpDispatchHandler(orig, origBarrier), RunInCheck())
 		NormalizeSig(&rev)
 		wrapped = append(wrapped, rev)
@@ -135,16 +133,6 @@ func usurpOver(orig Value, fnDef FnDefInfo) Value {
 		Signatures:     wrapped,
 		MaxForwardArgs: calcMaxForwardArgs(wrapped),
 		Registry:       fnDef.Registry,
-		// The reversal above is invisible to any later inspection of the
-		// value — same Name, and for a HOMOGENEOUS sig the same param types
-		// in the same order (`sub(Number, Number)` reversed is itself). Mark
-		// it so a consumer that would otherwise dispatch through the wrapped
-		// word's own live binding can decline instead of dropping the swap.
-		ArgsReversed: true,
-		// …and what it wraps, so a consumer WITHOUT a tape can perform the
-		// re-dispatch itself rather than stepping the handler's tokens.
-		Wrap:  WrapReverse,
-		Wraps: &orig,
 	})
 }
 
@@ -200,10 +188,9 @@ func rebarrierOver(orig Value, fnDef FnDefInfo, stack bool) Value {
 		}
 		// A Go re-dispatch wrapper (see UsurpFunction): replaces any inherited
 		// boru impl with a GoImpl. Like usurp, running it in CHECK mode lets the
-		// carrier compiler step the re-dispatch and compile the original call
-		// directly — `forward-args f a b` / `a b stack-args f` lower exactly like
-		// the plain `f` call — instead of declining the opaque wrapper. Soundness
-		// rides the differential.
+		// check pass step the re-dispatch and analyse the original call
+		// directly — `forward-args f a b` / `a b stack-args f` are checked
+		// exactly like the plain `f` call.
 		ws.Impl = Go(rebarrierDispatchHandler(orig, origBarrier), RunInCheck())
 		NormalizeSig(&ws)
 		wrapped = append(wrapped, ws)
@@ -214,17 +201,6 @@ func rebarrierOver(orig Value, fnDef FnDefInfo, stack bool) Value {
 		Signatures:     wrapped,
 		MaxForwardArgs: calcMaxForwardArgs(wrapped),
 		Registry:       fnDef.Registry,
-		// A wrapper composes: if the value it wraps already reverses its
-		// args (usurp), this one still does, and the marker has to survive
-		// or a consumer downstream sees an unmarked reversal. Measured:
-		// `force-arity 2 (usurp (m.s)) 10 3` answered -7 against the
-		// interpreter's 7 while this line was missing.
-		ArgsReversed: fnDef.ArgsReversed,
-		// A rebarrier leaves the arg-to-param mapping alone — the barrier is
-		// spent once the args are collected — so a tape-less consumer can
-		// dispatch Wraps with the args UNCHANGED.
-		Wrap:  WrapRebarrier,
-		Wraps: &orig,
 	})
 }
 
@@ -256,9 +232,9 @@ func forceArityOver(orig Value, fnDef FnDefInfo, n int) Value {
 		BarrierPos: n, // all-forward: caller writes  f a b …
 		// Re-dispatch the original respecting ITS barrier (not always forward) so
 		// force-arity composes over stack-form wrappers (e.g. force-arity over
-		// stack-args). Re-dispatch in check mode so the carrier compiler compiles
-		// the original call directly (`force-arity 2 f a b` lowers like `f a b`),
-		// mirroring usurp / rebarrier. Soundness rides the differential.
+		// stack-args). Re-dispatch in check mode so the check pass analyses
+		// the original call directly (`force-arity 2 f a b` like `f a b`),
+		// mirroring usurp / rebarrier.
 		Impl: Go(rebarrierDispatchHandler(orig, funcSigBarrier(NewFunction(fnDef), n)), RunInCheck()),
 	}
 	NormalizeSig(&sig)
@@ -267,17 +243,6 @@ func forceArityOver(orig Value, fnDef FnDefInfo, n int) Value {
 		Signatures:     []Signature{sig},
 		MaxForwardArgs: n,
 		Registry:       fnDef.Registry,
-		// A wrapper composes: if the value it wraps already reverses its
-		// args (usurp), this one still does, and the marker has to survive
-		// or a consumer downstream sees an unmarked reversal. Measured:
-		// `force-arity 2 (usurp (m.s)) 10 3` answered -7 against the
-		// interpreter's 7 while this line was missing.
-		ArgsReversed: fnDef.ArgsReversed,
-		// A rebarrier leaves the arg-to-param mapping alone — the barrier is
-		// spent once the args are collected — so a tape-less consumer can
-		// dispatch Wraps with the args UNCHANGED.
-		Wrap:  WrapRebarrier,
-		Wraps: &orig,
 	})
 }
 

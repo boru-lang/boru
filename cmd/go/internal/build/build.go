@@ -77,20 +77,15 @@ func (*cmd) Run(args []string, _ io.Reader, stdout, stderr io.Writer) int {
 	srcPath := pathutil.Expand(positionals[0])
 
 	// Parse --options eagerly so a typo fails at build time, not when the
-	// produced binary runs — and keep the parsed value: the compile preflight
-	// below must answer the compile question under the SAME engine options
-	// the artifact bakes (buildrt.Main applies this blob at launch). A
-	// preflight on default options would pass a program that the baked
-	// `steps:` ceiling makes uncompilable, and ship exactly the silent
-	// fallback the gate exists to close (a Codex review of #471).
-	preflightOpts := lang.Options{Registry: *registry, Seed: seed}
+	// produced binary runs (buildrt.Main applies this blob at launch).
+	parsedOpts := lang.Options{Registry: *registry, Seed: seed}
 	if *optionsStr != "" {
 		m, err := lang.ParseOptions(*optionsStr)
 		if err != nil {
 			fmt.Fprintf(stderr, "error: %s\n", err)
 			return 1
 		}
-		if err := lang.ApplyOptions(&preflightOpts, m); err != nil {
+		if err := lang.ApplyOptions(&parsedOpts, m); err != nil {
 			fmt.Fprintf(stderr, "error: %s\n", err)
 			return 1
 		}

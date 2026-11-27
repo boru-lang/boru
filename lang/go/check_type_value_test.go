@@ -176,7 +176,7 @@ func TestMiniLangRegisterCheck(t *testing.T) {
 
 // A fn whose analysed body residual is PROVABLY DISJOINT from its declared
 // return type is flagged at check time with the byte-identical runtime
-// type_error (checkBodyReturnConformance, eng/go/core_helpers.go) — the
+// type_error (checkBodyReturnConformance, core/go/core_helpers.go) — the
 // check-mode mirror of the RET check. Only impossibility flags; every
 // value-dependent or under-modeled shape stays with the runtime check.
 func TestDeclaredReturnBodyConformance(t *testing.T) {

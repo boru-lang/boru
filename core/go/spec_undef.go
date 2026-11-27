@@ -73,20 +73,3 @@ func GeneraliseSpecUndef(r *Registry, name string) bool {
 	r.Check.SpecUndefGen++
 	return true
 }
-
-// PopLiveBinding pops name's live top binding at RUN time — an `undef`
-// outside the ledger: the placed twin of a speculative undef
-// (OpUndefDynScope), a resident teardown's per-element pop
-// (ApplyResidentBind) and a replayed undef twin (ApplyBindTwin) all take
-// it. Retirement mirrors basic's undef: only a node THIS binding minted;
-// an adopted alias node stays in the lattice. A missing binding is a
-// no-op, as the interpreter's `undef` of an unbound name is (a loop's
-// second iteration over an already-popped name).
-func PopLiveBinding(r *Registry, name string) {
-	if r == nil {
-		return
-	}
-	if e, ok := r.Defs.PopEntry(name); ok && e.TypeDef != nil && e.Minted && !r.Defs.HoldsType(e.TypeDef) {
-		r.Types.Retire(e.TypeDef) // the last pop retires the node (NUR135)
-	}
-}

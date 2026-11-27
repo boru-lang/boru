@@ -79,23 +79,6 @@ func TestModuleGateCallBoruArm(t *testing.T) {
 	}
 }
 
-func TestStampedModuleCallNilAndNonFunction(t *testing.T) {
-	// The compiled CALL_USER arm calls this with whatever registry the
-	// unit carries; a nil one has no stamp to read.
-	if id := StampedModuleCall(nil, "w"); id != nil {
-		t.Errorf("a nil registry has no stamp, got %+v", id)
-	}
-	r, err := NewRegistry()
-	if err != nil {
-		t.Fatalf("NewRegistry: %v", err)
-	}
-	// A name bound to a non-fn value contributes no stamp.
-	r.Defs.Push("zz-val", NewInteger(1))
-	if id := StampedModuleCall(r, "zz-val"); id != nil {
-		t.Errorf("a value binding has no stamp, got %+v", id)
-	}
-}
-
 // The legacy pure-stack dispatch path for a boru-defined fn VALUE
 // (ExecFnDefSigStackMatch): a module fn reaching it carries the stamped
 // identity on its own FnSig, and the gate must fire there too — this is

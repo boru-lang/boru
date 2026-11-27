@@ -23,22 +23,20 @@ import (
 
 // *Type aliases — every exported type from core is re-exported here.
 type (
-	BranchJoin         = core.BranchJoin
-	CodeEffectInfo     = core.CodeEffectInfo
-	DeqIndex           = core.DeqIndex
-	BoruError          = core.BoruError
-	RenderOpts         = core.RenderOpts
-	DiagSpan           = core.DiagSpan
-	DiagSuggestion     = core.DiagSuggestion
-	CalDurationData    = core.CalDurationData
-	CheckDiagnostic    = core.CheckDiagnostic
-	CheckFullStackFunc = core.CheckFullStackFunc
-	CheckSeverity      = core.CheckSeverity
-	CheckState         = core.CheckState
-	ChildTypeInfo      = core.ChildTypeInfo
-	ReachInfo          = core.ReachInfo
-	ReachSeg           = core.ReachSeg
-	ChildEntry         = core.ChildEntry
+	CodeEffectInfo  = core.CodeEffectInfo
+	DeqIndex        = core.DeqIndex
+	BoruError       = core.BoruError
+	RenderOpts      = core.RenderOpts
+	DiagSpan        = core.DiagSpan
+	DiagSuggestion  = core.DiagSuggestion
+	CalDurationData = core.CalDurationData
+	CheckDiagnostic = core.CheckDiagnostic
+	CheckSeverity   = core.CheckSeverity
+	CheckState      = core.CheckState
+	ChildTypeInfo   = core.ChildTypeInfo
+	ReachInfo       = core.ReachInfo
+	ReachSeg        = core.ReachSeg
+	ChildEntry      = core.ChildEntry
 	// Sealed Payload variants (post Step 5).
 	Payload              = core.Payload
 	IntPayload           = core.IntPayload
@@ -91,7 +89,6 @@ type (
 	GoImpl               = core.GoImpl   // native / internal Go-handler implementation
 	BoruImpl             = core.BoruImpl // boru body implementation (module ref / lambda / installed fn)
 	GoOpt                = core.GoOpt    // optional dispatch knob for Go(...)
-	CompileEffect        = core.CompileEffect
 	ClassInstanceInfo    = core.ClassInstanceInfo
 	ClassTypeInfo        = core.ClassTypeInfo
 	ResourceInstanceInfo = core.ResourceInstanceInfo
@@ -119,7 +116,6 @@ type (
 	TableData            = core.TableData
 	TableTypeInfo        = core.TableTypeInfo
 	TimeoutInfo          = core.TimeoutInfo
-	TraceCallback        = core.TraceCallback
 	Type                 = core.Type
 	Value                = core.Value
 	WordInfo             = core.WordInfo
@@ -156,7 +152,6 @@ var (
 	TInteger      = core.TInteger
 	TBigInteger   = core.TBigInteger
 	TBigDecimal   = core.TBigDecimal
-	TInternal     = core.TInternal
 	TInterpString = core.TInterpString
 	// TInterval moved to lang/go/engine/native_misc.go (Step 8).
 	TList         = core.TList
@@ -179,8 +174,6 @@ var (
 	TClass          = core.TClass
 	TSurface        = core.TSurface
 	TSelf           = core.TSelf
-	TTypeParam      = core.TTypeParam
-	TGenSpec        = core.TGenSpec
 	TGenParam       = core.TGenParam
 	TIdeal          = core.TIdeal
 	TOpenParen      = core.TOpenParen
@@ -235,35 +228,12 @@ const (
 
 // Engine-level constants.
 const (
-	MaxArgs                = core.MaxArgs
-	DefaultCheckStepBudget = core.DefaultCheckStepBudget
+	MaxArgs = core.MaxArgs
 
 	DepGT  = core.DepGT
 	DepGTE = core.DepGTE
 	DepLT  = core.DepLT
 	DepLTE = core.DepLTE
-
-	// Compile-effect classifications (core.CompileEffect) for the bytecode
-	// recorder — declared on a Signature instead of a name-keyed eng table.
-	CompileDefault            = core.CompileDefault
-	CompileReadsFn            = core.CompileReadsFn
-	CompileStoresFn           = core.CompileStoresFn
-	CompileModuleFold         = core.CompileModuleFold
-	CompileIslandPure         = core.CompileIslandPure
-	CompileScalarFold         = core.CompileScalarFold
-	CompileFallbackBody       = core.CompileFallbackBody
-	CompileQuoteInert         = core.CompileQuoteInert
-	CompileQuoteKey           = core.CompileQuoteKey
-	CompileDiverges           = core.CompileDiverges
-	CompileValueDiverges      = core.CompileValueDiverges
-	CompileStoresBody         = core.CompileStoresBody
-	CompileStoresBodyList     = core.CompileStoresBodyList
-	CompileFnHandlerStrict    = core.CompileFnHandlerStrict
-	CompileResteps            = core.CompileResteps
-	CompileOwnLowering        = core.CompileOwnLowering
-	CompileRunsBodyIsolated   = core.CompileRunsBodyIsolated
-	CompileRunsBodyOnRegistry = core.CompileRunsBodyOnRegistry
-	CompileDynBody            = core.CompileDynBody
 )
 
 // Flow-control signal values exposed by the engine. These travel
@@ -313,7 +283,6 @@ var (
 	IsResourceType           = core.IsResourceType
 	IsFlatInstance           = core.IsFlatInstance
 	IsOptionsType            = core.IsOptionsType
-	PendingLiteralSteps      = core.PendingLiteralSteps
 	NewReach                 = core.NewReach
 	NewReachFromKeys         = core.NewReachFromKeys
 	ApplyReach               = core.ApplyReach
@@ -390,7 +359,6 @@ var (
 	GenerateID               = core.GenerateID
 	GenerateObjectTypeID     = core.GenerateObjectTypeID
 	BeginIDMintScope         = core.BeginIDMintScope
-	ResetModuleExportGrowth  = core.ResetModuleExportGrowth
 	MakeClassFieldValue      = core.MakeClassFieldValue
 	MakeClassInstance        = core.MakeClassInstance
 	MakeResource             = core.MakeResource
@@ -407,22 +375,18 @@ var (
 	// Owner sentinels for the ownership-anchored signature rules
 	// (design/OPEN-WORDS.1.md §4).
 	OwnerKernel              = core.OwnerKernel
-	OwnerLang                = core.OwnerLang
 	OwnerProgram             = core.OwnerProgram
 	NewPathonFromString      = core.NewPathonFromString
 	IsCapitalisedName        = core.IsCapitalisedName
 	IsModuleFamilyValue      = core.IsModuleFamilyValue
 	IsSteplessWindow         = core.IsSteplessWindow
 	IsFnValueResidual        = core.IsFnValueResidual
-	IsGenMemoName            = core.IsGenMemoName
 	IsRecordShape            = core.IsRecordShape
 	JoinCarrierStacks        = core.JoinCarrierStacks
 	JoinCarriers             = core.JoinCarriers
 	FoldVariadicArms         = core.FoldVariadicArms
 	MakeBoruError            = core.MakeBoruError
 	ExitCode                 = core.ExitCode
-	IsInternalError          = core.IsInternalError
-	IsVMDefer                = core.IsVMDefer
 	NewExitError             = core.NewExitError
 	RenderCheckDiagnostic    = core.RenderCheckDiagnostic
 	MapFieldBoolean          = core.MapFieldBoolean
@@ -436,10 +400,7 @@ var (
 	ApplyGuardNarrowing      = core.ApplyGuardNarrowing
 	ApplyComplementNarrowing = core.ApplyComplementNarrowing
 	RunCarrierBodyWithDefs   = core.RunCarrierBodyWithDefs
-	RunCarrierArmBody        = core.RunCarrierArmBody
-	RunCarrierCondBody       = core.RunCarrierCondBody
 	InstallJoinedDefs        = core.InstallJoinedDefs
-	InstallTakenArmDefs      = core.InstallTakenArmDefs
 	New                      = core.New
 	RunPooled                = core.RunPooled
 	RunPooledTop             = core.RunPooledTop
@@ -474,7 +435,6 @@ var (
 	// so the engine's compile-pass undefined-word branches can consult it.
 	NoteCheckFnCarrierBind   = core.NoteCheckFnCarrierBind
 	CheckFnCarrierBind       = core.CheckFnCarrierBind
-	CheckFnCarrierBindDepth  = core.CheckFnCarrierBindDepth
 	CheckFnCarrierBoundName  = core.CheckFnCarrierBoundName
 	DropCheckFnCarrierBind   = core.DropCheckFnCarrierBind
 	ResetCheckFnCarrierBinds = core.ResetCheckFnCarrierBinds
@@ -592,17 +552,16 @@ var (
 	WithPos                = core.WithPos
 	WithPosAt              = core.WithPosAt
 	DynStackShuffleWords   = core.DynStackShuffleWords
-	// `make` helpers, ported alongside the make word in eng/go/core_make.go.
+	// `make` helpers, ported alongside the make word in core/go/core_make.go.
 	ResolveFieldType = core.ResolveFieldType
 
 	// `get`/`set` helper, ported with those words to eng/go/core_storage.go.
 
 	// The kept `if` condition run (NUR212's follow-up).
-	RunCarrierCondBodyKeepDefs = core.RunCarrierCondBodyKeepDefs
-	GeneraliseSpecUndef        = core.GeneraliseSpecUndef
+	GeneraliseSpecUndef = core.GeneraliseSpecUndef
 )
 
-// Sugar roles (eng/go/sugar.go — ADR-012 rule 3, 2026-08-04
+// Sugar roles (core/go/sugar.go — ADR-012 rule 3, 2026-08-04
 // amendment): the keys bindSugarWords binds boru's word names to.
 const (
 	SugarUsurp       = core.SugarUsurp
@@ -615,7 +574,6 @@ const (
 	SugarTypeBound   = core.SugarTypeBound
 	SugarGenHead     = core.SugarGenHead
 	SugarGenApply    = core.SugarGenApply
-	SugarGenDefault  = core.SugarGenDefault
 )
 
 // Re-exports of functions that read a Value through a pointer. They are

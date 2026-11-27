@@ -17,7 +17,7 @@ import (
 // The algorithm primitives (MakeHandler, MakeScalarHandler,
 // MakeScalarOptsHandler, MakeObjHandler, MakeWithOpts, plus
 // MakeObject / MakeConvert / MakeFieldValue / ResolveFieldType) live
-// in eng/go/core_make.go; this file owns the word name, signature
+// in core/go/core_make.go; this file owns the word name, signature
 // shape, and dispatch wiring.
 // makeObjReturns is the class/Resource make sig's check-mode result:
 // ReturnsFreshInstance(0) plus the schema-decidable construction validation
@@ -104,8 +104,7 @@ func makeNodeReturns() ReturnsFunc {
 
 var makeNatives = []NativeFunc{
 	{
-		Name:          "make",
-		CompileEffect: CompileIslandPure,
+		Name: "make",
 
 		Signatures: []Signature{
 			// make is an IMPURE constructor: each call mints a fresh

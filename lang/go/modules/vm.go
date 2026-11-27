@@ -75,7 +75,7 @@ func BuildVMModule(parent *native.Registry) (native.ModuleDesc, error) {
 // as a closure-returning function because the handlers need to
 // reference parent for policy / parser access.
 func vmNatives(parent *native.Registry) []native.NativeFunc {
-	return native.SideEffecting([]native.NativeFunc{
+	return []native.NativeFunc{
 		{
 			Name: "vm-run",
 			Signatures: []native.Signature{{
@@ -213,7 +213,7 @@ func vmNatives(parent *native.Registry) []native.NativeFunc {
 				BarrierPos: -1,
 			}},
 		},
-	}, "vm-parse", "vm-check")
+	}
 }
 
 // vmCheckReportReturns surfaces the FIXED report shape the word always

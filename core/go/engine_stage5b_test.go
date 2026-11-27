@@ -11,7 +11,7 @@ package core
 // recordParenLeadFnApply), the RecorderSkipper hook,
 // EffectiveResolved scratch reuse, MatchSignature arms, and the
 // compile-mode dispatch-trap recorder (TryRecordUnmatchedDispatchTrap,
-// TryRecordRecoveredUserFn).
+// TryRecoverUserFn).
 
 import (
 	"errors"
@@ -468,15 +468,31 @@ func TestS5BExitWithFlowCtrl(t *testing.T) {
 		t.Fatalf("want break-outside-loop, got %v", err)
 	}
 
-	// VM island: frames unwind and nothing is returned (line 6975).
+	// A container literal's element run: frames unwind, nothing is returned
+	// and the signal stays set for the literal's evaluator.
 	r2 := covRegistry(t, nil)
 	e2 := NewTop(r2)
 	e2.IsTop = false
-	e2.FlowUnwind = true
+	e2.ContainerRun = true
 	e2.Tape = NewTape([]Value{NewInteger(1)}, StackHeadroom)
+	r2.FlowCtrl = FlowBreak
 	out, err := e2.exitWithFlowCtrl()
 	if err != nil || out != nil {
-		t.Fatalf("island exit must return nothing: out=%v err=%v", out, err)
+		t.Fatalf("a container run's exit must return nothing: out=%v err=%v", out, err)
+	}
+	if r2.FlowCtrl != FlowBreak || !r2.FlowAtHeld {
+		t.Fatalf("the signal and where it stood must be held: flow=%v held=%v", r2.FlowCtrl, r2.FlowAtHeld)
+	}
+
+	// A plain sub-engine hands its residual tape back for an outer run to
+	// resolve the signal on.
+	r3 := covRegistry(t, nil)
+	e3 := NewTop(r3)
+	e3.IsTop = false
+	e3.Tape = NewTape([]Value{NewInteger(1)}, StackHeadroom)
+	r3.FlowCtrl = FlowBreak
+	if out, err := e3.exitWithFlowCtrl(); err != nil || len(out) != 1 || r3.FlowAtHeld {
+		t.Fatalf("a sub-engine's exit returns its residual, holding nothing: out=%v err=%v held=%v", out, err, r3.FlowAtHeld)
 	}
 }
 
@@ -560,16 +576,12 @@ func TestS5BEffectiveResolvedScratchReuse(t *testing.T) {
 
 // --- MatchSignature arms ----------------------------------------------------
 
-func TestS5BMatchSignatureMixedCarrierSplit(t *testing.T) {
-	// A mixed gradual carrier rejected by the specific overload
-	// (line 8371) followed by a forward-collecting selection flags the
-	// ambiguous split (lines 7911, 7916).
+func TestS5BMatchSignatureCarrierRejectedSelectsForward(t *testing.T) {
+	// A carrier on the stack that the specific overload rejects leaves the
+	// forward-collecting overload to be selected, the carrier unclaimed.
 	r := covRegistry(t, nil)
 	r.Check.Mode = true
 	t.Cleanup(func() { r.Check.Mode = false })
-	prevMixed := AnalysisImpl.MixedConform
-	AnalysisImpl.MixedConform = func(Value, *Type) bool { return true }
-	t.Cleanup(func() { AnalysisImpl.MixedConform = prevMixed })
 
 	carrier := NewCarrier(TBoolean)
 	e := NewTop(r)
@@ -582,9 +594,6 @@ func TestS5BMatchSignatureMixedCarrierSplit(t *testing.T) {
 	sig, positions, _ := e.MatchSignature(fn, WordInfo{Name: "w", ArgCount: -1}, []Value{carrier})
 	if sig == nil || len(positions) != 1 || positions[0] != 2 {
 		t.Fatalf("forward overload must be selected, sig=%v positions=%v", sig, positions)
-	}
-	if !r.Check.AmbiguousGradualSplit {
-		t.Error("the ambiguous gradual split must be flagged")
 	}
 }
 
@@ -841,13 +850,13 @@ func TestS5BSingleOverloadRecoverable(t *testing.T) {
 	prev := CheckBraid.SpliceCheckResults
 	CheckBraid.SpliceCheckResults = func(e *Engine, positions []int, results []Value) { spliced++ }
 	t.Cleanup(func() { CheckBraid.SpliceCheckResults = prev })
-	if !e.TryRecordRecoveredUserFn(&fn.Signatures[1], fn, []Value{NewInteger(3)}, 0, []int{0}) {
+	if !e.TryRecoverUserFn(&fn.Signatures[1], fn, []Value{NewInteger(3)}, 0, []int{0}) {
 		t.Fatal("the guarded recovery must record")
 	}
 	if spliced != 1 {
 		t.Errorf("SpliceCheckResults calls = %d", spliced)
 	}
-	if e.TryRecordRecoveredUserFn(&fn.Signatures[1], nil, nil, 0, nil) {
+	if e.TryRecoverUserFn(&fn.Signatures[1], nil, nil, 0, nil) {
 		t.Error("a nil fn must decline")
 	}
 }

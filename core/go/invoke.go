@@ -1,7 +1,5 @@
 package core
 
-import "errors"
-
 // InvokeBody executes a code BODY against per-call inputs and returns the
 // residual value stack (bottom→top) — exactly as the body-running native
 // handlers did when they spun up `New(r).Run([inputs… bodyTokens…])`.
@@ -232,31 +230,6 @@ func FnHomeLookup(fd *FnDefInfo) *FnDefInfo {
 		return nil
 	}
 	return fd.Registry.Lookup(fd.Name)
-}
-
-// isInternalErr reports whether err is an internal_error-class BoruError — the
-// signal runVMEntry stamps on a recovered VM panic / lowering soundness bailout,
-// and the exact class RunCompiled resolves by re-running on the interpreter. The
-// callback seam mirrors that decision so a post-program bailout degrades to the
-// interpreter rather than surfacing a raw compiler bug to a network peer.
-func IsInternalErr(err error) bool {
-	var ae *BoruError
-	return errors.As(err, &ae) && ae.Code == "internal_error"
-}
-
-// IsInternalError is the exported face of isInternalErr, for run-side seams
-// outside eng that take the same degrade-to-interpreter decision on a stamped
-// unit's result (await's per-branch fork runs — native_temporal_await.go).
-func IsInternalError(err error) bool { return IsInternalErr(err) }
-
-// IsVMDefer reports whether err is a DESIGNED VM defer-to-interpreter (its
-// BoruError carries VMDefer), as opposed to a user `raise internal_error …`
-// carrying the same public code. The `do` escape hatch keys catch-or-re-raise
-// on this: a defer must propagate so the run reports it, a
-// user error stays trapped as an Error value.
-func IsVMDefer(err error) bool {
-	var ae *BoruError
-	return errors.As(err, &ae) && ae.VMDefer
 }
 
 // runPooledSub runs input on a pooled reusable sub-engine and returns a

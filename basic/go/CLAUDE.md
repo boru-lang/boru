@@ -31,8 +31,8 @@ whose analysis half is filed in the wrong module.
   (`core.EmitRecorder`), widened on 2026-08-07 so no handler here named
   `*compiler.EmitState`. The compiler lane has since been removed
   outright (design/COMPILER-LANE-REMOVAL.0.md): the handlers run
-  interpreted only, and what is left of the recorder in core is a
-  removal follow-up, not something to build on.
+  interpreted only, and the recorder's surface in core is pruned (§4 of
+  that page).
 
 - **check: removed (2026-08-08), by moving code, not by forwarding it.**
   Full reasoning, the moved-symbol table and the gate arithmetic:

@@ -32,7 +32,7 @@ import (
 // test's retired table.)
 
 // The Ideal/Module type identity, constructor, Behavior, and descriptor
-// unwrappers are kernel-declared (eng/go/moduletype.go — ADR-012 stage 2);
+// unwrappers are kernel-declared (core/go/moduletype.go — ADR-012 stage 2);
 // the aliases below keep this package's historical spellings for the
 // namespace glue that stays here.
 var (

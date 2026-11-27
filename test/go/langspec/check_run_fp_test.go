@@ -55,7 +55,7 @@ import (
 // checker FP, pinned expected-open in
 // lang/go/check_fn_param_apply_def_fp_test.go so its fix is measured.
 // -57 August 2026: that def-split FP class LANDED — checkModeParenFnCollapse
-// (eng/go/engine.go) collapses a fn-carrier apply window to the one
+// (core/go/engine.go) collapses a fn-carrier apply window to the one
 // dynamic(Any) value the interpreter nets on the PLAIN check surface, for
 // exactly the shapes the compile pass's RecordDynApply admits, so the
 // pending def completes and the undefined_word class is dead (the FP ledger

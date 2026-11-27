@@ -91,34 +91,3 @@ func TestGeneraliseSpecUndef(t *testing.T) {
 		t.Fatalf("a type value generalises to a Type carrier, got %v", tv)
 	}
 }
-
-// PopLiveBinding: the run-time pop every placed or replayed undef takes —
-// a missing binding is a no-op, a value binding pops, and a binding that
-// MINTED its type node retires the node with it.
-func TestPopLiveBinding(t *testing.T) {
-	PopLiveBinding(nil, "k")
-	r, err := NewRegistry()
-	if err != nil {
-		t.Fatal(err)
-	}
-	PopLiveBinding(r, "nope")
-	r.Defs.Push("k", NewInteger(5))
-	PopLiveBinding(r, "k")
-	if r.Defs.Depth("k") != 0 {
-		t.Fatal("a value binding pops")
-	}
-	if err := InstallType(r, "Pos", NewTypeLiteral(r.Types.MintRefinePrefab(TInteger))); err != nil {
-		t.Fatal(err)
-	}
-	e, ok := r.Defs.TopEntry("Pos")
-	if !ok || e.TypeDef == nil || !e.Minted {
-		t.Fatalf("a refine binding mints its node: %+v", e)
-	}
-	PopLiveBinding(r, "Pos")
-	if r.Defs.Depth("Pos") != 0 {
-		t.Fatal("the type binding pops")
-	}
-	if r.Types.LookupByID(IDOf(e.TypeDef)) != nil {
-		t.Fatal("the minted node is retired with its binding")
-	}
-}

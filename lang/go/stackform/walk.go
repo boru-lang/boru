@@ -37,7 +37,7 @@ func walk(form *StackForm, prefix []int, visit func([]int, Op) bool) bool {
 //
 // Literal equality uses core.DeepEqual, which is value-equality
 // modulo representation (Integer 1 equals Float 1.0 if the eng
-// comparator says so — see eng/go/compare.go).
+// comparator says so — see core/go/compare.go).
 func Equal(a, b *StackForm) bool {
 	if a == nil || b == nil {
 		return a == nil && b == nil

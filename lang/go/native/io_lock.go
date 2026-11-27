@@ -74,7 +74,6 @@ func doLockWord(args []Value, r *Registry, lockType *Type) ([]Value, error) {
 		shared = mapBoolOpt(args[1], "shared", false)
 		block = mapBoolOpt(args[1], "block", true)
 	}
-	r.NoteEffect()
 	closer, err := EffectiveFileOps(r).Lock(path, shared, block)
 	if err != nil {
 		if errors.Is(err, capabilities.ErrLockBusy) {

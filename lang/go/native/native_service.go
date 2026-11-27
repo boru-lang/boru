@@ -158,7 +158,7 @@ func (s *serviceState) FormatService() string {
 
 // serviceNatives installs the service words. `add` and `send` carry
 // Service overloads folded onto the existing words (upsertFnDef appends).
-var serviceNatives = SideEffecting([]NativeFunc{
+var serviceNatives = []NativeFunc{
 	{
 		Name: "service",
 		Signatures: []Signature{
@@ -177,7 +177,7 @@ var serviceNatives = SideEffecting([]NativeFunc{
 			// (statement form, like the Patrun overload).
 			{Args: []*Type{TMap, TAny, TService}, Impl: Go(serviceAddHandler), Returns: []*Type{},
 				ReturnsFn:  serviceAddCheck,
-				BarrierPos: -1, CompileEffect: CompileStoresFn | CompileFnHandlerStrict},
+				BarrierPos: -1},
 		},
 	},
 	{
@@ -210,10 +210,10 @@ var serviceNatives = SideEffecting([]NativeFunc{
 		Signatures: []Signature{
 			// wrap [handler] svc — ambient middleware around every dispatch.
 			{Args: []*Type{TAny, TService}, Impl: Go(serviceWrapHandler), Returns: []*Type{},
-				BarrierPos: -1, CompileEffect: CompileStoresFn | CompileFnHandlerStrict},
+				BarrierPos: -1},
 		},
 	},
-}, "service", "state-of")
+}
 
 func serviceNewHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	mp, err := RequireConcreteMap(args[0], "service")

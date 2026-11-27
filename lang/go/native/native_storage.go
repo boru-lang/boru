@@ -44,19 +44,17 @@ var storageNatives = []NativeFunc{
 			// Store (copy-on-write)
 
 			{
-				Args:          []*Type{TString, TAny, TStore},
-				CompileEffect: CompileStoresFn,
-				Impl:          Go(setStoreHandler),
-				Returns:       []*Type{},
-				ReturnsFn:     setStoreReturnsFn, BarrierPos: -1,
+				Args:      []*Type{TString, TAny, TStore},
+				Impl:      Go(setStoreHandler),
+				Returns:   []*Type{},
+				ReturnsFn: setStoreReturnsFn, BarrierPos: -1,
 			},
 			{
-				Args:          []*Type{TAtom, TAny, TStore},
-				QuoteArgs:     map[int]bool{0: true},
-				CompileEffect: CompileQuoteKey | CompileStoresFn,
-				Impl:          Go(setStoreHandler),
-				Returns:       []*Type{},
-				ReturnsFn:     setStoreReturnsFn, BarrierPos: -1,
+				Args:      []*Type{TAtom, TAny, TStore},
+				QuoteArgs: map[int]bool{0: true},
+				Impl:      Go(setStoreHandler),
+				Returns:   []*Type{},
+				ReturnsFn: setStoreReturnsFn, BarrierPos: -1,
 			},
 
 			// Map (immutable — copy-returning). Unlike the three
@@ -64,19 +62,17 @@ var storageNatives = []NativeFunc{
 			// a NEW map with the key bound and leaves the receiver
 			// untouched — the same contract as push / StructUtil.setpath.
 			{
-				Args:          []*Type{TString, TAny, TMap},
-				CompileEffect: CompileStoresFn,
-				Impl:          Go(setMapHandler),
-				Returns:       []*Type{TMap},
-				ReturnsFn:     setMapTypedReturns, BarrierPos: -1,
+				Args:      []*Type{TString, TAny, TMap},
+				Impl:      Go(setMapHandler),
+				Returns:   []*Type{TMap},
+				ReturnsFn: setMapTypedReturns, BarrierPos: -1,
 			},
 			{
-				Args:          []*Type{TAtom, TAny, TMap},
-				QuoteArgs:     map[int]bool{0: true},
-				CompileEffect: CompileQuoteKey | CompileStoresFn,
-				Impl:          Go(setMapHandler),
-				Returns:       []*Type{TMap},
-				ReturnsFn:     setMapTypedReturns, BarrierPos: -1,
+				Args:      []*Type{TAtom, TAny, TMap},
+				QuoteArgs: map[int]bool{0: true},
+				Impl:      Go(setMapHandler),
+				Returns:   []*Type{TMap},
+				ReturnsFn: setMapTypedReturns, BarrierPos: -1,
 			},
 
 			// List (immutable — copy-returning, completing the column
@@ -85,10 +81,9 @@ var storageNatives = []NativeFunc{
 			// provably out-of-range index over a known length is flagged
 			// at check time (setListIndexReturns → CheckListIndex).
 			{
-				Args:          []*Type{TInteger, TAny, TList},
-				CompileEffect: CompileStoresFn,
-				Impl:          Go(setListHandler),
-				Returns:       []*Type{TList}, ReturnsFn: setListIndexReturns, BarrierPos: -1,
+				Args:    []*Type{TInteger, TAny, TList},
+				Impl:    Go(setListHandler),
+				Returns: []*Type{TList}, ReturnsFn: setListIndexReturns, BarrierPos: -1,
 			},
 
 			// Class instance (in-place, SEALED): a declared field
@@ -99,60 +94,53 @@ var storageNatives = []NativeFunc{
 			// same MakeClassFieldValue check the write runs) is flagged
 			// at check time (setClassInstanceReturns).
 			{
-				Args:          []*Type{TString, TAny, TClass},
-				CompileEffect: CompileStoresFn,
-				Impl:          Go(setClassInstanceHandler),
-				Returns:       []*Type{}, ReturnsFn: setClassInstanceReturns, BarrierPos: -1,
+				Args:    []*Type{TString, TAny, TClass},
+				Impl:    Go(setClassInstanceHandler),
+				Returns: []*Type{}, ReturnsFn: setClassInstanceReturns, BarrierPos: -1,
 			},
 			{
-				Args:          []*Type{TAtom, TAny, TClass},
-				QuoteArgs:     map[int]bool{0: true},
-				CompileEffect: CompileQuoteKey | CompileStoresFn,
-				Impl:          Go(setClassInstanceHandler),
-				Returns:       []*Type{}, ReturnsFn: setClassInstanceReturns, BarrierPos: -1,
+				Args:      []*Type{TAtom, TAny, TClass},
+				QuoteArgs: map[int]bool{0: true},
+				Impl:      Go(setClassInstanceHandler),
+				Returns:   []*Type{}, ReturnsFn: setClassInstanceReturns, BarrierPos: -1,
 			},
 
 			// FlexMap (in-place key set; returns the node for chaining)
 			{
-				Args:          []*Type{TString, TAny, TFlexMap},
-				CompileEffect: CompileStoresFn | CompileSideEffect,
-				Impl:          Go(setFlexMapHandler),
-				Returns:       []*Type{TFlexMap},
-				ReturnsFn:     setFlexMapReturns, BarrierPos: -1,
+				Args:      []*Type{TString, TAny, TFlexMap},
+				Impl:      Go(setFlexMapHandler),
+				Returns:   []*Type{TFlexMap},
+				ReturnsFn: setFlexMapReturns, BarrierPos: -1,
 			},
 			{
-				Args:          []*Type{TAtom, TAny, TFlexMap},
-				QuoteArgs:     map[int]bool{0: true},
-				CompileEffect: CompileQuoteKey | CompileStoresFn | CompileSideEffect,
-				Impl:          Go(setFlexMapHandler),
-				Returns:       []*Type{TFlexMap},
-				ReturnsFn:     setFlexMapReturns, BarrierPos: -1,
+				Args:      []*Type{TAtom, TAny, TFlexMap},
+				QuoteArgs: map[int]bool{0: true},
+				Impl:      Go(setFlexMapHandler),
+				Returns:   []*Type{TFlexMap},
+				ReturnsFn: setFlexMapReturns, BarrierPos: -1,
 			},
 
 			// FlexList (in-place index set; 0..len-1 only — sparse is
 			// an error, growth is append's job)
 			{
-				Args:          []*Type{TInteger, TAny, TFlexList},
-				CompileEffect: CompileStoresFn | CompileSideEffect,
-				Impl:          Go(setFlexListHandler),
-				Returns:       []*Type{TFlexList},
-				ReturnsFn:     setFlexListReturns, BarrierPos: -1,
+				Args:      []*Type{TInteger, TAny, TFlexList},
+				Impl:      Go(setFlexListHandler),
+				Returns:   []*Type{TFlexList},
+				ReturnsFn: setFlexListReturns, BarrierPos: -1,
 			},
 
 			// FlexXml (in-place attribute set; name → value, like the DOM
 			// setAttribute. Children grow via `append`.)
 			{
-				Args:          []*Type{TString, TAny, TFlexXml},
-				CompileEffect: CompileStoresFn | CompileSideEffect,
-				Impl:          Go(setFlexXmlHandler),
-				Returns:       []*Type{TFlexXml}, BarrierPos: -1,
+				Args:    []*Type{TString, TAny, TFlexXml},
+				Impl:    Go(setFlexXmlHandler),
+				Returns: []*Type{TFlexXml}, BarrierPos: -1,
 			},
 			{
-				Args:          []*Type{TAtom, TAny, TFlexXml},
-				QuoteArgs:     map[int]bool{0: true},
-				CompileEffect: CompileQuoteKey | CompileStoresFn | CompileSideEffect,
-				Impl:          Go(setFlexXmlHandler),
-				Returns:       []*Type{TFlexXml}, BarrierPos: -1,
+				Args:      []*Type{TAtom, TAny, TFlexXml},
+				QuoteArgs: map[int]bool{0: true},
+				Impl:      Go(setFlexXmlHandler),
+				Returns:   []*Type{TFlexXml}, BarrierPos: -1,
 			},
 
 			// WeakFlexMap (in-place key set; scalars store STRONGLY,
@@ -162,66 +150,59 @@ var storageNatives = []NativeFunc{
 			// the inherited FlexMap handler's AsMutableMap declines the
 			// weak payload, by design.)
 			{
-				Args:          []*Type{TString, TAny, TWeakFlexMap},
-				CompileEffect: CompileStoresFn | CompileSideEffect,
-				Impl:          Go(setWeakFlexMapHandler),
-				Returns:       []*Type{TWeakFlexMap},
-				ReturnsFn:     weakSetMapReturns, BarrierPos: -1,
+				Args:      []*Type{TString, TAny, TWeakFlexMap},
+				Impl:      Go(setWeakFlexMapHandler),
+				Returns:   []*Type{TWeakFlexMap},
+				ReturnsFn: weakSetMapReturns, BarrierPos: -1,
 			},
 			{
-				Args:          []*Type{TAtom, TAny, TWeakFlexMap},
-				QuoteArgs:     map[int]bool{0: true},
-				CompileEffect: CompileQuoteKey | CompileStoresFn | CompileSideEffect,
-				Impl:          Go(setWeakFlexMapHandler),
-				Returns:       []*Type{TWeakFlexMap},
-				ReturnsFn:     weakSetMapReturns, BarrierPos: -1,
+				Args:      []*Type{TAtom, TAny, TWeakFlexMap},
+				QuoteArgs: map[int]bool{0: true},
+				Impl:      Go(setWeakFlexMapHandler),
+				Returns:   []*Type{TWeakFlexMap},
+				ReturnsFn: weakSetMapReturns, BarrierPos: -1,
 			},
 
 			// WeakFlexList (in-place index set over the post-sweep
 			// view; same value domain as WeakFlexMap).
 			{
-				Args:          []*Type{TInteger, TAny, TWeakFlexList},
-				CompileEffect: CompileStoresFn | CompileSideEffect,
-				Impl:          Go(setWeakFlexListHandler),
-				Returns:       []*Type{TWeakFlexList},
-				ReturnsFn:     weakSetListReturns, BarrierPos: -1,
+				Args:      []*Type{TInteger, TAny, TWeakFlexList},
+				Impl:      Go(setWeakFlexListHandler),
+				Returns:   []*Type{TWeakFlexList},
+				ReturnsFn: weakSetListReturns, BarrierPos: -1,
 			},
 
 			// WeakFlexXml (in-place attribute set; attributes are part
 			// of the element and always store strongly).
 			{
-				Args:          []*Type{TString, TAny, TWeakFlexXml},
-				CompileEffect: CompileStoresFn | CompileSideEffect,
-				Impl:          Go(setWeakFlexXmlHandler),
-				Returns:       []*Type{TWeakFlexXml}, BarrierPos: -1,
+				Args:    []*Type{TString, TAny, TWeakFlexXml},
+				Impl:    Go(setWeakFlexXmlHandler),
+				Returns: []*Type{TWeakFlexXml}, BarrierPos: -1,
 			},
 			{
-				Args:          []*Type{TAtom, TAny, TWeakFlexXml},
-				QuoteArgs:     map[int]bool{0: true},
-				CompileEffect: CompileQuoteKey | CompileStoresFn | CompileSideEffect,
-				Impl:          Go(setWeakFlexXmlHandler),
-				Returns:       []*Type{TWeakFlexXml}, BarrierPos: -1,
+				Args:      []*Type{TAtom, TAny, TWeakFlexXml},
+				QuoteArgs: map[int]bool{0: true},
+				Impl:      Go(setWeakFlexXmlHandler),
+				Returns:   []*Type{TWeakFlexXml}, BarrierPos: -1,
 			},
 
 			// Micron (IMMUTABLE — always errors): the explicit erroring
 			// sig pins "set: <Kind> values are immutable" where
 			// sig-absence would raise an opaque dispatch failure.
 			// isInertConst's MicronPayload arm relies on this staying
-			// an error — see eng/go/emit.go.
+			// an error.
 			{
-				Args:          []*Type{TString, TAny, TMicron},
-				CompileEffect: CompileStoresFn,
-				Impl:          Go(setMicronHandler),
-				Returns:       []*Type{},
-				ReturnsFn:     setMicronReturns, BarrierPos: -1,
+				Args:      []*Type{TString, TAny, TMicron},
+				Impl:      Go(setMicronHandler),
+				Returns:   []*Type{},
+				ReturnsFn: setMicronReturns, BarrierPos: -1,
 			},
 			{
-				Args:          []*Type{TAtom, TAny, TMicron},
-				QuoteArgs:     map[int]bool{0: true},
-				CompileEffect: CompileQuoteKey | CompileStoresFn,
-				Impl:          Go(setMicronHandler),
-				Returns:       []*Type{},
-				ReturnsFn:     setMicronReturns, BarrierPos: -1,
+				Args:      []*Type{TAtom, TAny, TMicron},
+				QuoteArgs: map[int]bool{0: true},
+				Impl:      Go(setMicronHandler),
+				Returns:   []*Type{},
+				ReturnsFn: setMicronReturns, BarrierPos: -1,
 			},
 		},
 	},
@@ -266,12 +247,11 @@ var storageNatives = []NativeFunc{
 				ReturnsFn: delStoreReturnsFn, BarrierPos: -1,
 			},
 			{
-				Args:          []*Type{TAtom, TStore},
-				QuoteArgs:     map[int]bool{0: true},
-				CompileEffect: CompileQuoteKey,
-				Impl:          Go(delStoreHandler),
-				Returns:       []*Type{},
-				ReturnsFn:     delStoreReturnsFn, BarrierPos: -1,
+				Args:      []*Type{TAtom, TStore},
+				QuoteArgs: map[int]bool{0: true},
+				Impl:      Go(delStoreHandler),
+				Returns:   []*Type{},
+				ReturnsFn: delStoreReturnsFn, BarrierPos: -1,
 			},
 
 			// Map (immutable — copy-returning, mirroring set's Map form).
@@ -282,76 +262,67 @@ var storageNatives = []NativeFunc{
 				ReturnsFn: delMapTypedReturns, BarrierPos: -1,
 			},
 			{
-				Args:          []*Type{TAtom, TMap},
-				QuoteArgs:     map[int]bool{0: true},
-				CompileEffect: CompileQuoteKey,
-				Impl:          Go(delMapHandler),
-				Returns:       []*Type{TMap},
-				ReturnsFn:     delMapTypedReturns, BarrierPos: -1,
+				Args:      []*Type{TAtom, TMap},
+				QuoteArgs: map[int]bool{0: true},
+				Impl:      Go(delMapHandler),
+				Returns:   []*Type{TMap},
+				ReturnsFn: delMapTypedReturns, BarrierPos: -1,
 			},
 
 			// FlexMap (in-place key delete; returns the node for chaining).
 			{
-				Args:          []*Type{TString, TFlexMap},
-				CompileEffect: CompileSideEffect,
-				Impl:          Go(delFlexMapHandler),
-				Returns:       []*Type{TFlexMap},
-				ReturnsFn:     delFlexMapReturns, BarrierPos: -1,
+				Args:      []*Type{TString, TFlexMap},
+				Impl:      Go(delFlexMapHandler),
+				Returns:   []*Type{TFlexMap},
+				ReturnsFn: delFlexMapReturns, BarrierPos: -1,
 			},
 			{
-				Args:          []*Type{TAtom, TFlexMap},
-				QuoteArgs:     map[int]bool{0: true},
-				CompileEffect: CompileQuoteKey | CompileSideEffect,
-				Impl:          Go(delFlexMapHandler),
-				Returns:       []*Type{TFlexMap},
-				ReturnsFn:     delFlexMapReturns, BarrierPos: -1,
+				Args:      []*Type{TAtom, TFlexMap},
+				QuoteArgs: map[int]bool{0: true},
+				Impl:      Go(delFlexMapHandler),
+				Returns:   []*Type{TFlexMap},
+				ReturnsFn: delFlexMapReturns, BarrierPos: -1,
 			},
 
 			// WeakFlexMap. The dedicated sig is forced for the same
 			// reason set's is: the inherited FlexMap handler's
 			// AsMutableMap declines the weak payload by design.
 			{
-				Args:          []*Type{TString, TWeakFlexMap},
-				CompileEffect: CompileSideEffect,
-				Impl:          Go(delWeakFlexMapHandler),
-				Returns:       []*Type{TWeakFlexMap},
-				ReturnsFn:     delWeakFlexMapReturns, BarrierPos: -1,
+				Args:      []*Type{TString, TWeakFlexMap},
+				Impl:      Go(delWeakFlexMapHandler),
+				Returns:   []*Type{TWeakFlexMap},
+				ReturnsFn: delWeakFlexMapReturns, BarrierPos: -1,
 			},
 			{
-				Args:          []*Type{TAtom, TWeakFlexMap},
-				QuoteArgs:     map[int]bool{0: true},
-				CompileEffect: CompileQuoteKey | CompileSideEffect,
-				Impl:          Go(delWeakFlexMapHandler),
-				Returns:       []*Type{TWeakFlexMap},
-				ReturnsFn:     delWeakFlexMapReturns, BarrierPos: -1,
+				Args:      []*Type{TAtom, TWeakFlexMap},
+				QuoteArgs: map[int]bool{0: true},
+				Impl:      Go(delWeakFlexMapHandler),
+				Returns:   []*Type{TWeakFlexMap},
+				ReturnsFn: delWeakFlexMapReturns, BarrierPos: -1,
 			},
 
 			// FlexXml / WeakFlexXml (in-place attribute delete).
 			{
-				Args:          []*Type{TString, TFlexXml},
-				CompileEffect: CompileSideEffect,
-				Impl:          Go(delFlexXmlHandler),
-				Returns:       []*Type{TFlexXml}, BarrierPos: -1,
+				Args:    []*Type{TString, TFlexXml},
+				Impl:    Go(delFlexXmlHandler),
+				Returns: []*Type{TFlexXml}, BarrierPos: -1,
 			},
 			{
-				Args:          []*Type{TAtom, TFlexXml},
-				QuoteArgs:     map[int]bool{0: true},
-				CompileEffect: CompileQuoteKey | CompileSideEffect,
-				Impl:          Go(delFlexXmlHandler),
-				Returns:       []*Type{TFlexXml}, BarrierPos: -1,
+				Args:      []*Type{TAtom, TFlexXml},
+				QuoteArgs: map[int]bool{0: true},
+				Impl:      Go(delFlexXmlHandler),
+				Returns:   []*Type{TFlexXml}, BarrierPos: -1,
 			},
 			{
-				Args:          []*Type{TString, TWeakFlexXml},
-				CompileEffect: CompileSideEffect,
-				Impl:          Go(delWeakFlexXmlHandler),
-				Returns:       []*Type{TWeakFlexXml}, BarrierPos: -1,
+				Args:    []*Type{TString, TWeakFlexXml},
+				Impl:    Go(delWeakFlexXmlHandler),
+				Returns: []*Type{TWeakFlexXml}, BarrierPos: -1,
 			},
 			{
-				Args:          []*Type{TAtom, TWeakFlexXml},
-				QuoteArgs:     map[int]bool{0: true},
-				CompileEffect: CompileQuoteKey | CompileSideEffect,
-				Impl:          Go(delWeakFlexXmlHandler),
-				Returns:       []*Type{TWeakFlexXml}, BarrierPos: -1,
+				Args:      []*Type{TAtom, TWeakFlexXml},
+				QuoteArgs: map[int]bool{0: true},
+				Impl:      Go(delWeakFlexXmlHandler),
+				Returns:   []*Type{TWeakFlexXml}, BarrierPos: -1,
 			},
 
 			// Class (SEALED — always errors): a declared field is part
@@ -364,12 +335,11 @@ var storageNatives = []NativeFunc{
 				ReturnsFn: delClassInstanceReturns, BarrierPos: -1,
 			},
 			{
-				Args:          []*Type{TAtom, TClass},
-				QuoteArgs:     map[int]bool{0: true},
-				CompileEffect: CompileQuoteKey,
-				Impl:          Go(delClassInstanceHandler),
-				Returns:       []*Type{},
-				ReturnsFn:     delClassInstanceReturns, BarrierPos: -1,
+				Args:      []*Type{TAtom, TClass},
+				QuoteArgs: map[int]bool{0: true},
+				Impl:      Go(delClassInstanceHandler),
+				Returns:   []*Type{},
+				ReturnsFn: delClassInstanceReturns, BarrierPos: -1,
 			},
 
 			// Micron (IMMUTABLE — always errors), mirroring set's pair.
@@ -380,12 +350,11 @@ var storageNatives = []NativeFunc{
 				ReturnsFn: delMicronReturns, BarrierPos: -1,
 			},
 			{
-				Args:          []*Type{TAtom, TMicron},
-				QuoteArgs:     map[int]bool{0: true},
-				CompileEffect: CompileQuoteKey,
-				Impl:          Go(delMicronHandler),
-				Returns:       []*Type{},
-				ReturnsFn:     delMicronReturns, BarrierPos: -1,
+				Args:      []*Type{TAtom, TMicron},
+				QuoteArgs: map[int]bool{0: true},
+				Impl:      Go(delMicronHandler),
+				Returns:   []*Type{},
+				ReturnsFn: delMicronReturns, BarrierPos: -1,
 			},
 
 			// List / FlexList / WeakFlexList (always error): removal at
@@ -398,24 +367,21 @@ var storageNatives = []NativeFunc{
 				ReturnsFn: delListReturns, BarrierPos: -1,
 			},
 			{
-				Args:          []*Type{TInteger, TFlexList},
-				CompileEffect: CompileSideEffect,
-				Impl:          Go(delListHandler),
-				Returns:       []*Type{},
-				ReturnsFn:     delListReturns, BarrierPos: -1,
+				Args:      []*Type{TInteger, TFlexList},
+				Impl:      Go(delListHandler),
+				Returns:   []*Type{},
+				ReturnsFn: delListReturns, BarrierPos: -1,
 			},
 			{
-				Args:          []*Type{TInteger, TWeakFlexList},
-				CompileEffect: CompileSideEffect,
-				Impl:          Go(delListHandler),
-				Returns:       []*Type{},
-				ReturnsFn:     delListReturns, BarrierPos: -1,
+				Args:      []*Type{TInteger, TWeakFlexList},
+				Impl:      Go(delListHandler),
+				Returns:   []*Type{},
+				ReturnsFn: delListReturns, BarrierPos: -1,
 			},
 		},
 	},
 	{
-		Name:          "get",
-		CompileEffect: CompileModuleFold | CompileIslandPure,
+		Name: "get",
 		// get EVALUATES its key: the bare-word-quoting atom sigs live on
 		// `dot` (the word the `.`/`!.` sugar lowers to), so `lst get i`
 		// reads the VALUE of i, not the literal field "i". A literal field
@@ -423,8 +389,7 @@ var storageNatives = []NativeFunc{
 		Signatures: stripQuoteArgs(accessorGetSignatures()),
 	},
 	{
-		Name:          "dot",
-		CompileEffect: CompileModuleFold | CompileIslandPure,
+		Name: "dot",
 		// dot is `get` PLUS the bare-word-quoting atom sigs. The `.` / `!.`
 		// dot-sugar lowers to dot/dotr (lowerReach), so `m.a` ≡ `m dot a`
 		// reads the literal field "a" regardless of any binding of a.
@@ -480,9 +445,8 @@ func accessorGetSignatures() []Signature {
 		// member stays None (`{a:1}.b.c`), so the atom row carries QuoteArgs
 		// like every other receiver's — without it a BARE-WORD key over a
 		// run-time None was never collected, and the word stepped on its
-		// own as `undefined word: c` (NUR198: the interpreter's raise for
-		// the compiled lane's None; the string and materialised-atom keys
-		// always propagated).
+		// own as `undefined word: c` (NUR198; the string and
+		// materialised-atom keys always propagated).
 		{Args: []*Type{TAtom, TNone}, QuoteArgs: map[int]bool{0: true}, BarrierPos: 1, Impl: Go(getNoneHandler), Returns: []*Type{TNone}},
 		{Args: []*Type{TAny, TNone}, BarrierPos: 1, Impl: Go(getNoneHandler), Returns: []*Type{TNone}},
 		// [Key | Store] — check-mode-aware ReturnsFn picks up a
@@ -1145,7 +1109,7 @@ func setWeakFlexMapHandler(args []Value, _ map[string]Value, _ []Value, r *Regis
 }
 
 // weakValueMirror is the check-time twin of the runtime weak-domain
-// refusal (the guaranteed-error mirror discipline, eng/go/CLAUDE.md):
+// refusal (the guaranteed-error mirror discipline, core/go/CLAUDE.md):
 // a statically-known stored value outside the weak domain — a concrete
 // value or a bare type literal — deterministically raises
 // weak_value_error at runtime, so the checker reports the same
@@ -1539,15 +1503,14 @@ func getNodeReturns(args []Value, r *Registry) []Value {
 	}
 	if val.Parent().ConformsTo(TFunction) ||
 		IsReach(&val) || IsSplice(&val) {
-		// Shaped-instance-method annotation (Stage M2c, eng/method_shape.go):
-		// a NON-closure delegation wrapper member (`l.info`, `c.add`, `r.int`)
-		// stays dynamic — the runtime instance carries per-call state, so the
-		// member must never bake (freeze-gate) — but the fresh carrier is
-		// NOTED with the resolved member so the compile pass can model the
-		// interpreter's auto-dispatch mid-stream as a guarded OpCallDynMethod.
+		// Shaped-instance-method annotation (check/go/method_shape.go): a
+		// NON-closure delegation wrapper member (`l.info`, `c.add`, `r.int`)
+		// stays dynamic — the runtime instance carries per-call state — but
+		// the fresh carrier is NOTED with the resolved member so the check
+		// pass can model the interpreter's auto-dispatch mid-stream.
 		// NoteMethodShape vets the member (delegation wrapper only, never a
-		// genuine 0-arg overload — the miscompile-E auto-dispatch class stays
-		// declined); everything it declines keeps the bare dynamic Any.
+		// genuine 0-arg overload); everything it declines keeps the bare
+		// dynamic Any.
 		if r != nil && val.Parent().ConformsTo(TFunction) {
 			out := NewDynamicCarrier(TAny)
 			r.Check.NoteMethodShape(out, val)
@@ -1723,8 +1686,7 @@ func getNodeHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([
 // (own + inherited). A method field (function-typed), an absent/sealed
 // field (→ None), or a type whose schema can't be resolved keeps the
 // dynamic(Any) the poly path handles — the same dispatch-bearing exclusion
-// as the concrete-map case (a returned fn value would push the compiler to
-// lower a fn-value call and decline).
+// as the concrete-map case.
 func getObjectReturns(args []Value, r *Registry) []Value {
 	dyn := []Value{NewDynamicCarrier(TAny)}
 	if r == nil || len(args) != 2 || !IsConcrete(&args[0]) || args[1].Parent() == nil {
@@ -1762,7 +1724,7 @@ func getObjectReturns(args []Value, r *Registry) []Value {
 // getResourceReturns is getObjectReturns for the Resource/Entity
 // hierarchy: it reads the field type from the ResourceType schema so a
 // Resource-instance field read (`e.spec`) carries its declared type in
-// check/bytecode contexts instead of degrading to Any. Resource/Entity
+// check mode instead of degrading to Any. Resource/Entity
 // are installed as type bindings (installResourceTypes), so their
 // schema is reachable via TopTypeBody like a class type's.
 func getResourceReturns(args []Value, r *Registry) []Value {
@@ -1863,9 +1825,7 @@ func getStoreHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) (
 		// was spelled "unknown key_error" (the message's leading word glued to
 		// the code) with "unknown key" passed as the WORD, and both halves of
 		// that typo were user-visible: a code containing a SPACE cannot be
-		// matched by any `case` arm, and the compiled path renders the caret
-		// span at len(Word) — 11 carets for "unknown key" against the
-		// interpreter's 3 for the real token.
+		// matched by any `case` arm, and the WORD is what a diagnostic names.
 		return nil, r.BoruError("key_error", fmt.Sprintf("unknown key: %s", key), "get")
 	}
 	return []Value{val}, nil

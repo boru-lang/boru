@@ -64,10 +64,7 @@ func BuildFnUtilModule(parent *native.Registry) (native.ModuleDesc, error) {
 
 // ---- Shared helpers ----
 
-// fnUtilArg validates a callable operand: an interpreter Function value
-// (FnDefInfo). A compiled closure cannot reach these words today — every
-// fn-util row declines compilation (the frontier ledger) — so the closure
-// arm waits for the §5.8 campaign to make it reachable, with coverage.
+// fnUtilArg validates a callable operand: a Function value (FnDefInfo).
 func fnUtilArg(v native.Value, opName string, r *native.Registry) (native.Value, error) {
 	if _, ok := v.Data().(*native.FnDefInfo); ok {
 		return v, nil
@@ -77,9 +74,8 @@ func fnUtilArg(v native.Value, opName string, r *native.Registry) (native.Value,
 }
 
 // fnUtilSigArg validates a callable operand for the words that must
-// INTROSPECT a signature (curry, partial, flip, memoize): only an
-// interpreter FnDefInfo qualifies — a compiled closure carries no
-// signature surface to reshape.
+// INTROSPECT a signature (curry, partial, flip, memoize): only a
+// FnDefInfo qualifies.
 func fnUtilSigArg(v native.Value, opName string, r *native.Registry) (native.FnDefInfo, error) {
 	if fd, ok := v.Data().(*native.FnDefInfo); ok {
 		return *fd, nil
@@ -102,9 +98,7 @@ func fnUtilSingleSig(fd native.FnDefInfo, opName string, r *native.Registry) (*n
 
 // invokeFnUtil applies a fn operand to args — the filter/parse callback seam's
 // fn-VALUE half: match a signature, run InvokeCallbackFn on the fn's DEFINING
-// registry (design/FUNCTION-VALUE-SCOPE.0.md), which offers a stamped body to
-// the VM and falls back to CallBoru. The InvokeBody closure half joins when a
-// compiled closure can actually reach here.
+// registry (design/FUNCTION-VALUE-SCOPE.0.md).
 func invokeFnUtil(r *native.Registry, opName string, fn native.Value, args []native.Value) ([]native.Value, error) {
 	sig := native.MatchFnSig(fn, args)
 	if sig == nil {
@@ -162,11 +156,9 @@ func goFnValue(name string, nParams int, h native.Handler) native.Value {
 // The result is the Function carrier the declared Returns would mint, and —
 // when the wrapper's ARITY is a statement of the word's own construction
 // (arity answers true) — the carrier is noted with it
-// (CheckState.NoteFnShape), so the compile pass's apply classifier knows the
-// shape of a def-bound wrapper (`def k (FnUtil.const 7)  (k 99)`) the way it
-// knows a compiled factory's returned closure. A word whose arity depends on
-// an operand the pass cannot see concretely (a computed fn) makes no claim,
-// and the classifier's "closure shape unknown" compile failure stands.
+// (CheckState.NoteFnShape), so the check pass knows the shape of a def-bound
+// wrapper (`def k (FnUtil.const 7)  (k 99)`). A word whose arity depends on
+// an operand the pass cannot see concretely (a computed fn) makes no claim.
 func fnShapeReturns(shape func(args []native.Value) (core.FnShape, bool)) native.ReturnsFunc {
 	return func(args []native.Value, r *native.Registry) []native.Value {
 		out := native.NewCarrier(native.TFunction)
@@ -293,11 +285,10 @@ var fnUtilNatives = []native.NativeFunc{
 	{
 		Name: "_f_const",
 		Signatures: []native.Signature{{
-			BarrierPos:    -1,
-			CompileEffect: native.CompileStoresFn,
-			Args:          []*native.Type{native.TAny},
-			Returns:       []*native.Type{native.TFunction},
-			ReturnsFn:     fnShapeReturns(fnShapeConst(1)),
+			BarrierPos: -1,
+			Args:       []*native.Type{native.TAny},
+			Returns:    []*native.Type{native.TFunction},
+			ReturnsFn:  fnShapeReturns(fnShapeConst(1)),
 			Impl: native.Go(func(args []native.Value, _ map[string]native.Value, _ []native.Value, _ *native.Registry) ([]native.Value, error) {
 				x := args[0]
 				return []native.Value{goFnValue("const", 1,
@@ -312,11 +303,10 @@ var fnUtilNatives = []native.NativeFunc{
 	{
 		Name: "compose",
 		Signatures: []native.Signature{{
-			BarrierPos:    -1,
-			CompileEffect: native.CompileStoresFn | native.CompileFnHandlerStrict,
-			Args:          []*native.Type{native.TFunction, native.TFunction},
-			Returns:       []*native.Type{native.TFunction},
-			ReturnsFn:     fnShapeReturns(fnShapeConst(1)),
+			BarrierPos: -1,
+			Args:       []*native.Type{native.TFunction, native.TFunction},
+			Returns:    []*native.Type{native.TFunction},
+			ReturnsFn:  fnShapeReturns(fnShapeConst(1)),
 			Impl: native.Go(func(args []native.Value, _ map[string]native.Value, _ []native.Value, r *native.Registry) ([]native.Value, error) {
 				f, err := fnUtilArg(args[0], "FnUtil.compose", r)
 				if err != nil {
@@ -342,11 +332,10 @@ var fnUtilNatives = []native.NativeFunc{
 	{
 		Name: "pipe",
 		Signatures: []native.Signature{{
-			BarrierPos:    -1,
-			CompileEffect: native.CompileStoresFn | native.CompileFnHandlerStrict,
-			Args:          []*native.Type{native.TFunction, native.TFunction},
-			Returns:       []*native.Type{native.TFunction},
-			ReturnsFn:     fnShapeReturns(fnShapeConst(1)),
+			BarrierPos: -1,
+			Args:       []*native.Type{native.TFunction, native.TFunction},
+			Returns:    []*native.Type{native.TFunction},
+			ReturnsFn:  fnShapeReturns(fnShapeConst(1)),
 			Impl: native.Go(func(args []native.Value, _ map[string]native.Value, _ []native.Value, r *native.Registry) ([]native.Value, error) {
 				f, err := fnUtilArg(args[0], "FnUtil.pipe", r)
 				if err != nil {
@@ -373,11 +362,10 @@ var fnUtilNatives = []native.NativeFunc{
 	{
 		Name: "flip",
 		Signatures: []native.Signature{{
-			BarrierPos:    -1,
-			CompileEffect: native.CompileStoresFn | native.CompileFnHandlerStrict,
-			Args:          []*native.Type{native.TFunction},
-			Returns:       []*native.Type{native.TFunction},
-			ReturnsFn:     fnShapeReturns(fnShapeFromOperand(0)),
+			BarrierPos: -1,
+			Args:       []*native.Type{native.TFunction},
+			Returns:    []*native.Type{native.TFunction},
+			ReturnsFn:  fnShapeReturns(fnShapeFromOperand(0)),
 			Impl: native.Go(func(args []native.Value, _ map[string]native.Value, _ []native.Value, r *native.Registry) ([]native.Value, error) {
 				if _, err := fnUtilSigArg(args[0], "FnUtil.flip", r); err != nil {
 					return nil, err
@@ -395,11 +383,10 @@ var fnUtilNatives = []native.NativeFunc{
 	{
 		Name: "curry",
 		Signatures: []native.Signature{{
-			BarrierPos:    -1,
-			CompileEffect: native.CompileStoresFn | native.CompileFnHandlerStrict,
-			Args:          []*native.Type{native.TFunction},
-			Returns:       []*native.Type{native.TFunction},
-			ReturnsFn:     fnShapeReturns(fnShapeCurry()),
+			BarrierPos: -1,
+			Args:       []*native.Type{native.TFunction},
+			Returns:    []*native.Type{native.TFunction},
+			ReturnsFn:  fnShapeReturns(fnShapeCurry()),
 			Impl: native.Go(func(args []native.Value, _ map[string]native.Value, _ []native.Value, r *native.Registry) ([]native.Value, error) {
 				fd, err := fnUtilSigArg(args[0], "FnUtil.curry", r)
 				if err != nil {
@@ -424,11 +411,10 @@ var fnUtilNatives = []native.NativeFunc{
 	{
 		Name: "partial",
 		Signatures: []native.Signature{{
-			BarrierPos:    -1,
-			CompileEffect: native.CompileStoresFn | native.CompileFnHandlerStrict,
-			Args:          []*native.Type{native.TFunction, native.TAny},
-			Returns:       []*native.Type{native.TFunction},
-			ReturnsFn:     fnShapeReturns(fnShapeFromOperand(-1)),
+			BarrierPos: -1,
+			Args:       []*native.Type{native.TFunction, native.TAny},
+			Returns:    []*native.Type{native.TFunction},
+			ReturnsFn:  fnShapeReturns(fnShapeFromOperand(-1)),
 			Impl: native.Go(func(args []native.Value, _ map[string]native.Value, _ []native.Value, r *native.Registry) ([]native.Value, error) {
 				fd, err := fnUtilSigArg(args[0], "FnUtil.partial", r)
 				if err != nil {
@@ -461,11 +447,10 @@ var fnUtilNatives = []native.NativeFunc{
 	{
 		Name: "on",
 		Signatures: []native.Signature{{
-			BarrierPos:    -1,
-			CompileEffect: native.CompileStoresFn | native.CompileFnHandlerStrict,
-			Args:          []*native.Type{native.TFunction, native.TFunction},
-			Returns:       []*native.Type{native.TFunction},
-			ReturnsFn:     fnShapeReturns(fnShapeConst(2)),
+			BarrierPos: -1,
+			Args:       []*native.Type{native.TFunction, native.TFunction},
+			Returns:    []*native.Type{native.TFunction},
+			ReturnsFn:  fnShapeReturns(fnShapeConst(2)),
 			Impl: native.Go(func(args []native.Value, _ map[string]native.Value, _ []native.Value, r *native.Registry) ([]native.Value, error) {
 				b, err := fnUtilArg(args[0], "FnUtil.on", r)
 				if err != nil {
@@ -498,11 +483,10 @@ var fnUtilNatives = []native.NativeFunc{
 	{
 		Name: "memoize",
 		Signatures: []native.Signature{{
-			BarrierPos:    -1,
-			CompileEffect: native.CompileStoresFn | native.CompileFnHandlerStrict,
-			Args:          []*native.Type{native.TFunction},
-			Returns:       []*native.Type{native.TFunction},
-			ReturnsFn:     fnShapeReturns(fnShapeFromOperand(0)),
+			BarrierPos: -1,
+			Args:       []*native.Type{native.TFunction},
+			Returns:    []*native.Type{native.TFunction},
+			ReturnsFn:  fnShapeReturns(fnShapeFromOperand(0)),
 			Impl: native.Go(func(args []native.Value, _ map[string]native.Value, _ []native.Value, r *native.Registry) ([]native.Value, error) {
 				fd, err := fnUtilSigArg(args[0], "FnUtil.memoize", r)
 				if err != nil {

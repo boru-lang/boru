@@ -74,7 +74,7 @@ import (
 	"github.com/boru-lang/boru/lang/go/capabilities"
 	"github.com/boru-lang/boru/lang/go/modules"
 	"github.com/boru-lang/boru/lang/go/native"
-	"github.com/boru-lang/boru/parser/go"
+	parser "github.com/boru-lang/boru/parser/go"
 	"github.com/boru-lang/boru/test/specfix"
 )
 
@@ -540,17 +540,6 @@ func extractPassing(inPath, outPath string, maxLen int) {
 
 	fmt.Fprintf(os.Stderr, "specgen -extract: %d/%d non-error rows pass interpret+check (%d rows in length window)\n",
 		kept, checked, scanned)
-}
-
-// renderAny renders a compiled/interpreted result stack ([]any) to a
-// stable string for the compiler-parity comparison. Shared with
-// syntax_matrix_test.go's gates.
-func renderAny(vs []any) string {
-	parts := make([]string, len(vs))
-	for i, v := range vs {
-		parts[i] = fmt.Sprint(v)
-	}
-	return strings.Join(parts, " ")
 }
 
 // writePassingHeader emits the leading comment block of the passing

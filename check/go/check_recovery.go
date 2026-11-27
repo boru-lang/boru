@@ -403,28 +403,6 @@ func shareCheckState(e *core.Engine, capturedReg *core.Registry) func() {
 	return shareCheckStateFrom(capturedReg, e.Registry)
 }
 
-// shareCheckStateFrom is the registry-level mechanism behind shareCheckState:
-// it points owner's Check at caller's for the duration (restore via the
-// returned func), no-op when the registries coincide, either is nil, or the
-// caller is not in check mode. Split out so the MERGED-WORD seam can share at
-// the ReturnsFn boundary itself (BuildFnBodyReturnsFn — Stage M1,
-// design/legacy/STAGE3-INLINING-DESIGN-ROUND.0.ignore §5): a transplanted word-extension
-// sig dispatches as a BARE word on the importer's engine, where no
-// execFnDefLiteral wrapper exists to share around the call, and the sig's
-// owning registry is known only to the ReturnsFn closure (the transplant
-// clone's FnDefInfo.Registry is deliberately nil — see TransplantExtension).
-// Idempotent under nesting: when an enclosing dispatch already shared, the
-// swap is pointer-equal and the restore puts back the same shared state.
-// ShareCheckStateFrom is shareCheckStateFrom exported for the COMPILER's
-// cross-registry closure compile (compiler/go/callable_words.go): a foreign
-// fn value's body must resolve its free words in the DEFINING registry while
-// the analysis it drives — params, carriers, the recorder — stays the
-// CALLER's, because the unit it produces has to land in the caller's program.
-// Same mechanism, same restore contract, same idempotence under nesting.
-func ShareCheckStateFrom(owner, caller *core.Registry) func() {
-	return shareCheckStateFrom(owner, caller)
-}
-
 func shareCheckStateFrom(owner, caller *core.Registry) func() {
 	if owner == nil || caller == nil || owner == caller || !caller.Check.IsActive() {
 		return func() {}
@@ -786,7 +764,7 @@ func checkModeAssumeSig(e *core.Engine, w core.WordInfo, fn *core.FnDefInfo, fal
 	// recovery. The matched path publishes it in declaredReturnCarriers;
 	// this is the unmatched twin, reached with pos = val.Pos(), the word's
 	// own position.
-	e.Registry.Check.CurCallWord, e.Registry.Check.CurCallPos = w.Name, pos
+	e.Registry.Check.CurCallPos = pos
 	defer e.ClearRecoveryRaw()
 	// Gather candidate positions once and try to pick a signature
 	// whose arity matches and whose declared types are compatible
@@ -1030,7 +1008,6 @@ func installAnalysisImpl() {
 	core.AnalysisImpl.ReturnsFn = BuildFnBodyReturnsFn
 	core.AnalysisImpl.StripToCarriers = StripToCarriers
 	core.AnalysisImpl.CarrierResults = CarrierResults
-	core.AnalysisImpl.MixedConform = carrierMixedConform
 	core.AnalysisImpl.ValueCarriesCarrier = valueCarriesCarrier
 	core.AnalysisImpl.AtUncaughtTopLevel = CheckAtUncaughtTopLevel
 	core.AnalysisImpl.AnalyseFnBody = AnalyseFnBody
@@ -1183,13 +1160,12 @@ func recoveryArgsAt(e *core.Engine, positions []int) []core.Value {
 }
 
 // recoverUserFn is the single-overload user-fn recovery
-// (Engine.TryRecordRecoveredUserFn) with the dispatching word's cursor
+// (Engine.TryRecoverUserFn) with the dispatching word's cursor
 // published again right before it: the recovery's earlier probes (the poly
 // re-match's CarrierResults) analyse the callee's body, whose own dispatches
-// move the cursor, and the recovered call's ReturnsFn reads it as the call
-// word and the CALL_USER's position — the caret of a no-match its entry
-// check raises (`k m.a` over an Integer inside g anchored at `keys` in k's
-// body, NUR360).
+// move the cursor, and the recovered call's ReturnsFn reads it as the
+// call's position — the caret of a no-match (`k m.a` over an Integer inside
+// g anchored at `keys` in k's body, NUR360).
 func recoverUserFn(e *core.Engine, w core.WordInfo, pos core.SrcPos, sig *core.Signature, fn *core.FnDefInfo, args []core.Value, nStack int, positions []int) bool {
 	// A window whose written operands reach past the signature's barrier is
 	// the recovery's shortfall fill, not the interpreter's collection, which
@@ -1198,6 +1174,6 @@ func recoverUserFn(e *core.Engine, w core.WordInfo, pos core.SrcPos, sig *core.S
 	if core.BarrierBars([]core.Signature{*sig}, len(args)-nStack) {
 		return false
 	}
-	e.Registry.Check.CurCallWord, e.Registry.Check.CurCallPos = w.Name, pos
-	return e.TryRecordRecoveredUserFn(sig, fn, args, nStack, positions)
+	e.Registry.Check.CurCallPos = pos
+	return e.TryRecoverUserFn(sig, fn, args, nStack, positions)
 }

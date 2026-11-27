@@ -48,7 +48,7 @@ package core
 // design/FORWARD-COLLECTION-PHASES.10.md.
 //
 // COMPLEXITY: this function once carried //nolint:gocyclo,gocognit at
-// 87/211 — a reading of the pre-carve eng/go/match.go version. Stage 2's
+// 87/211 — a reading of the pre-carve core/go/match.go version. Stage 2's
 // re-seat 2 (54d8830) extracted the per-candidate scan to
 // CollectCandidateScan and the live measure is 68/131, UNDER the repo
 // caps (70/200), so the exemption is deleted and the caps now bind here
@@ -56,7 +56,7 @@ package core
 // would breach a cap extracts the block it grew — textually identically,
 // in its own commit, per the §10 triggers in design/FULL-COMPILATION.0.md
 // — rather than re-earning an exemption.
-func PlanMatch(h CollectHost, win *Tape, reg *Registry, fn *FnDefInfo, w WordInfo, resolved []Value, pointer int, insideForward, checkActive, compiling bool) (*Signature, []int, int) {
+func PlanMatch(h CollectHost, win *Tape, reg *Registry, fn *FnDefInfo, w WordInfo, resolved []Value, pointer int, insideForward, checkActive bool) (*Signature, []int, int) {
 
 	// Unified dispatch (post §1.4 fix): no more stackOnly/forward-prec
 	// dichotomy at the word level. Each sig declares its own boundary
@@ -67,32 +67,9 @@ func PlanMatch(h CollectHost, win *Tape, reg *Registry, fn *FnDefInfo, w WordInf
 	//   - /s (ForceStack)   → boundary at 0, all stack
 	//   - /f (ForceForward) → boundary at N, all forward
 
-	// Forward/stack split ambiguity (check mode only, compile-time advisory).
-	// If a more-specific overload is rejected because the stack-top operand
-	// is a genuinely MIXED gradual carrier (carrierMixedConform), and the
-	// overload finally SELECTED forward-collects instead — leaving that
-	// carrier on the stack — the static split diverges from the runtime one
-	// (a concrete value would have matched the more-specific overload and
-	// been grabbed). noteSplit flags it so the compiler declines; dispatch
-	// itself is unchanged. See CheckState.AmbiguousGradualSplit.
-	// Only ever read under checkActive (the scan's gradual-Any arm), so the
-	// runtime hot path never asks; hoisted here so the per-candidate loop
-	// asks once per dispatch rather than once per candidate.
-	mixedCarrierRejectIdx := -1
 	// The dispatching engine evaluates a pending container operand a
 	// pattern reads (NUR235); every other host matches the raw token.
 	pe, _ := h.(patternOperandHost)
-	noteSplit := func(positions []int, fwd int) {
-		if !checkActive || mixedCarrierRejectIdx < 0 || fwd == 0 {
-			return
-		}
-		for _, p := range positions {
-			if p == mixedCarrierRejectIdx { //covergate:allow interpreter step/dispatch defensive index+error arm; unreachable via eng harness (design/COVERAGE-ALLOWLIST.10.md §engine)
-				return // the carrier was consumed after all — not skipped
-			}
-		}
-		reg.noteAmbiguousGradualSplit()
-	}
 
 	// When the next forward token is a Word, prefer signatures with
 	// /q at position 0 (inspect-style name capture). The user wrote a
@@ -192,7 +169,7 @@ func PlanMatch(h CollectHost, win *Tape, reg *Registry, fn *FnDefInfo, w WordInf
 		// simply does not execute and every arg comes from the stack below.
 		// fwd is how many params the forward tokens filled; specAt the
 		// first slot a dispatching word filled, -1 for none.
-		fwd, specAt := CollectCandidateScan(h, sig, forwardLimit, positions, pointer+1, checkActive, compiling)
+		fwd, specAt := CollectCandidateScan(h, sig, forwardLimit, positions, pointer+1, checkActive)
 
 		// 1.3: all params matched by forward?
 		if fwd == nArgs {
@@ -211,7 +188,6 @@ func PlanMatch(h CollectHost, win *Tape, reg *Registry, fn *FnDefInfo, w WordInf
 				}
 				continue
 			}
-			noteSplit(positions, fwd)
 			return sig, positions, specAt
 		}
 
@@ -250,7 +226,6 @@ func PlanMatch(h CollectHost, win *Tape, reg *Registry, fn *FnDefInfo, w WordInf
 						}
 						continue
 					}
-					noteSplit(positions, fwd)
 					return sig, positions, specAt
 				}
 			}
@@ -307,14 +282,6 @@ func PlanMatch(h CollectHost, win *Tape, reg *Registry, fn *FnDefInfo, w WordInf
 				break
 			}
 			if !SigArgMatches(sig, sigIdx, stackVal) {
-				// A more-specific overload rejected because the stack-top
-				// operand is a mixed gradual carrier: a concrete value drawn
-				// from it might have matched here (and been grabbed). Remember
-				// it; if a forward-collecting overload is then selected, the
-				// split is ambiguous (noteSplit at the return points).
-				if checkActive && j == 0 && reg.analysisMixedConform(*stackVal, SigArgType(sig, sigIdx)) {
-					mixedCarrierRejectIdx = resolvedIdx[ri]
-				}
 				allMatch = false
 				break
 			}

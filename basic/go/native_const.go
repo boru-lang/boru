@@ -82,7 +82,7 @@ func ConstHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]V
 	// membership. This is a membership rule, so it rides the shared
 	// MemberBehavior wiring (Match / Unify / canon / `is` agreement)
 	// rather than a hand-written Behavior — the same path every host
-	// membership type uses (eng/go/membership.go). matchMembership only
+	// membership type uses (core/go/membership.go). matchMembership only
 	// calls the predicate on concrete values, so a non-inhabitant (a bare
 	// literal, or a check-mode carrier already tagged with this node)
 	// defers to the lattice walk.
