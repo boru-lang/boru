@@ -26,6 +26,7 @@ The specification is three things at once, on purpose:
 | [`Boru/Core/Canon.lean`](Boru/Core/Canon.lean) | the canonical source form of a value |
 | [`Boru/Core/Compare.lean`](Boru/Core/Compare.lean) | the one total order; a disjunct's canonical alternatives |
 | [`Boru/Core/Unify.lean`](Boru/Core/Unify.lean) | unification — the meet of two values |
+| [`Boru/Core/Truth.lean`](Boru/Core/Truth.lean) | the one truthiness rule |
 | [`Boru/Core/Match.lean`](Boru/Core/Match.lean) | the binding store, slot admission, the plan: which signature a call takes and where its arguments come from |
 | [`Boru/Core/Engine.lean`](Boru/Core/Engine.lean) | the step loop |
 | [`Boru/Core/Theorems/`](Boru/Core/Theorems) | what is proved |
@@ -90,23 +91,28 @@ them because the kernel had them, and each was recorded in
 the records closed: the model now states the rule, and the rows that pin
 each fix are in `core/spec` under the record's number.
 
-Five more are open, and the model reproduces them until they are ruled
+Seven more are open, and the model reproduces them until they are ruled
 on: a `/uv` value is not collected by a waiting word as a `/v` value is
 (NUR390); a word with more than one definition is not equal to itself
 (NUR391); an unmatched `(` is refused at the top level and in a
 literal but collected as a value in a loop's body (NUR392); a function
 that is a function body's only result is refused as an uncalled call
-(NUR396); and a word defined in boru is not retried from the stack when
-its forward plan fails, where the same function as a literal is (NUR398).
-Each is marked where it is modelled and where it is pinned.
+(NUR396); a word defined in boru is not retried from the stack when
+its forward plan fails, where the same function as a literal is (NUR398);
+a full-stack word in a counted loop's body takes the loop's mark with the
+stack it replaces, and the loop ends there (NUR400); and a function value
+planned again for a wider overload that does not fill drops the argument
+it had collected (NUR401). Each is marked where it is modelled and where
+it is pinned.
 
-One the model never had, and the search found by disagreeing with the
-kernel: a loop's inert inputs — and a call frame's unnamed arguments —
-were stepped when the loop or the call ran inside a group a waiting word
-evaluates, so a function among them was called on what the body wrote
-after it (NUR397). The model stated the rule; the kernel was fixed to meet
-it, and `core/spec/divergent.tsv` pins the same loop out of a group and in
-one.
+Two the model never had, and found by disagreeing with the kernel. A
+loop's inert inputs — and a call frame's unnamed arguments — were stepped
+when the loop or the call ran inside a group a waiting word evaluates, so
+a function among them was called on what the body wrote after it (NUR397).
+And a root type — `Any`, `None`, `Never` — standing as a loop's or an
+`if`'s condition was reported as "no value", because the kernel asked the
+value for its lattice parent and a root has none (NUR399). In both the
+model stated the rule and the kernel was fixed to meet it.
 
 Three the model does NOT reproduce, because each is an accident of how
 `core/go` compares values rather than a rule to state: typed containers

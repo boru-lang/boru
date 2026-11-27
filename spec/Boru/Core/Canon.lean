@@ -84,6 +84,8 @@ def canon : Value → String
   | .forward info _ => "__FW(" ++ info.funcName ++ ")"
   | .defCleanup _ => "__DC"
   | .returnCheck _ => "__RC"
+  | .mark _ => "__MK"
+  | .move _ _ => "__MV"
   -- a quoted LIST reads back through `quote`; on anything else the
   -- quoting is invisible
   | .quoted (.list elems e) => "(quote " ++ canon (.list elems e) ++ ")"

@@ -119,6 +119,8 @@ list only by becoming **Resolved** (the record is then deleted) or
 | [NUR395](#nur395) | The total order is not transitive between a typed list and plain lists of its size, so a disjunct's canonical form depends on the order its alternatives were written in | the core/ts unifier port, differential against core/go (2026-11-27) |
 | [NUR396](#nur396) | A function a function's body hands back as its only result is refused as an uncalled call: `def pk1 fn [[x:Map][Any][x.f]]` over `{f: add/v}` raises `uncalled_function` where `m.f` at the top level is the function | the core/ts engine port, checked against core/go and the Lean model (2026-11-27) |
 | [NUR398](#nur398) | A word defined in boru is not retried from the stack when its forward plan fails, where the same function written as a literal is, and the same word under a forced arity is: `"k" [] ov 5` is `signature_error`, `"k" [] ov/2 5` is `1 5` | the Lean specification's differential fuzzer over overloaded words, against core/go (2026-11-27) |
+| [NUR400](#nur400) | A full-stack word in a counted loop's body ends the loop: `for 3 [depth]` runs one round and answers `0`, with no error, and leaves the index bound (`for 3 [depth] i` is `0 0`) | the Lean specification of the counted loop, checked against core/go (2026-11-27) |
+| [NUR401](#nur401) | A function value with a narrower and a wider definition drops the argument it collected when the next value fits one slot of the wider definition but the wider definition does not fill: `m.g 5 6` is `5 106` where the word `f 5 6` is `105 6` | the Lean specification's differential fuzzer over `/u` on overloaded words, against core/go (2026-11-27) |
 
 Pending records normally use a compact form (rule / divergence /
 evidence / documentation status, plus a proposed verdict where one is
@@ -1518,5 +1520,103 @@ special case: it was written for a `CallBoru` sub-engine's deepest-first
 inputs, and a call whose forward argument fits but whose stack half does
 not is refused for every callee. (a) is the smaller change and removes the
 name/literal difference without refusing any program that runs today.
+
+---
+
+## NUR400 — a full-stack word in a counted loop's body ends the loop {#nur400}
+
+**Status:** Pending · **Recorded:** 2026-11-27 · measured on core/go through `boru do` and the core/spec notation · silent
+
+**Rule:** a counted loop runs its body once for each index of its range
+(`for 3 [i]` is `0 1 2`), and unbinds its index when it ends.
+
+**Divergence:** a round is `mark body… move` on the tape, with no paren
+around it, and the move finds its loop by finding its mark. A FULL-STACK
+word's handler returns "the complete replacement for everything from base
+through the pointer" (`execMatch`, core/go/engine.go:
+`e.Tape.Splice(base, e.Pointer+1-base, results...)`), where base is the
+start of the paren scope — so the splice takes the loop's mark with the
+values. The move then finds no mark and is "removed quietly" (`stepMove`:
+"Mark was removed from the stack"), which is the path a finished loop's
+stray move takes. The loop ends after that round, with no error; the values
+beneath the loop have been drawn into the round; and the index is never
+unbound, because the loop never reaches its end.
+
+```
+for 3 [i]              0 1 2
+for 3 [depth]          0             one round of three
+for 3 [i depth]        0 1           one round
+9 8 for 3 [depth]      9 8 2         one round; the 9 and 8 are now the round's
+for 3 [depth] i        0 0           the index is still bound after the loop
+def i 77
+for 3 [depth]
+i                      0 0           …over the caller's own `i`
+```
+
+`depth`, `pick`, `roll` and `stack` are the shipped full-stack words
+(`7 for 2 [0 pick]` is `7 7`, one round). In the
+core/spec notation: `run forq 3 [q depthq ] i` is `0 0`
+(core/spec/divergent.tsv, the NUR400 block). A driven loop is not affected:
+its region is sealed by a paren, which is the full-stack word's base.
+
+The Lean specification reproduces the kernel (`spec/Boru/Core/Engine.lean`
+`execMatch`, the full-stack arm; `stepMove`, a move whose mark is gone).
+
+**Proposed verdict:** resolve by fix — the replacement stands for the
+VALUES of the scope, and a loop's mark in that stretch is not one of them.
+Where the mark then stands is the choice to make: (a) in place, so the
+values beneath the loop stay beneath it and `9 8 for 3 [depth]` is
+`9 8 2 2 2`; or (b) ahead of the replacement, so everything the handler
+returned is the round's and it is `9 8 2 0 0`. (a) keeps "what a round
+leaves is what its body pushed" and is what a reader of the loop expects.
+
+---
+
+## NUR401 — a function value drops the argument it collected when widening does not fill {#nur401}
+
+**Status:** Pending · **Recorded:** 2026-11-27 · measured on core/go through `boru do` and the core/spec notation · silent
+
+**Rule:** one dispatch for every callee: "Function values at the pointer
+dispatch with the same forward+stack matching as words" (core/go/engine.go,
+the function-value step). A call that has collected its argument fires with
+it.
+
+**Divergence:** when a WORD's collection completes it is rewritten to `/s`
+and fires over what it holds. A function VALUE is sealed the same way,
+except that `fnValueWouldWiden` first asks whether a wider overload could
+take the next token "against EVERY forward-eligible slot of each wider sig"
+— and if any single slot admits it, the value is left unsealed and planned
+again in full. That test is necessary, not sufficient: it never asks whether
+the wider overload would then FILL. When it does not, the re-plan falls back
+to the narrower overload — which, planning afresh, collects the NEXT token
+forward, and the argument it had already collected is left on the stack.
+
+```
+def f fn [[a:Integer][Any][(a add 100)]]
+def f fn [[a:String b:Integer][Any][b]]
+def m {g: f/v}
+
+f 5 6          105 6        the word: f(5), then 6
+m.g 5 6        5 106        the same function as a value: the 5 is left, and 6 is taken
+m.g 5 "x"      5            the designed case: the wider definition fills — f("x", 5)
+```
+
+`6` fits the wider definition's `b:Integer`, so the call is planned again;
+`[a:String b:Integer]` does not take `6` and `5`; `[a:Integer]` then takes
+`6`. Nothing is raised. Which argument a call uses depends on whether the
+function was reached by its name.
+
+In the core/spec notation, through a `/u` wrapper (a function value):
+`run def ov fn( a Integer b String Any [ 2 ] ) ; def ov fn( a Integer Any [ 1 ] ) ; ov/u 5 6`
+is `5 1` where the word `ov 5 6` is `1 6` (core/spec/divergent.tsv and
+dispatch.tsv).
+
+The Lean specification reproduces the kernel (`spec/Boru/Core/Engine.lean`
+`wouldWiden`, and the unsealed re-plan in `stepLiteral`).
+
+**Proposed verdict:** resolve by fix — widening is decided by the wider
+PLAN, not by one slot: the value is left unsealed only when a wider overload
+matches over the collected arguments and the forward window, and otherwise
+fires sealed with what it holds, as its word does.
 
 ---

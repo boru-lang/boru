@@ -58,6 +58,11 @@ def fixtureDefs : Defs :=
     -- the DRIVEN-LOOP fixture: an iteration per element, the element the
     -- region's one inert input, everything a region leaves collected
     word "eachq" [p "xs" TList, p "body" TList] [TList] 2,
+    -- the COUNTED and CONDITIONAL loop fixtures: a mark, a body, and a
+    -- move that replays it — on the caller's own stack
+    word "forq" [p "n" TInteger, p "body" TList] [] 2,
+    word "rangeq" [p "start" TInteger, p "end" TInteger, p "step" TInteger, p "body" TList] [] 4,
+    word "whileq" [p "cond" TList, p "body" TList] [] 2,
     -- the CLOSURE fixture: build an anonymous one-parameter function at
     -- run time, where the capture analysis runs
     word "afn" [p "param" TAtom (quote := true), p "body" TList] ["Type/Function"] 2,
@@ -78,6 +83,20 @@ private def elemsOf (word : String) (v : Value) : Except BoruError (List Value) 
   | .list xs _ => pure xs
   | .typedList _ (x :: xs) => pure (x :: xs)
   | _ => throw { code := "fixture_not_a_list", detail := word ++ ": no elements to read" }
+
+/-- A counted loop's first round (basic's `RunForLoop`): an empty range
+    runs nothing, a zero step is refused; otherwise the index is bound as
+    `i` and the body stands between a mark and the move that counts. -/
+private def counted (word : String) (start stop step : Int) (body : Value) (d : Defs) :
+    Except BoruError (List Value × Defs) := do
+  let toks ← elemsOf word body
+  if step == 0 then
+    throw { code := "fixture_zero_step", detail := word ++ ": the step cannot be zero" }
+  else if (step > 0 && start ≥ stop) || (step < 0 && start ≤ stop) then pure ([], d)
+  else
+    let d := d.push "i" (.int start)
+    let (id, d) := d.freshMark
+    pure (.mark id :: toks ++ [.move id (.counted "i" start stop step toks [] (d.depth "i"))], d)
 
 /-- The fixture handlers. -/
 def fixtureNatives : Natives :=
@@ -113,6 +132,16 @@ def fixtureNatives : Natives :=
         pure ((xs[it]?).map fun x => ([x], body))
       collect := fun _ _ acc residual => pure (acc ++ residual)
       finish := fun _ acc => pure [.list acc false] }),
+    ("forq", .plain fun a d => do
+      counted "forq" 0 (asInt (a.getD 0 .none)) 1 (a.getD 1 .none) d),
+    ("rangeq", .plain fun a d => do
+      counted "rangeq" (asInt (a.getD 0 .none)) (asInt (a.getD 1 .none)) (asInt (a.getD 2 .none))
+        (a.getD 3 .none) d),
+    ("whileq", .plain fun a d => do
+      let test ← elemsOf "whileq" (a.getD 0 .none)
+      let body ← elemsOf "whileq" (a.getD 1 .none)
+      let (id, d) := d.freshMark
+      pure (.mark id :: test ++ [.move id (.cond test body [] false)], d)),
     ("afn", .plain fun a d =>
       match a.getD 0 .none with
       | .atom name => do

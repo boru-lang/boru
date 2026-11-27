@@ -77,6 +77,21 @@ def refIdent (d : Defs) (name : String) : Nat × Defs :=
 /-- How many bindings a name holds. -/
 def depth (d : Defs) (name : String) : Nat := (d.stack name).length
 
+/-- Unbind `name` down to `floor` bindings. -/
+def popTo (d : Defs) (name : String) (floor : Nat) : Defs :=
+  (List.range (d.depth name - floor)).foldl (fun d _ => d.pop name) d
+
+/-- LOOP MARKS are numbered from a counter in the binding table, as
+    function identities are: each round of a loop opens under a mark of
+    its own. -/
+def markKey : String := " mark"
+
+def freshMark (d : Defs) : Nat × Defs :=
+  let n := match d.stack markKey with
+    | .int k :: _ => k.toNat
+    | _ => 1
+  (n, (markKey, [.int (n + 1)]) :: d.filter (fun (k, _) => k != markKey))
+
 end Defs
 
 /-! ## Dispatch order -/
@@ -279,7 +294,7 @@ def effectiveResolved (tape : List Value) (hi : Nat) : List Value :=
   (List.range hi).filterMap fun i =>
     if i < start || excl.contains i then none
     else match tape[i]? with
-      | some v => if v.isForward || v.isOpenParen then none else some v
+      | some v => if v.isForward || v.isOpenParen || v.isLoopToken then none else some v
       | none => none
 
 /-- Tape indices of the top `n` resolved cells before `i`, deepest first.
@@ -292,7 +307,7 @@ def resolvedIdxBack (tape : List Value) : Nat → Nat → List Nat
   | i + 1, n + 1 =>
     match tape[i]? with
     | some .openParen | some .frameOpen => []
-    | some (.forward _ _) => resolvedIdxBack tape i (n + 1)
+    | some (.forward _ _) | some (.mark _) | some (.move _ _) => resolvedIdxBack tape i (n + 1)
     | _ => i :: resolvedIdxBack tape i n
 
 def resolvedIndicesBefore (tape : List Value) (ptr n : Nat) : List Nat :=
@@ -324,7 +339,8 @@ def scanAdmits (defs : Defs) (s : Sig) (fwd : Nat) (tok : Value) : Bool :=
           && !(!s.isTypeArg fwd && rejectsTypeLiteral (.typeLit t) expected)
       | none => sigArgMatches s fwd (.atom w.name) || expected == TAny
   match tok with
-  | .forward _ _ | .endMark | .closeParen | .openParen | .frameOpen | .defCleanup _ | .returnCheck _ => false
+  | .forward _ _ | .endMark | .closeParen | .openParen | .frameOpen | .defCleanup _ | .returnCheck _
+  | .mark _ | .move _ _ => false
   | .word w =>
     if s.isQuote fwd then conforms TAtom expected                  -- `/q`: the name is the operand
     else match defs.top? w.name with

@@ -22,7 +22,8 @@ SPEC = os.path.dirname(HERE)
 REPO = os.path.dirname(SPEC)
 
 WORDS = ["addq", "negq", "pairq", "sumq", "boomq", "patq", "dupq", "__pa", "undef",
-         "qanyq", "bothq", "tyq", "tpatq", "unifyq", "meetq", "meetq", "depthq", "afn", "eachq"]
+         "qanyq", "bothq", "tyq", "tpatq", "unifyq", "meetq", "meetq", "depthq", "afn", "eachq",
+         "forq", "forq", "rangeq", "whileq"]
 LITS = ["0", "1", "2", "5", "7", "-3", "'a'", "'x'", "true", "false", "none", "null"]
 TYPES = ["Integer", "String", "Any", "None", "List", "Map", "Boolean", "Word", "Scalar/String"]
 NAMES = ["x", "y", "n", "nosuchword"]
@@ -70,6 +71,34 @@ def gen_item(rng, depth):
                                "eachq [q 10 20 ] [q addq 1 ]", "afn n [q addq n 1 ]", "unifyq Integer",
                                "bothq", "n", "inc", "undef x", "( negq )", "negq ("])
             return ["eachq", "[q"] + elems + ["]", "[q"] + body.split() + ["]"]
+        if w in ("forq", "rangeq") and depth == 2 and rng.random() < 0.85:
+            # a counted loop: `mark body… move` on the caller's own stack,
+            # the index bound as `i`; its values are stepped where it stood
+            body = rng.choice(["i", "i i", "", "7", "negq/s", "addq i 10", "addq i", "depthq", "sumq",
+                               "dupq/s", "[ i ]", "{ a: i }", "[q i ]", "negq/v", "negq", "bothq 1",
+                               "fn( n Integer Integer [ addq n 1 ] )", "fn( n Integer Integer [ addq n 1 ] ) i",
+                               "forq 2 [q i ]", "i forq 2 [q i ] i", "eachq [q 5 6 ] [q i ]", "undef i",
+                               "undef i i", "boomq", "(", ")", ";", "i ;", "( i )", "( i", "pairq i",
+                               "bothq i", "afn n [q addq n i ]", "x", "addq x", "inc", "unifyq i",
+                               "whileq [q false ] [q 1 ]", "i depthq", "dupq i", "i negq/s", "i/v",
+                               "c undef c", "rangeq i 3 1 [q i ]", "meetq i Integer"])
+            if w == "forq":
+                head = ["forq", rng.choice(["0", "1", "2", "2", "3", "-1", "'a'", "x"])]
+            else:
+                head = ["rangeq", rng.choice(["0", "1", "5"]), rng.choice(["0", "3", "5", "-2"]),
+                        rng.choice(["1", "2", "-1", "-2", "0"])]
+            return head + ["[q"] + body.split() + ["]"]
+        if w == "whileq" and depth == 2 and rng.random() < 0.85:
+            # a conditional loop: the condition region's LAST value decides.
+            # `c` is a stack of bindings a body pops, so the loop can end
+            cond = rng.choice(["c", "c", "c", "false", "0", "none", "''", "[q ]", "{q }", "", "5 c",
+                               "Integer", "None", "List", "x", "nosuchword", "null", "0.0", "c c",
+                               "( c )", "negq 0", "[ c ]", "depthq", "true", "Any"])
+            body = rng.choice(["undef c 7", "undef c", "c undef c", "undef c [ c ]", "undef c i",
+                               "undef c forq 2 [q i ]", "undef c negq/s", "undef c depthq",
+                               "undef c fn( n Integer Integer [ n ] )", "undef c ;", "undef c (",
+                               "undef c boomq", "undef c x", "7", ""])
+            return ["whileq", "[q"] + cond.split() + ["]", "[q"] + body.split() + ["]"]
         # call-site modifiers: /s stack only, /f forward only, /N arity,
         # /v the bound value, /u the function with its arguments reversed
         if rng.random() < 0.22:
@@ -117,6 +146,13 @@ def gen_program(rng, max_len):
     # call shadows it, and must leave it bound
     if rng.random() < 0.10:
         toks += ["def", "n"] + gen_value(rng, 0) + [";"]
+    # a STACK of bindings of one name: a conditional loop's body pops it,
+    # so its condition changes from round to round
+    if rng.random() < 0.20:
+        for v in rng.sample(["false", "true", "1", "0", "'a'", "none", "true", "2", "Any", "[q 1 ]",
+                             "d( )", "d( 1 2 )", "[: Integer ]", "List", "String", "''", "{q }", "null"],
+                            rng.randint(1, 4)):
+            toks += ["def", "c", v, ";"]
     # a function that BUILDS a closure in its frame, and calls of it
     if rng.random() < 0.10:
         inner = rng.choice(["addq n x", "x", "n", "addq n y", "afn m [q addq m x ]", "addq x 1", "n x"])
@@ -192,7 +228,8 @@ def main():
     env = dict(os.environ, CORE_PROBE_IN=inp, CORE_PROBE_OUT=go_out)
     r = subprocess.run(["go", "test", "-run", "TestCoreProbe$", "-count=1", "."],
                        cwd=os.path.join(REPO, "core", "go"), env=env, capture_output=True, text=True)
-    if r.returncode != 0 or not os.path.exists(go_out):
+    # a line the notation cannot read fails the probe's run, not its output
+    if not os.path.exists(go_out):
         sys.stderr.write("go probe failed:\n" + r.stdout[-3000:] + r.stderr[-3000:])
         return 2
     go = open(go_out).read().split("\n")

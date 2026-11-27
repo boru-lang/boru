@@ -229,3 +229,110 @@ run bothq 1 ( eachq [q negq/v ] [q 4 ] )	[negq/v 4]	ERROR:undefined_word	the sam
 run negq ( eachq [q fn( n Integer Integer [ n ] ) ] [q addq 1 ] )	ERROR:signature_error	ERROR:undefined_word	the body's own failure, not a refusal of the function input
 run bothq 1 ( eachq [q 5 ] [q fn( n Integer Integer [ addq n 1 ] ) ] )	[6]	ERROR:undefined_word	a function in the BODY is the one that dispatches
 run def f fn( n Any Any [ 2 ] ) ; def f fn( n Integer Any [ 1 ] ) ; eachq [q 1 'a' true ] [q f ]	[1 2 2]	ERROR:undefined_word	the dispatch order holds inside a region
+#
+# --- counted loops: a mark, a body, a move — on the caller's own stack ---------
+# `forq n [q body ]` runs the body for i = 0 … n-1 and `rangeq start end step
+# [q body ]` over any range, the index bound as `i`. A round is `mark body…
+# move` with NO paren around it: the body reads the stack the loop's word
+# stood on, and what it takes from there is gone for the next round. The move
+# keeps what the round left, rebinds the index and replays the body; after the
+# last round every round's values stand where the loop stood and are STEPPED
+# from there, as any word's results are. core/ts has no loop on the tape.
+run forq 3 [q i ]	0 1 2	ERROR:undefined_word	the body once for each index, 0 to n-1; every round's values stand where the loop stood
+run forq 0 [q i ]		ERROR:undefined_word	no rounds: nothing
+run forq 3 [q ]		ERROR:undefined_word	rounds that leave nothing
+run forq 3 [q i i ]	0 0 1 1 2 2	ERROR:undefined_word	a round may leave several values
+run forq 2 [q addq i 10 ]	10 11	ERROR:undefined_word	the index is a binding the body reads
+run rangeq 0 6 2 [q i ]	0 2 4	ERROR:undefined_word	any start, bound and step: the bound is exclusive
+run rangeq 5 0 -2 [q i ]	5 3 1	ERROR:undefined_word	a negative step counts down
+run rangeq 3 3 1 [q i ]		ERROR:undefined_word	an empty range runs nothing
+run rangeq 0 5 -1 [q i ]		ERROR:undefined_word	a step away from the bound runs nothing
+run rangeq 0 5 0 [q i ]	ERROR:fixture_zero_step	ERROR:undefined_word	a zero step is the fixture's to refuse
+run def i 50 ; forq 2 [q i ] i	0 1 50	ERROR:undefined_word	the index shadows an outer binding for the loop, and is unbound after it
+run forq 2 [q i ] 5	0 1 5	ERROR:undefined_word	what follows the loop follows its values
+run forq 2 [q i ] ; forq 2 [q i ]	0 1 0 1	ERROR:undefined_word	two loops in turn: each binds and unbinds its own index
+run 5 6 forq 2 [q negq/s ]	-6 -5	ERROR:undefined_word	NO PAREN around a round: the body takes from the stack the loop stood on
+run 5 forq 2 [q negq/s ]	ERROR:signature_error	ERROR:undefined_word	and the second round finds that stack one shorter
+run 5 6 forq 2 [q dupq/s ]	6 6 5 5	ERROR:undefined_word	what a round takes from beneath, it takes for good
+run 1 2 3 4 forq 2 [q sumq ]	7 3	ERROR:undefined_word	each round's values leave the tape: the next round reads beneath them
+run 5 6 forq 2 [q addq i ]	6 6	ERROR:undefined_word	one argument forward, one from the caller's stack
+run forq 2 [q i ] negq	0 -1	ERROR:undefined_word	THE LOOP'S VALUES ARE STEPPED where it stood: a word after it takes the last
+run forq 2 [q i ] sumq	1	ERROR:undefined_word	or the last two
+run forq 2 [q fn( n Integer Integer [ addq n 1 ] ) i ]	1 2	ERROR:undefined_word	so a function a round leaves is called on what follows it
+run forq 2 [q fn( n Integer Integer [ addq n 1 ] ) ]	ERROR:uncalled_function	ERROR:undefined_word	and with nothing to take, a named one is an uncalled call
+run forq 1 [q negq/v ] 5	-5	ERROR:undefined_word	a /v word in the body is the function, a value while the round lasts — and stepped as one when the loop ends
+run forq 2 [q [ i ] ]	[0] [1]	ERROR:undefined_word	a pending list a round leaves is evaluated IN the round, the index still bound
+run forq 2 [q { a: i } ]	{a:0} {a:1}	ERROR:undefined_word	and a pending map
+run forq 2 [q [q i ] ]	[i] [i]	ERROR:undefined_word	a quoted list is data: the name in it is never read
+run forq 2 [q forq 2 [q i ] ]	0 1 0 1	ERROR:undefined_word	loops nest: the inner index shadows the outer
+run forq 2 [q i forq 2 [q i ] i ]	0 0 1 0 1 0 1 1	ERROR:undefined_word	and the outer index is there again when the inner loop ends
+run rangeq 0 3 1 [q rangeq i 3 1 [q i ] ]	0 1 2 1 2 2	ERROR:undefined_word	an inner loop's range read from the outer index
+run forq 2 [q eachq [q 5 6 ] [q i ] ]	[5 0 6 0] [5 1 6 1]	ERROR:undefined_word	a driven loop in a round: its sealed region still reads the index
+run eachq [q 5 6 ] [q forq 2 [q i ] ]	[5 0 1 6 0 1]	ERROR:undefined_word	a counted loop in a driven region: its values are the region's
+run eachq [q 5 6 ] [q forq 2 [q negq/s ] ]	ERROR:signature_error	ERROR:undefined_word	and it reads the region's stack, which holds one input
+run dupq ( forq 2 [q i ] )	0 0 1	ERROR:undefined_word	in a group a waiting word evaluates
+run [ forq 2 [q i ] ]	[0 1]	ERROR:undefined_word	in a container literal
+run def f fn( n Any Any [ forq 1 [q n ] ] ) ; f 5	5	ERROR:undefined_word	in a function's body: one round, one value, one declared return
+run def f fn( n Any Any [ forq 2 [q n ] ] ) ; f 5	ERROR:type_error	ERROR:undefined_word	two values against one declared return
+run def f fn( i Any Any [ forq 1 [q i ] ] ) ; f 5	0	ERROR:undefined_word	the index shadows a parameter of its name
+run def mk fn( n Any Any [ rangeq 7 8 1 [q afn m [q addq m i ] ] ] ) ; bothq 0 ( mk 1 ) 5	12	ERROR:undefined_word	a function built in a round INSIDE A FRAME captures the index, as it captures anything the frame bound
+run bothq 0 ( rangeq 7 8 1 [q afn m [q addq m i ] ] ) 5	ERROR:signature_error	ERROR:undefined_word	at the top level there is no frame and nothing is captured: the index is unbound when the function runs
+run def i 100 ; bothq 0 ( rangeq 7 8 1 [q afn m [q addq m i ] ] ) 5	105	ERROR:undefined_word	and an outer binding of its name is what the function reads
+run forq 2 [q boomq 1 ]	ERROR:fixture_boom	ERROR:undefined_word	a body's error is the loop's
+run forq 2 [q bothq 1 ]	ERROR:signature_error	ERROR:undefined_word	the move is a BOUNDARY: a word in the body cannot collect past its round
+run forq 2 [q undef i ]		ERROR:undefined_word	a body that unbinds the index: the loop's own unbinding then finds nothing to remove
+#
+# --- conditional loops: a condition region and a body region, in turn ----------
+# `whileq [q cond ] [q body ]`. The condition region's LAST value decides, by
+# the one truthiness rule — presence, not content; a region that leaves no
+# value is an error. The body region's values are kept, and the condition runs
+# again. `c` here is a stack of bindings a body pops, so the condition changes.
+run def c false ; def c true ; def c true ; whileq [q c ] [q undef c 7 ]	7 7	ERROR:undefined_word	a condition region, then a body region, in turn: two rounds
+run whileq [q false ] [q 7 ]		ERROR:undefined_word	false at once: no round
+run whileq [q false ] [q 7 ] 9	9	ERROR:undefined_word	and what follows the loop follows
+run whileq [q ] [q 7 ]	ERROR:runtime_error	ERROR:undefined_word	a condition that leaves NO value is an error
+run whileq [q 1 false ] [q 7 ]		ERROR:undefined_word	the condition's LAST value decides
+run def c 0 ; def c 1 ; def c 2 ; whileq [q 5 c ] [q c undef c ]	2 1	ERROR:undefined_word	whatever else it left
+run whileq [q 0 ] [q 7 ]		ERROR:undefined_word	truth is PRESENCE: zero is false
+run whileq [q '' ] [q 7 ]		ERROR:undefined_word	the empty string
+run whileq [q [q ] ] [q 7 ]		ERROR:undefined_word	the empty list
+run whileq [q {q } ] [q 7 ]		ERROR:undefined_word	the empty map
+run whileq [q none ] [q 7 ]		ERROR:undefined_word	none
+run whileq [q Integer ] [q 7 ]		ERROR:undefined_word	a number type has no number to be present
+run whileq [q None ] [q 7 ]		ERROR:undefined_word	a ROOT type is a value like any other type: None is false, not "no value" (NUR399)
+run def c false ; def c Any ; whileq [q c ] [q undef c 7 ]	7	ERROR:undefined_word	and Any is true
+run def c false ; def c 'false' ; whileq [q c ] [q undef c 7 ]	7	ERROR:undefined_word	a String is true unless it is empty: its characters are not read
+run def c 0 ; def c 1 ; whileq [q c ] [q undef c [ c ] ]	[0]	ERROR:undefined_word	a pending list a round leaves is evaluated in the round
+run def c 0 ; def c 1 ; whileq [q c ] [q undef c forq 2 [q i ] ]	0 1	ERROR:undefined_word	a counted loop in a conditional one
+run forq 2 [q whileq [q false ] [q 1 ] i ]	0 1	ERROR:undefined_word	a conditional loop in a counted one
+run whileq [q true ] [q ]	ERROR:evaluation_limit	ERROR:undefined_word	a loop that never ends is stopped by the step budget
+#
+# --- a full-stack word in a round (NUR400, pinned as the kernel has it) ---------
+# A full-stack word's answer replaces everything from the start of its paren
+# scope to the word itself — the loop's mark with it. The move then finds no
+# mark and is dropped: the loop ends after that round without an error, with
+# the values beneath drawn into the round and the index still bound.
+run forq 2 [q depthq ]	0	ERROR:undefined_word	NUR400: a full-stack word replaces its whole scope, the loop's mark included — the loop ends after that round
+run 9 forq 2 [q depthq ]	9 1	ERROR:undefined_word	NUR400: the value beneath is drawn into the round, and the round is the last
+run forq 3 [q i depthq ]	0 1	ERROR:undefined_word	NUR400: one round of three
+run 9 8 forq 3 [q depthq ]	9 8 2	ERROR:undefined_word	NUR400: with the stack beneath it drawn into the round
+run forq 3 [q depthq ] i	0 0	ERROR:undefined_word	NUR400: and the index is left bound
+run def i 77 ; forq 3 [q depthq ] ; i	0 0	ERROR:undefined_word	NUR400: over an outer binding of its name
+#
+# --- arity widening of a value call ----------------------------------------------
+# A function standing as a VALUE — here a `/u` wrapper, whose parameters are
+# the word's reversed — whose collection has completed is stepped again
+# reading the stack only, UNLESS one of its wider overloads could take the
+# next token in a position it collects forward: then the call is planned again
+# in full, and what it had collected falls to the stack side of the wider
+# overload (core/go fnValueWouldWiden). So `f/u 5 'x'`, where only the narrow
+# overload takes `5` first, becomes the wider call. core/ts seals the value to
+# the stack every time.
+#
+# The two NUR401 rows are the rule misfiring: the next value fits ONE slot of
+# the wider overload, the wider overload does not fill, and the narrower one
+# then takes the NEXT value — leaving behind the one it had collected.
+run def ov fn( a Integer b String Any [ 2 ] ) ; def ov fn( a Integer Any [ 1 ] ) ; ov/u 5 'x'	2	1 'x'	the narrow overload collects 5; the String could go to the wider one, which then takes both
+run def ov fn( a Scalar b Any Any [ ] ) ; def ov fn( a Integer Any [ 4 ] ) ; ov/u 5 ov/v	ERROR:type_error	4 fn [[a:Scalar b:Any][Any][] [a:Integer][Any][4]]	a /v word is a function, and fits the wider overload's Any slot: widened onto a body that fails its own return check
+run def ov fn( a String b Integer Any [ 2 ] ) ; def ov fn( a Integer Any [ 1 ] ) ; ov/u 5 6	5 1	1 6	NUR401: the 6 fits a slot of the wider overload, which does not fill; the narrow one takes the 6 and leaves the 5
+run def ov fn( a Integer b String Any [ 2 ] ) ; def ov fn( a Integer Any [ 1 ] ) ; ov/u 5 6	5 1	1 6	NUR401: the same, whichever slot the next value fits

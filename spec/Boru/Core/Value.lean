@@ -118,11 +118,32 @@ inductive Value where
   /-- `Word/__RC` — a call frame's return check: the declared return
       types the frame's residual must satisfy. -/
   | returnCheck (returns : List TypeId)
+  /-- `Word/__MK` — a MARK: the head of a loop's region on the tape. -/
+  | mark (id : Nat)
+  /-- `Word/__MV` — the MOVE that ends a loop's region. Stepped, it takes
+      what the region left and either replays the body under a new mark or
+      puts the loop's results in the region's place. It carries the loop:
+      the whole of its state rides the tape. -/
+  | move (to : Nat) (loop : Loop)
   /-- The same value, QUOTED: an occurrence the step loop treats as
       data. The kernel keeps this as a flag on the occurrence; a call
       frame sets it on a list bound to a named parameter, so the body's
       read of the parameter can never re-run it. -/
   | quoted (v : Value)
+
+/-- A LOOP ON THE TAPE (core/go `Loop`), in one of its two modes.
+
+    COUNTED: the index name, its current value, the exclusive bound and
+    the step; the body replayed each round; the values the completed
+    rounds left; and the depth of the index name's bindings when the loop
+    began, the index included — the floor of the loop's own scope.
+
+    CONDITIONAL: a condition region and a body region, run in turn; the
+    values the completed body rounds left; and which of the two regions is
+    on the tape now. -/
+inductive Loop where
+  | counted (index : String) (current stop step : Int) (body results : List Value) (depth : Nat)
+  | cond (test body results : List Value) (inBody : Bool)
 
 /-- One parameter of a signature. -/
 inductive Param where
@@ -161,7 +182,7 @@ inductive Sig where
 
 end
 
-deriving instance BEq, Repr for Value, Param, Impl, Sig
+deriving instance BEq, Repr for Value, Loop, Param, Impl, Sig
 
 instance : Inhabited Value := ⟨Value.none⟩
 
@@ -209,6 +230,9 @@ def isOpenParen : Value → Bool | openParen | frameOpen => true | _ => false
 def isCloseParen : Value → Bool | closeParen => true | _ => false
 def isEnd : Value → Bool | endMark => true | _ => false
 def isFn : Value → Bool | fn _ _ _ => true | _ => false
+/-- A loop's mark or move: transparent to the value stack, a boundary to
+    a forward scan. -/
+def isLoopToken : Value → Bool | mark _ | move _ _ => true | _ => false
 def isQuoted : Value → Bool | quoted _ => true | _ => false
 
 /-- The lattice node a value sits at — its `Parent` in the kernel. A bare
@@ -239,6 +263,8 @@ def typeOf : Value → TypeId
   | fn _ _ _ => "Type/Function"
   | defCleanup _ => "Word/__IN/__DC"
   | returnCheck _ => "Word/__RC"
+  | mark _ => "Word/__MK"
+  | move _ _ => "Word/__MV"
   | quoted v => typeOf v
 
 /-- The value under any quoting. -/
@@ -248,7 +274,7 @@ def unquote : Value → Value
 
 /-- A marker the step loop reads structurally: it is never an operand. -/
 def isStructural : Value → Bool
-  | forward _ _ | defCleanup _ | returnCheck _ => true
+  | forward _ _ | defCleanup _ | returnCheck _ | mark _ | move _ _ => true
   | _ => false
 
 /-- A pending container: one the parser wrote that nothing has evaluated. -/

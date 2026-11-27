@@ -24,6 +24,7 @@
   inside Lean's kernel.
 -/
 import Boru.Core.Match
+import Boru.Core.Truth
 
 namespace Boru.Core
 
@@ -169,7 +170,8 @@ def pendingCollecting (tape : List Value) (defs : Defs) (ptr : Nat) : Bool :=
 
 /-- A token no forward scan walks past. -/
 def scanBoundary : Value → Bool
-  | .forward _ _ | .defCleanup _ | .returnCheck _ | .endMark | .closeParen => true
+  | .forward _ _ | .defCleanup _ | .returnCheck _ | .endMark | .closeParen
+  | .mark _ | .move _ _ => true
   | _ => false
 
 /-- Resolve a parked forward that will get no more forward arguments
@@ -247,6 +249,36 @@ def answersItself (sigs : List Sig) (w : WordInfo) : Bool :=
     match s.impl with
     | .boru (_ :: _) _ => true
     | _ => false
+
+/-- ARITY WIDENING (core/go `fnValueWouldWiden`). A function VALUE whose
+    collection has just completed is re-stepped reading the stack only —
+    unless one of its WIDER overloads could take the token that follows
+    it, in any position it may collect forward: then the call is planned
+    again in full, and the arguments already collected fall to the stack
+    side of the wider overload.
+
+    What the next token would contribute decides. A group is an
+    expression whose value is not known: it is taken to widen. A `/v`
+    word is a function; a name bound to a value is that value; `true`,
+    `false` and `none` are themselves; a literal is itself. A boundary, a
+    function word and an unbound name prove nothing. -/
+def wouldWiden (tape : List Value) (defs : Defs) (sigs : List Sig) (completed idx : Nat) : Bool :=
+  let wider := sigs.filter fun s => s.arity > completed && s.barrier != 0
+  let claims (probe : Value) : Bool :=
+    wider.any fun s => (List.range (min s.barrier s.arity)).any fun slot => sigArgMatches s slot probe
+  if wider.isEmpty then false
+  else match tape[idx]? with
+    | none | some .endMark | some .closeParen | some (.forward _ _) | some (.dispatchMod _) => false
+    | some .openParen | some .frameOpen | some (.parenExpr _) => true
+    | some (.word w) =>
+      if w.forceVal then claims (.fn "" [] 0)
+      else match defs.top? w.name with
+        | some top => if top.isFn then false else claims top
+        | none =>
+          if w.name == "true" || w.name == "false" then claims (.bool (w.name == "true"))
+          else if w.name == "none" then claims .none
+          else false
+    | some v => claims v
 
 /-- THE USURP WRAPPER (core/go/core_ref.go `usurpOver`): a function whose
     every signature is one of the original's with its parameters REVERSED
@@ -374,6 +406,8 @@ def stepToken (nat : Natives) : Nat → Engine → Except BoruError Engine
     | some .closeParen => stepCloseParen nat fuel e
     | some .endMark => stepEnd nat fuel e
     | some (.returnCheck _) => pure { e with ptr := e.ptr + 1 }
+    | some (.mark _) => pure { e with ptr := e.ptr + 1 }
+    | some (.move to loop) => stepMove nat fuel e to loop
     | some (.defCleanup names) => do
       -- the frame's cleanup runs ONCE: stepped, the marker is spent and
       -- leaves the tape, so the frame's close finds nothing to run again
@@ -669,9 +703,12 @@ def stepLiteral (nat : Natives) : Nat → Engine → Except BoruError Engine
                 -- complete: drop the marker and re-dispatch stack-only
                 let tape := removeAt tape fwdIdx
                 let funcIdx := if fwdIdx < funcIdx then funcIdx - 1 else funcIdx
-                -- a word is rewritten to `/s`; a function value is sealed
+                -- a word is rewritten to `/s`; a function value is sealed,
+                -- unless a wider overload could take what follows it
                 let sealAt := match tape[funcIdx]? with
-                  | some (.fn _ _ _) => some funcIdx
+                  | some (.fn _ sigs _) =>
+                    if wouldWiden tape e.defs sigs (collected + f.stackArgs) (funcIdx + 1) then none
+                    else some funcIdx
                   | _ => none
                 let tape := forceStackWord tape funcIdx
                 pure { e with tape := rearrangeForForward tape funcIdx f.stackArgs collected,
@@ -706,7 +743,7 @@ def dispatchFnValue (nat : Natives) : Nat → Engine → String → List Sig →
     | none =>
       -- what follows, up to a boundary, could have been its arguments
       let upcoming := ((e.tape.drop (e.ptr + 1)).filter (!·.isForward)).takeWhile
-        (fun v => !(v.isCloseParen || v.isEnd))
+        (fun v => !(v.isCloseParen || v.isEnd || v.isLoopToken))
       -- an ANONYMOUS function is a value until something it can take
       -- stands beside it: unmatched, it is simply left where it is
       if !name.isEmpty && (!resolved.isEmpty || !upcoming.isEmpty) then
@@ -726,6 +763,77 @@ def dispatchFnValue (nat : Natives) : Nat → Engine → String → List Sig →
         match sigs[p.sigIdx]? with
         | some s => execMatch nat fuel e name s p.positions
         | none => Engine.err "internal_error" "plan names no signature"
+
+/-- THE MOVE (core/go/engine.go `stepMove`, `stepMoveCont`,
+    `stepMoveWhile`). A loop's round is `mark body… move` on the tape, with
+    no paren around it: the body runs on the stack the loop's word stood
+    on. Stepped, the move finds its mark — the nearest behind it — and
+    takes what stands between them as the round's values.
+
+    A COUNTED loop keeps them, advances the index, and while the index is
+    short of its bound replays the body under a new mark, the index
+    rebound; when it is not, the index is unbound and every round's values
+    stand where the loop stood — and are stepped from there, as any
+    word's results are.
+
+    A CONDITIONAL loop alternates two regions. The condition region's LAST
+    value decides: true, and the body region replaces it; false, and the
+    loop's values replace it; no value at all is an error. The body
+    region's values are kept, and the condition replaces it.
+
+    A move whose mark is gone is dropped where it stands. -/
+def stepMove (nat : Natives) : Nat → Engine → Nat → Loop → Except BoruError Engine
+  | 0, _, _, _ => Engine.outOfFuel
+  | fuel + 1, e, to, loop =>
+    let moveIdx := e.ptr
+    let isMark (i : Nat) : Bool := match e.tape[i]? with | some (.mark id) => id == to | _ => false
+    match (List.range moveIdx).reverse.find? isMark with
+    | none => pure { e with tape := removeAt e.tape moveIdx }
+    | some markIdx =>
+      let span := moveIdx - markIdx + 1
+      let between := (e.tape.drop (markIdx + 1)).take (moveIdx - markIdx - 1)
+      -- a round under a fresh mark, in the old round's place
+      let replay (defs : Defs) (region : List Value) (next : Loop) : Engine :=
+        let (id, defs) := defs.freshMark
+        { e with tape := splice e.tape markIdx span (.mark id :: region ++ [.move id next]),
+                 ptr := markIdx, defs := defs }
+      -- the loop's values, in the loop's place, stepped from there
+      let finish (defs : Defs) (results : List Value) : Engine :=
+        { e with tape := splice e.tape markIdx span results, ptr := markIdx, defs := defs }
+      match loop with
+      | .counted index current stop step body results depth => do
+        let (region, defs) ← collectRegion nat fuel e.defs between
+        let results := results ++ region
+        let current := current + step
+        if (step > 0 && current < stop) || (step < 0 && current > stop) then
+          -- the round's own bindings of the index name end with it; then
+          -- the index is rebound
+          let defs := ((defs.popTo index depth).pop index).push index (.int current)
+          pure (replay defs body (.counted index current stop step body results depth))
+        else
+          pure (finish (defs.popTo index (depth - 1)) results)
+      | .cond test body results true => do
+        let (region, defs) ← collectRegion nat fuel e.defs between
+        pure (replay defs test (.cond test body (results ++ region) false))
+      | .cond test body results false =>
+        match between.getLast? with
+        | none => Engine.err "runtime_error" "while: condition produced no value"
+        | some v =>
+          if coerceBoolean v then pure (replay e.defs body (.cond test body results true))
+          else pure (finish e.defs results)
+
+/-- What a round left, as the loop keeps it: a pending container among
+    the values is evaluated HERE, while the round's bindings are live —
+    the round is the literal's frame — and everything else is kept as it
+    stands. -/
+def collectRegion (nat : Natives) :
+    Nat → Defs → List Value → Except BoruError (List Value × Defs)
+  | 0, _, _ => Engine.outOfFuel
+  | _ + 1, defs, [] => pure ([], defs)
+  | fuel + 1, defs, v :: vs => do
+    let (v', defs) ← if v.isPendingContainer then autoEval nat fuel defs v else pure (v, defs)
+    let (vs', defs) ← collectRegion nat fuel defs vs
+    pure (v' :: vs', defs)
 
 /-- `end` closes the nearest parked collection in its paren scope; with
     none parked it is simply dropped. -/
@@ -935,12 +1043,15 @@ def execMatch (nat : Natives) :
       let stack := (List.range e.ptr).filterMap fun i =>
         if i < base || indices.contains i then none
         else match e.tape[i]? with
-          | some v => if v.isForward || v.isOpenParen then none else some v
+          | some v => if v.isForward || v.isOpenParen || v.isLoopToken then none else some v
           | none => none
       match s.impl with
       | .native key =>
         match nat.lookup key with
         | some (.fullStack f) => do
+          -- the replacement stands for EVERYTHING from the scope's start
+          -- to the word: a loop's mark standing in that stretch goes with
+          -- it, and the loop with the mark (NUR400, as the kernel has it)
           let results ← f args stack
           pure { e with tape := splice e.tape base (e.ptr + 1 - base) results, ptr := base }
         | _ => Engine.err "internal_error" ("no full-stack handler for " ++ name)
@@ -1103,6 +1214,8 @@ def runProgram (nat : Natives) : Nat → Defs → List Value → Except BoruErro
     let e ← resolveOrphans nat fuel e
     if e.tape.any Value.isOpenParen then Engine.err "syntax_error" "unmatched opening parenthesis"
     else do
+      -- a mark or a move still on the tape belongs to no loop any more
+      let e := { e with tape := e.tape.filter (!·.isLoopToken) }
       let e ← sweepRange nat fuel e 0 e.tape.length
       pure (e.tape, e.defs)
 

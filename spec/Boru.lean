@@ -7,6 +7,7 @@ import Boru.Core.Builtin
 import Boru.Core.Compare
 import Boru.Core.Unify
 import Boru.Core.Match
+import Boru.Core.Truth
 import Boru.Core.Engine
 import Boru.Core.Theorems.Lattice
 import Boru.Core.Theorems.ArgumentRule
@@ -14,3 +15,4 @@ import Boru.Core.Theorems.UnifyOrder
 import Boru.Core.Theorems.Closure
 import Boru.Core.Theorems.Loop
 import Boru.Core.Theorems.Overload
+import Boru.Core.Theorems.Counted
