@@ -91,7 +91,7 @@ them because the kernel had them, and each was recorded in
 the records closed: the model now states the rule, and the rows that pin
 each fix are in `core/spec` under the record's number.
 
-Nine more are open, and the model reproduces them until they are ruled
+Ten more are open, and the model reproduces them until they are ruled
 on: a `/uv` value is not collected by a waiting word as a `/v` value is
 (NUR390); a word with more than one definition is not equal to itself
 (NUR391); an unmatched `(` is refused at the top level and in a
@@ -106,8 +106,10 @@ it had collected (NUR401); a counted loop's index wraps past the
 Integer range, so an exhausted range starts over from the other end
 (NUR402); and the values a function of unnamed parameters may leave
 beneath its returns are counted, not identified, so a value its body
-computed is dropped in a consumed argument's place (NUR404). Each is
-marked where it is modelled and where it is pinned.
+computed is dropped in a consumed argument's place (NUR404); and the
+retired frame-pop word `__pa`, still registered, pops a frame's state a
+second time when a body calls it (NUR405). Each is marked where it is
+modelled and where it is pinned.
 
 Two the model never had, and found by disagreeing with the kernel. A
 loop's inert inputs — and a call frame's unnamed arguments — were stepped

@@ -112,7 +112,8 @@ def fixtureNatives : Natives :=
     ("boomq", .plain fun _ _ => throw { code := "fixture_boom", detail := "the fixture word always raises" }),
     ("patq", .plain fun _ d => pure ([.int 1], d)),
     ("dupq", .plain fun a d => pure ([a.getD 0 .none, a.getD 0 .none], d)),
-    -- the frame's args-and-baseline pop, as a word
+    -- the frame's args-and-baseline pop, as a word: what the close does,
+    -- so a body that calls it has the close pop a second time (NUR405)
     ("__pa", .plain fun _ d => pure ([], d.popArgs.popBaseline)),
     ("argsq", .plain fun _ d =>
       match d.topArgs? with

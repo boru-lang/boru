@@ -329,12 +329,12 @@ function fixtureRegistry(): Registry {
     ],
   });
   // __pa pops the per-call args frame, and undef removes a def binding.
-  // NEITHER is a core word — basic/go registers both — but every boru fn
-  // body's frame tail emits them (AppendFrameTail), so a bare core
-  // registry cannot run a boru-bodied fn without them. That is why the
-  // engine's fn-dispatch surface was unreachable from this corpus. They
-  // are FIXTURES rather than a port: the mechanisms are core's own (the
-  // args stack, the def table); only the words are basic's.
+  // NEITHER is a core word — basic/go registers both. Go's frame tail
+  // emitted them until 2026-10-08 (its DefCleanup marker does the work
+  // now) and no frame here ever ran them: they are in the vocabulary
+  // because the corpus rows call them. FIXTURES rather than a port: the
+  // mechanisms are core's own (the args stack, the def table); only the
+  // words are basic's.
   r.registerNativeFunc({
     name: "__pa",
     signatures: [

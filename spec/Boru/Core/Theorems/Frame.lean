@@ -23,10 +23,14 @@
   computed dropped in the argument's place. The theorem that says so is
   marked as the kernel's recorded behaviour, not as the rule.
 
+  `__pa` is that pop as a WORD. No frame has run it since the kernel's
+  close took the work over, and it is still registered: called in a body
+  it pops once more than the close expects (NUR405). The last theorem
+  states what happens, marked the same way.
+
   The theorems run the machine over the corpus fixture — `argsq` reads
-  the list, `depthq` counts the frame's stack, `__pa` is the frame tail's
-  own word — and are discharged by `native_decide` over the stated
-  domains.
+  the list, `depthq` counts the frame's stack — and are discharged by
+  `native_decide` over the stated domains.
 -/
 import Boru.Core.Theorems.Counted
 
@@ -195,9 +199,10 @@ theorem a_signal_takes_the_frames_list :
         == lists [.int a]) = true := by
   native_decide
 
-/-! ## The frame tail's own word -/
+/-! ## The retired frame-pop word -/
 
-/-- `__pa` IS WHAT THE CLOSE DOES, AND THE CLOSE DOES IT AGAIN. Called in
+/-- NUR405, AS THE KERNEL HAS IT — recorded, not the rule. `__pa` IS WHAT
+    THE CLOSE DOES, AND THE CLOSE DOES IT AGAIN. Called in
     a body it pops the frame's list — the named binding is untouched —
     and the frame's own close then pops the ENCLOSING call's: after an
     inner call whose body ran `__pa`, the outer call has no list. At the

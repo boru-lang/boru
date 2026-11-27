@@ -102,11 +102,13 @@ Two words reach what a call keeps of its arguments beside the bindings.
 `argsq` answers the ARGS LIST — every argument of the call a body is
 running in, named or not, in signature order — and is
 `ERROR:fixture_no_args` where there is no call (basic's `args` word
-answers `[]` there; the fixture keeps the two apart). `__pa` is the word
-every boru-bodied frame's tail runs: it pops that list, and the frame's
-baseline with it. It is in the vocabulary because a frame cannot close
-without it — and, being a word, a row can call it where it does not
-belong.
+answers `[]` there; the fixture keeps the two apart). `__pa` is the pop
+of that list, and of the frame's baseline with it, AS A WORD. No frame
+runs it: the kernel's frame close has done the pop itself since
+2026-10-08, and the word outlived its use (basic still registers it). It
+is in the vocabulary for the dispatch rows that want a word of no
+results — and, being a word, a row can call it in a body, where the
+frame's close then pops a second time (NUR405).
 
 ### The unifier's two words
 

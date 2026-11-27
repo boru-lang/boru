@@ -1164,10 +1164,10 @@ run def g fn( m Any Any [ m ] ) ; def f fn( n Any Any [ bothq ( g 9 ) ( argsq ) 
 run def g fn( m Any Any [ boomq 1 ] ) ; def f fn( n Any Any [ g 1 ] ) ; f 5	ERROR:fixture_boom	an error inside
 run def f fn( n Any Any [ argsq ] ) ; f/v 5	fn [[n:Any][Any][argsq]] 5	the value is not a call
 
-# --- `__pa`: the frame-tail word, called where it does not belong ------------------
+# --- `__pa`: the retired frame-pop word, called in a body (NUR405, as the kernel has it)
 # `__pa` is what a frame's own close does — it pops the args list and the
-# frame's baseline — and it is a word, so a body can call it. The close then
-# pops AGAIN, and takes the enclosing call's with it.
+# frame's baseline — as a word. No frame emits it any more, and a body can
+# still call it. The close then pops AGAIN, and takes the enclosing call's.
 run __pa		at the top level there is no frame to pop
 run __pa __pa 5	5	however often
 run def f fn( n Any Any [ n ] ) ; __pa f 5	5	a call after it has its own
