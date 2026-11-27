@@ -46,9 +46,11 @@ expr	expected	note
 
 `run` tokens: a bare decimal is an Integer, `'…'` is a String, a known builtin
 type name is that type's literal, and anything else is a Word. A word may
-carry call-site modifiers after a slash — `name/s` (stack only), `name/f`
-(forward only), `name/N` (exactly N arguments), `name/Ns` / `name/Nf`, and
-`name/v` (the bound value, never a call) —
+carry call-site modifiers after a slash, in their one written order — an
+optional `N` (exactly N arguments), at most one of `s` (stack only) or `f`
+(forward only), `u` (the bound function with its argument order reversed)
+and `v` (the bound value, never a call): `name/s`, `name/2f`, `name/u`,
+`name/uv`, `name/v` —
 which build the modified word a parser would; a slash whose suffix is not
 a modifier (`Scalar/String`) is part of the name. The runners
 register a small fixture vocabulary — `addq` (`Integer Integer -> Integer`)
@@ -75,9 +77,10 @@ the value rows for that reason. (It arrived late: `core/ts` had a flat
 predicate and no meet until the unifier was ported, and a question one
 engine cannot answer pins a port gap as a language contract.)
 
-One caution for new rows: a function VALUE unifies by identity in
-`core/go` — two structurally identical `fn( … )` literals do not unify —
-so keep functions out of `unifyq` / `meetq` rows until that is settled.
+A function is equal only to ITSELF, so two `fn( … )` literals alike in
+text do not unify (`unify.tsv` pins it). A row that needs one function
+twice has to reach it through a reference — `name/v` — which is in
+`divergent.tsv` until `core/ts` reads that modifier.
 
 ### Structure tokens
 
@@ -135,16 +138,17 @@ than silently re-baselined. Each runner also **fails a row whose `go` and
 belongs in, or this stops being an honest debt list. Shrink-only, exactly as
 `parser/spec/divergent.tsv` is.
 
-It holds **30 rows** — every one of them in the ENGINE: the call frame's
-return check, a function value standing in the program, the `/v` modifier,
-the `end` word, an unquoted list binding, and an unmatched `(`. 135 were
-measured on 2026-08-08, none of them visible to the 1808-row engine
-crossdiff; the file grew again to 95 as the Lean model's differential
-search and the `d( )` / `[: ]` / `{: }` forms opened the unifier, and 65 of
-those closed on 2026-11-27 when `core/ts` gained a real unifier (the meet,
-not a flat predicate), Go's canonical form for a resolved disjunct, the
-whole builtin type table, and leaf-name rendering of a function's types.
-Of the original 135, the last two went
+It holds **99 rows** — every one of them in the ENGINE: the call frame's
+return check, a function value standing in the program, the `/v` and `/u`
+modifiers and the function identity a reference carries, the `end` word,
+an unquoted list binding, and an unmatched `(`. 135 were measured on
+2026-08-08, none of them visible to the 1808-row engine crossdiff; the
+file grew again to 165 as the Lean model's differential search, the
+`d( )` / `[: ]` / `{: }` forms and the `/v` and `/u` modifiers opened new
+surface, and 66 of those closed on 2026-11-27 when `core/ts` gained a real
+unifier (the meet, not a flat predicate), Go's canonical form for a
+resolved disjunct, the whole builtin type table, and leaf-name rendering
+of a function's types. Of the original 135, the last two went
 together: both `boomq { a: ) }` rows were filed under the strict forward
 barrier and were really a different defect — core/ts resolved a map
 argument's values through `resolveWordsDeep` where Go runs each one as a

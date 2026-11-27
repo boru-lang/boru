@@ -232,6 +232,12 @@ run unifyq d( { a: 1 } ) { b: Integer }	false	the shape lacks the key
 run unifyq d( { a: 1 } ) { a: String }	false	the shape refuses the key
 run unifyq d( { a: 1 } ) { b: 2 }	false	the value lacks the key
 
+# --- a FUNCTION is equal only to itself ---------------------------------------
+# Functions are compared by identity, not by text: the same function written
+# twice is two values. (The rows that need a reference — one binding read
+# twice IS one function — are in divergent.tsv until core/ts reads /v.)
+run unifyq fn( n Integer Integer [ n ] ) fn( n Integer Integer [ n ] )	false
+
 # === THE VALUE HALF ===========================================================
 # `meetq a b` is the unified value. Every rule above is restated here as the
 # value it produces, because a predicate cannot tell a right answer from a

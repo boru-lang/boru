@@ -43,6 +43,37 @@ def push (d : Defs) (name : String) (v : Value) : Defs :=
 def pop (d : Defs) (name : String) : Defs :=
   d.map (fun (k, s) => if k == name then (k, s.drop 1) else (k, s))
 
+/-- The identity a REFERENCE to the name carries (core/go/registry.go
+    `aggregateIdent`): the one function bound to it. A name with several
+    function bindings has no identity of its own — a reference to it is
+    built from all of them, and is a new function each time it is read,
+    so such a word is not equal to itself: as the kernel has it, not as it
+    should be (NUR391). -/
+def soleIdent? (d : Defs) (name : String) : Option Nat :=
+  match (d.stack name).filterMap (fun v => match v with | .fn _ _ i => some i | _ => none) with
+  | [i] => some i
+  | _ => none
+
+/-- The identity counter rides in the binding table, under a name no
+    program can write, so every run threads it wherever it threads the
+    bindings. -/
+def identKey : String := " ident"
+
+/-- A fresh function identity, and the table that will not hand it out
+    again. -/
+def freshIdent (d : Defs) : Nat × Defs :=
+  let n := match d.stack identKey with
+    | .int k :: _ => k.toNat
+    | _ => 1000000
+  (n, (identKey, [.int (n + 1)]) :: d.filter (fun (k, _) => k != identKey))
+
+/-- The identity of a reference to `name`: its one function's, or a
+    fresh one. -/
+def refIdent (d : Defs) (name : String) : Nat × Defs :=
+  match d.soleIdent? name with
+  | some i => (i, d)
+  | none => d.freshIdent
+
 /-- Insert a signature keeping the dispatch order: more arguments first,
     equal arity in definition order (core/go/signature.go
     `CompareSignatures`; the slot-specificity tie-break is not modelled). -/
@@ -53,7 +84,7 @@ def insertSig (s : Sig) : List Sig → List Sig
 /-- The function a name dispatches to: the overloads of every function
     value on the name's stack, newest binding first, in dispatch order. -/
 def lookup? (d : Defs) (name : String) : Option (List Sig) :=
-  let fns := (d.stack name).filterMap (fun v => match v with | .fn _ sigs => some sigs | _ => none)
+  let fns := (d.stack name).filterMap (fun v => match v with | .fn _ sigs _ => some sigs | _ => none)
   if fns.isEmpty then none
   else some (fns.flatten.foldl (fun acc s => insertSig s acc) [])
 
@@ -87,7 +118,7 @@ def hasForwardSigs (sigs : List Sig) : Bool := sigs.any (·.barrier > 0)
 def sigTypeMatchesAsType (v : Value) (t : TypeId) : Bool :=
   match v.unquote with
   | .typeLit n => conforms n t
-  | .typedList _ _ | .typedMap _ _ | .disjunct _ | .fn _ _ => conforms v.typeOf t
+  | .typedList _ _ | .typedMap _ _ | .disjunct _ | .fn _ _ _ => conforms v.typeOf t
   | _ => false
 
 /-- Does `v` fit slot `i` of `s` by type. -/

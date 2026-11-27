@@ -331,6 +331,16 @@ bench:
 #
 # Measured both ways on the same commit: 90.00% with the symlinked deps folded
 # in, 97.25% eng-only. The floor tracks the eng-only figure from here.
+#
+# UNIVERSE CHANGED, floor unchanged, when the compiled lane left (2026-11-27,
+# design/COMPILER-LANE-REMOVAL.0.md §4). The engine has one execution path,
+# the interpreter: emit.ts, lower.ts, bytecode.ts, vm.ts and compile.ts are
+# gone. They were 1322 of the package's source lines and almost all covered,
+# so the figure is now over what remains, the check piece and the corpus
+# fixtures. Measured across the removal: 97.22% before, 96.19% with the
+# five files deleted and nothing else done, 97.27% once the one arm that had
+# lost its only test was pinned and the fixture arms the corpus never reaches
+# were probed. 97 held, so there was no re-base.
 TS_GATE_LINES ?= 97
 test-ts:
 	@echo "==> typecheck eng/ts"
@@ -359,10 +369,13 @@ test-ts:
 # The no-upward-imports rule (core/go/CLAUDE.md) is what makes this gate
 # meaningful, and it is STRUCTURALLY enforced here rather than by convention:
 # core/ts has no dependency on @boru-lang/eng, so a core file that reached
-# for the check pass or the compiler would fail to resolve. The check piece
-# reaches core only through the seam tables core owns — AnalysisImpl
-# (analysis-hooks.ts) and EmitRecorder (emit-recorder.ts) — each with NAMED
-# inactive defaults pinned by a core-side test, exactly as core/go requires.
+# for the check pass would fail to resolve. The check piece reaches core only
+# through the seam table core owns — AnalysisImpl (analysis-hooks.ts) — with
+# NAMED inactive defaults pinned by a core-side test, exactly as core/go
+# requires. core/ts owns a second seam table, EmitRecorder (emit-recorder.ts),
+# with its own pinned inactive default: eng/ts's compiled lane implemented it
+# until that lane was removed on 2026-11-27, and nothing outside core/ts's own
+# tests installs a recorder now.
 # Floor 62, RE-BASED DOWN from the stage-1 71 — read the reason before
 # treating this as a regression, because it is the opposite of one.
 #

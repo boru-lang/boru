@@ -17,8 +17,9 @@ import (
 // former global registrations (FixedIDs 2000-2002) are retired; the
 // types are reachable after import as MatrixUtil.Tensor /
 // MatrixUtil.Matrix / MatrixUtil.Vector, and they are what anchors
-// the module's add / sub / mul word extensions under the module-scope
-// user-type rule. Matrix and Vector are lattice children of Tensor —
+// the module's add / sub / mul word extensions under the
+// ownership-anchor rule (design/OPEN-WORDS.1.md R1: the module owns
+// them). Matrix and Vector are lattice children of Tensor —
 // a Matrix is a rank-2 tensor, a Vector a rank-1 tensor — so
 // `is MatrixUtil.Tensor` holds for both.
 type TensorModuleTypes struct {

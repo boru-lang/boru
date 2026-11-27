@@ -207,6 +207,7 @@ run d( String 5 Integer 'a' )	Integer tor 5 tor String	`'a'` is a ProperString, 
 run d( [q ] [q ] 1 1 )	1 tor []	equality is by value: two empty lists are one alternative
 run d( [q 1 2 ] [q 1 2 ] 5 )	5 tor [1 2]
 run d( {q a: 1 b: 2 } {q b: 2 a: 1 } )	{a:1 b:2}	two maps are equal whatever their key order; the earlier one is kept
+run d( fn( n Integer Integer [ n ] ) fn( n Integer Integer [ n ] ) )	fn [[n:Integer][Integer][n]] tor fn [[n:Integer][Integer][n]]	two functions alike in text are two alternatives: a function is equal only to itself
 run d( Never 1 )	1	a Never alternative adds nothing to a union
 run d( Any 1 )	Any	and Any absorbs everything
 run d( Scalar Number Integer 5 )	Scalar	absorption is by the widest type present

@@ -371,9 +371,9 @@ Three things from it are worth carrying even if the tables are never read:
   disjunct form of `compare.ts`; `core/spec/unify.tsv` holds all three
   runners to the VALUE through `meetq`. What `case` still lacks from
   core/go's unifier is everything registry-armed or lang-minted:
-  predicate types, dependent scalars, negation, records and options. `for` needs the loop fixed point, and
-  `break`/`continue` do nothing but set the flow-control flag only `for`
-  reads.
+  predicate types, dependent scalars, negation, records and options.
+  `for` needs the loop fixed point, and `break`/`continue` do nothing
+  but set the flow-control flag only `for` reads.
 
   What `if` demonstrated is worth carrying forward: it was blocked on a
   named PRIMITIVE (the Move continuation), the primitive took an hour,
