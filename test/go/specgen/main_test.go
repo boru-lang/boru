@@ -146,15 +146,6 @@ func TestSanitizeNote(t *testing.T) {
 	}
 }
 
-func TestRenderAny(t *testing.T) {
-	if got := renderAny(nil); got != "" {
-		t.Errorf("renderAny(nil) = %q, want empty", got)
-	}
-	if got, want := renderAny([]any{int64(1), "x", true}), "1 x true"; got != want {
-		t.Errorf("renderAny = %q, want %q", got, want)
-	}
-}
-
 // TestRunKnownSequences pins run() — the generator's evaluation recipe —
 // against rows carried verbatim in the checked-in matrix, so the recipe
 // and the frozen contract stay in lockstep.

@@ -16,21 +16,20 @@ import (
 
 // *Type aliases — every exported type from borueng is re-exported here.
 type (
-	DeqIndex           = core.DeqIndex
-	BoruError          = core.BoruError
-	RenderOpts         = core.RenderOpts
-	DiagSpan           = core.DiagSpan
-	DiagSuggestion     = core.DiagSuggestion
-	CalDurationData    = core.CalDurationData
-	CheckDiagnostic    = core.CheckDiagnostic
-	CheckFullStackFunc = core.CheckFullStackFunc
-	CheckSeverity      = core.CheckSeverity
-	CheckState         = core.CheckState
-	ChildTypeInfo      = core.ChildTypeInfo
-	CodeEffectInfo     = core.CodeEffectInfo
-	ReachInfo          = core.ReachInfo
-	ReachSeg           = core.ReachSeg
-	ChildEntry         = core.ChildEntry
+	DeqIndex        = core.DeqIndex
+	BoruError       = core.BoruError
+	RenderOpts      = core.RenderOpts
+	DiagSpan        = core.DiagSpan
+	DiagSuggestion  = core.DiagSuggestion
+	CalDurationData = core.CalDurationData
+	CheckDiagnostic = core.CheckDiagnostic
+	CheckSeverity   = core.CheckSeverity
+	CheckState      = core.CheckState
+	ChildTypeInfo   = core.ChildTypeInfo
+	CodeEffectInfo  = core.CodeEffectInfo
+	ReachInfo       = core.ReachInfo
+	ReachSeg        = core.ReachSeg
+	ChildEntry      = core.ChildEntry
 	// Sealed Payload variants (post Step 5).
 	Payload              = core.Payload
 	IntPayload           = core.IntPayload
@@ -65,7 +64,6 @@ type (
 	LoopDriver           = core.LoopDriver
 	LoopOpenInfo         = core.LoopOpenInfo
 	ForwardInfo          = core.ForwardInfo
-	GuardClause          = core.GuardClause
 	Handler              = core.Handler
 	IfCont               = core.IfCont
 	InterpPart           = core.InterpPart
@@ -91,7 +89,6 @@ type (
 	GenSpecInfo          = core.GenSpecInfo
 	TypeSchemaInfo       = core.TypeSchemaInfo
 	GenInstRef           = core.GenInstRef
-	SchemaKind           = core.SchemaKind
 	OptionsTypeInfo      = core.OptionsTypeInfo
 	OrderedMap           = core.OrderedMap
 	PathonInfo           = core.PathonInfo
@@ -109,7 +106,6 @@ type (
 	TableData            = core.TableData
 	TableTypeInfo        = core.TableTypeInfo
 	TimeoutInfo          = core.TimeoutInfo
-	TraceCallback        = core.TraceCallback
 	Type                 = core.Type
 	Value                = core.Value
 	WordInfo             = core.WordInfo
@@ -150,7 +146,6 @@ var (
 	TInteger      = core.TInteger
 	TBigInteger   = core.TBigInteger
 	TBigDecimal   = core.TBigDecimal
-	TInternal     = core.TInternal
 	TInterpString = core.TInterpString
 	// TInterval moved to lang/go/engine/native_misc.go (Step 8).
 	TList         = core.TList
@@ -173,9 +168,6 @@ var (
 	TClass          = core.TClass
 	TSurface        = core.TSurface
 	TSelf           = core.TSelf
-	TTypeParam      = core.TTypeParam
-	TGenSpec        = core.TGenSpec
-	TGenParam       = core.TGenParam
 	TIdeal          = core.TIdeal
 	TOpenParen      = core.TOpenParen
 	TOptions        = core.TOptions
@@ -223,15 +215,13 @@ const (
 const (
 	SchemaRecord = core.SchemaRecord
 	SchemaClass  = core.SchemaClass
-	SchemaFnSig  = core.SchemaFnSig
 	SchemaFn     = core.SchemaFn
 )
 
 // Engine-level constants.
 const (
-	CarrierDisjunctCap     = core.CarrierDisjunctCap
-	MaxArgs                = core.MaxArgs
-	DefaultCheckStepBudget = core.DefaultCheckStepBudget
+	CarrierDisjunctCap = core.CarrierDisjunctCap
+	MaxArgs            = core.MaxArgs
 
 	DepGT  = core.DepGT
 	DepGTE = core.DepGTE
@@ -409,7 +399,6 @@ var (
 	ApplyGuardNarrowing      = core.ApplyGuardNarrowing
 	ApplyComplementNarrowing = core.ApplyComplementNarrowing
 	RunCarrierBodyWithDefs   = core.RunCarrierBodyWithDefs
-	RunCarrierCondBody       = core.RunCarrierCondBody
 	InstallJoinedDefs        = core.InstallJoinedDefs
 	New                      = core.New
 	RunPooled                = core.RunPooled
