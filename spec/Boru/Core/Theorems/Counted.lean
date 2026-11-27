@@ -140,11 +140,16 @@ def stackOf (vs : List Value) : Defs :=
 def trues : List Value :=
   [.bool true, .int 1, .int (-3), .str "a", .str "false", .list [.int 0] false,
    .map [("a", .none)] false, .typeLit TAny, .typeLit TString, .atom "null",
-   .typedList (.typeLit TInteger) [], .disjunct [.int 1, .int 2]]
+   .typedList (.typeLit TInteger) [], .disjunct [.int 1, .int 2],
+   -- a union is read as it renders: one alternative that does not render
+   -- as `false`, or several of any kind
+   .disjunct [.bool true], .disjunct [.int 0], .disjunct [.none], .disjunct [.str ""],
+   .disjunct [.bool false, .int 0]]
 def falses : List Value :=
   [.bool false, .int 0, .str "", .none, .list [] false, .map [] false,
    .typeLit TNone, .typeLit TInteger, .typeLit TBoolean, .typeLit TList, .typeLit TMap,
-   .disjunct []]
+   .disjunct [], .disjunct [.bool false], .disjunct [.atom "false"], .disjunct [.disjunct []],
+   .disjunct [.disjunct [.bool false]]]
 
 /-- THE ONE TRUTHINESS RULE: presence, not content. -/
 theorem truth_is_presence :

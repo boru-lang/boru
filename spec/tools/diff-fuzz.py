@@ -87,6 +87,12 @@ def gen_item(rng, depth):
             else:
                 head = ["rangeq", rng.choice(["0", "1", "5"]), rng.choice(["0", "3", "5", "-2"]),
                         rng.choice(["1", "2", "-1", "-2", "0"])]
+                # the edge of the Integer range: the index's advance wraps
+                if rng.random() < 0.06:
+                    head = rng.choice([
+                        ["rangeq", "9223372036854775805", "9223372036854775807", "1"],
+                        ["rangeq", "9223372036854775806", "9223372036854775807", "2"],
+                        ["rangeq", "-9223372036854775807", "-9223372036854775808", "-2"]])
             return head + ["[q"] + body.split() + ["]"]
         if w == "whileq" and depth == 2 and rng.random() < 0.85:
             # a conditional loop: the condition region's LAST value decides.

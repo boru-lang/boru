@@ -336,3 +336,15 @@ run def ov fn( a Integer b String Any [ 2 ] ) ; def ov fn( a Integer Any [ 1 ] )
 run def ov fn( a Scalar b Any Any [ ] ) ; def ov fn( a Integer Any [ 4 ] ) ; ov/u 5 ov/v	ERROR:type_error	4 fn [[a:Scalar b:Any][Any][] [a:Integer][Any][4]]	a /v word is a function, and fits the wider overload's Any slot: widened onto a body that fails its own return check
 run def ov fn( a String b Integer Any [ 2 ] ) ; def ov fn( a Integer Any [ 1 ] ) ; ov/u 5 6	5 1	1 6	NUR401: the 6 fits a slot of the wider overload, which does not fill; the narrow one takes the 6 and leaves the 5
 run def ov fn( a Integer b String Any [ 2 ] ) ; def ov fn( a Integer Any [ 1 ] ) ; ov/u 5 6	5 1	1 6	NUR401: the same, whichever slot the next value fits
+#
+# --- a counted loop's index at the edge of the Integer range (NUR402, as the kernel has it)
+# The index is an Integer and the loop's own advance is unchecked: past the
+# range it WRAPS, the wrapped index is short of the bound again, and the loop
+# runs on. The first three rows stop at the bound as any range does. In the
+# last two a range one round wide gets a second round — which finds a String
+# where the first found an Integer, and fails on it.
+run rangeq 9223372036854775805 9223372036854775807 1 [q i ]	9223372036854775805 9223372036854775806	ERROR:undefined_word	at the top of the range: two rounds, and the bound stops the third
+run rangeq -9223372036854775806 -9223372036854775808 -1 [q i ]	-9223372036854775806 -9223372036854775807	ERROR:undefined_word	at the bottom
+run def c 'x' ; def c 5 ; rangeq 9223372036854775806 9223372036854775807 1 [q negq c undef c ]	-5	ERROR:undefined_word	one round: a step of 1 lands on the bound
+run def c 'x' ; def c 5 ; rangeq 9223372036854775806 9223372036854775807 2 [q negq c undef c ]	ERROR:signature_error	ERROR:undefined_word	NUR402: a step of 2 passes the range, wraps, and a second round runs
+run def c 'x' ; def c 5 ; rangeq -9223372036854775807 -9223372036854775808 -2 [q negq c undef c ]	ERROR:signature_error	ERROR:undefined_word	NUR402: the same, counting down

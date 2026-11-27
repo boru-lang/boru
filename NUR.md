@@ -121,6 +121,7 @@ list only by becoming **Resolved** (the record is then deleted) or
 | [NUR398](#nur398) | A word defined in boru is not retried from the stack when its forward plan fails, where the same function written as a literal is, and the same word under a forced arity is: `"k" [] ov 5` is `signature_error`, `"k" [] ov/2 5` is `1 5` | the Lean specification's differential fuzzer over overloaded words, against core/go (2026-11-27) |
 | [NUR400](#nur400) | A full-stack word in a counted loop's body ends the loop: `for 3 [depth]` runs one round and answers `0`, with no error, and leaves the index bound (`for 3 [depth] i` is `0 0`) | the Lean specification of the counted loop, checked against core/go (2026-11-27) |
 | [NUR401](#nur401) | A function value with a narrower and a wider definition drops the argument it collected when the next value fits one slot of the wider definition but the wider definition does not fill: `m.g 5 6` is `5 106` where the word `f 5 6` is `105 6` | the Lean specification's differential fuzzer over `/u` on overloaded words, against core/go (2026-11-27) |
+| [NUR402](#nur402) | A counted loop's index wraps past the Integer range and the loop runs on: `for [9223372036854775806 9223372036854775807 2] [i]` runs to the step limit, where `9223372036854775807 add 1` is `integer_overflow` | review of the Lean specification of the counted loop, checked against core/go (2026-11-27) |
 
 Pending records normally use a compact form (rule / divergence /
 evidence / documentation status, plus a proposed verdict where one is
@@ -1618,5 +1619,47 @@ The Lean specification reproduces the kernel (`spec/Boru/Core/Engine.lean`
 PLAN, not by one slot: the value is left unsealed only when a wider overload
 matches over the collected arguments and the forward window, and otherwise
 fires sealed with what it holds, as its word does.
+
+---
+
+## NUR402 — a counted loop's index wraps past the Integer range and the loop runs on {#nur402}
+
+**Status:** Pending · **Recorded:** 2026-11-27 · measured on core/go through `boru do` and the core/spec notation · silent
+
+**Rule:** Integer arithmetic that leaves the range is an error
+(`9223372036854775807 add 1` is `[boru/integer_overflow]: … does not fit in
+the Integer range`), and a counted loop runs its body once for each index
+of its range.
+
+**Divergence:** the loop advances its own index with an unchecked `int64`
+addition (`stepMoveCont`, core/go/engine.go: `cont.Current += cont.Step`)
+and then asks whether the index is short of the bound. An advance that
+passes the top of the range wraps to the bottom, where it IS short of the
+bound, so a range that is exhausted starts over from the other end and the
+loop runs until something stops it.
+
+```
+for [9223372036854775805 9223372036854775807 1] [i]     9223372036854775805 9223372036854775806
+for [9223372036854775806 9223372036854775807 2] [i]     [boru/evaluation_limit] after ten million steps
+def n 0
+for [9223372036854775806 9223372036854775807 2] [(if (n gt 2) [break]) def n (n add 1) i]
+                                                        9223372036854775806 -9223372036854775808 -9223372036854775806
+```
+
+A step of 1 always lands on the bound and stops; any other step can pass
+it. The same holds counting down past the bottom of the range.
+
+In the core/spec notation:
+`run def c 'x' ; def c 5 ; rangeq 9223372036854775806 9223372036854775807 2 [q negq c undef c ]`
+is `signature_error` — a second round ran — where the step-1 range beside
+it is `-5` (core/spec/divergent.tsv, the NUR402 block).
+
+The Lean specification reproduces the kernel (`spec/Boru/Core/Engine.lean`
+`stepMove`: the advance is `wrapInt64`).
+
+**Proposed verdict:** resolve by fix — an advance that leaves the Integer
+range has passed the bound, and the loop ends there, as it does one step
+earlier. No error is owed: the range is exhausted, which is how every loop
+ends.
 
 ---

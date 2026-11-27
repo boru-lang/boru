@@ -420,7 +420,7 @@ Three things from it are worth carrying even if the tables are never read:
   no counted or conditional loop — basic/ts's `for` is the next thing
   blocked on it — and no arity widening of a value call. Both are
   specified in Lean and pinned on the Go column of
-  `core/spec/divergent.tsv` (68 and 4 rows); the loop fixtures `forq`,
+  `core/spec/divergent.tsv` (73 and 4 rows); the loop fixtures `forq`,
   `rangeq` and `whileq` are the Go runner's and the Lean runner's only.
 - NUR059: canon still renders sugar tags, `/r` and `/N` word modifiers,
   and paren groups in debug spelling. Both engines agree, so it is render

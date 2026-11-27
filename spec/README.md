@@ -91,7 +91,7 @@ them because the kernel had them, and each was recorded in
 the records closed: the model now states the rule, and the rows that pin
 each fix are in `core/spec` under the record's number.
 
-Seven more are open, and the model reproduces them until they are ruled
+Eight more are open, and the model reproduces them until they are ruled
 on: a `/uv` value is not collected by a waiting word as a `/v` value is
 (NUR390); a word with more than one definition is not equal to itself
 (NUR391); an unmatched `(` is refused at the top level and in a
@@ -100,10 +100,11 @@ that is a function body's only result is refused as an uncalled call
 (NUR396); a word defined in boru is not retried from the stack when
 its forward plan fails, where the same function as a literal is (NUR398);
 a full-stack word in a counted loop's body takes the loop's mark with the
-stack it replaces, and the loop ends there (NUR400); and a function value
+stack it replaces, and the loop ends there (NUR400); a function value
 planned again for a wider overload that does not fill drops the argument
-it had collected (NUR401). Each is marked where it is modelled and where
-it is pinned.
+it had collected (NUR401); and a counted loop's index wraps past the
+Integer range, so an exhausted range starts over from the other end
+(NUR402). Each is marked where it is modelled and where it is pinned.
 
 Two the model never had, and found by disagreeing with the kernel. A
 loop's inert inputs — and a call frame's unnamed arguments — were stepped

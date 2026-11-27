@@ -804,7 +804,10 @@ def stepMove (nat : Natives) : Nat → Engine → Nat → Loop → Except BoruEr
       | .counted index current stop step body results depth => do
         let (region, defs) ← collectRegion nat fuel e.defs between
         let results := results ++ region
-        let current := current + step
+        -- the index is an Integer: an advance past the range WRAPS, and
+        -- the wrapped index is short of the bound again (NUR402, as the
+        -- kernel has it)
+        let current := wrapInt64 (current + step)
         if (step > 0 && current < stop) || (step < 0 && current > stop) then
           -- the round's own bindings of the index name end with it; then
           -- the index is rebound
