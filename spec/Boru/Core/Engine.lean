@@ -234,6 +234,20 @@ def commitBarrierForward (e : Engine) : Option Engine :=
         | _ => none
     | _ => none
 
+/-- A word DEFINED IN BORU answers a failed plan itself (core/go
+    `fnFallbackSig`): the function a name dispatches to carries a
+    zero-argument fallback whenever one of its overloads has a body, the
+    plan hands that back in place of "no match", and the call is refused
+    there — so the STACK-ONLY RETRY a native word gets, and a function
+    literal standing at the pointer gets, never runs for it. A forced
+    arity (`/N`) rules the fallback out and the retry back in. NUR398
+    records the difference as a defect of the kernel's. -/
+def answersItself (sigs : List Sig) (w : WordInfo) : Bool :=
+  w.argCount.isNone && sigs.any fun s =>
+    match s.impl with
+    | .boru (_ :: _) _ => true
+    | _ => false
+
 /-- THE USURP WRAPPER (core/go/core_ref.go `usurpOver`): a function whose
     every signature is one of the original's with its parameters REVERSED
     and every one of them collectable forward, so `f/u a b c` is `f c b a`.
@@ -463,7 +477,7 @@ def dispatchWord (nat : Natives) : Nat → Engine → WordInfo → Except BoruEr
             match planMatch e.tape e.defs sigs w resolved e.ptr inside with
             | some p => some p
             | none =>
-              if hasForwardSigs sigs && !w.forceStack then
+              if hasForwardSigs sigs && !w.forceStack && !answersItself sigs w then
                 planMatch e.tape e.defs sigs { w with forceStack := true } resolved e.ptr inside
               else none
           match plan with

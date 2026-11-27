@@ -25,6 +25,14 @@ def typeLit? : String → Option TypeId
   | "None" => some TNone
   | _ => none
 
+/-- A type a `fn(` parameter or return may declare: the seven, and the
+    two nodes between Any and Integer, so a row can state a chain of
+    three. -/
+def fnType? : String → Option TypeId
+  | "Number" => some "Scalar/Number"
+  | "Scalar" => some "Scalar"
+  | name => typeLit? name
+
 def int? (s : String) : Option Int :=
   let cs := s.toList
   let (neg, ds) := match cs with
@@ -121,18 +129,31 @@ partial def item : List String → Except String (Value × List String)
   | "{q" :: rest => do
     let (entries, rest) ← entriesUntil rest
     pure (.map (setEntries entries) false, rest)
-  | "fn(" :: pname :: ptype :: rtype :: rest => do
-    match typeLit? ptype, typeLit? rtype with
-    | some pt, some rt =>
+  | "fn(" :: rest => do
+    -- fn( NAME PTYPE … RTYPE [ body ] ): the parameters in signature
+    -- order, then the one return
+    let spec := rest.takeWhile fun t => t != "[" && t != "[q"
+    let rest := rest.drop spec.length
+    if spec.length < 3 || spec.length % 2 == 0 then
+      throw "fn( wants NAME PTYPE … RTYPE before its body"
+    let rec params : List String → Except String (List Param)
+      | name :: ty :: more@(_ :: _) =>
+        match fnType? ty with
+        | some t => do pure (.mk name t none false false :: (← params more))
+        | none => throw "fn( types must be corpus-known type names"
+      | _ => pure []
+    let ps ← params spec
+    match fnType? (spec.getLastD "") with
+    | some rt =>
       let (body, rest) ← item rest
       match body, rest with
       | .list elems _, ")" :: rest =>
         -- a function written here is ONE function: its identity is the
         -- place it was written
-        pure (.fn "__corespec_fn" [.mk [.mk pname pt none false false] [rt] 1 (.boru elems []) false]
+        pure (.fn "__corespec_fn" [.mk ps [rt] ps.length (.boru elems []) false]
                 (1000 + rest.length), rest)
       | _, _ => throw "fn( body must be a list closed by )"
-    | _, _ => throw "fn( types must be corpus-known type names"
+    | none => throw "fn( types must be corpus-known type names"
   | tok :: rest => pure (token tok, rest)
 
 partial def itemsUntil (close : String) : List String → Except String (List Value × List String)

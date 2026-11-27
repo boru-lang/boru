@@ -174,6 +174,16 @@ twin) stops at the region's sealing paren: a body sees nothing beneath the
 call. A sealed literal's hold (`sealedHold`) covers the recorder the same
 way.
 
+The inert span an open paren carries — a driven region's inputs, a call
+frame's unnamed arguments — is skipped in ONE place, `stepPastOpenParen`,
+and every token loop that meets an open paren goes through it: the main
+loop's `stepToken` and the group evaluator's own loop (`evalParenGroupAt`,
+which steps a forward-argument group off the main loop). The second
+stepped over the paren alone until 2026-11-27, so a function among a
+loop's inputs was called, and a `/v` word resolved, when the loop ran
+inside a group a waiting word evaluates (NUR397). A new token loop steps
+an open paren the same way or re-opens that.
+
 A native whose LAST act is running a body — `case`'s matched block or
 default (`if` splices a computed arm inline already) — returns that run as a **call
 region** instead (`core.CallRegion`): a one-iteration driven loop whose

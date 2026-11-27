@@ -20,13 +20,14 @@ import { canon } from "./canon.ts";
 import { Engine } from "./engine.ts";
 import { BoruError } from "./error.ts";
 import { Registry } from "./registry.ts";
-import { TAny, TInteger } from "./type.ts";
+import { TAny, TInteger, TScalar, TString } from "./type.ts";
 import {
   newCloseParen,
   newDispatchMod,
   newEnd,
   newFnDef,
   newInteger,
+  newList,
   newOpenParen,
   newString,
   newTypeLiteral,
@@ -201,6 +202,33 @@ describe("a function value at the pointer — a word in its window", () => {
         run([literal(...sigs), newString("x"), newWord("idq"), newInteger(7n)]),
         "10 7",
       );
+    }
+  });
+
+  it("orders overloads by the LATTICE, so a branch root is tried before Any", () => {
+    // `Scalar` and `Any` are both one step from the top of their paths,
+    // but Scalar sorts after Any in the lattice order — rank, then depth,
+    // then name — so it is the more specific and is tried first, in
+    // whichever order the three were written.
+    const of = (type: typeof TAny, n: bigint): FnSig => ({
+      params: [{ name: "a", type }],
+      returns: [],
+      body: [newInteger(n)],
+    });
+    const scalar = of(TScalar, 1n);
+    const str = of(TString, 2n);
+    const any = of(TAny, 3n);
+    for (const sigs of [
+      [scalar, str, any],
+      [any, str, scalar],
+      [str, any, scalar],
+    ]) {
+      // an Integer is a Scalar and no String
+      assert.equal(run([literal(...sigs), newInteger(1n)]), "1");
+      // a String goes to the narrowest of the three
+      assert.equal(run([literal(...sigs), newString("s")]), "2");
+      // a list is only Any's
+      assert.equal(run([literal(...sigs), newList([newInteger(1n)])]), "3");
     }
   });
 

@@ -9,7 +9,7 @@
 // version would mirror them one-for-one.
 import { CheckState } from "./check-state.ts";
 import type { NativeFunc, NativeSig, Signature } from "./signature.ts";
-import { sortSignatures } from "./signature.ts";
+import { moreSpecificFirst, sortSignatures } from "./signature.ts";
 import {
   type FnDefInfo,
   type FnSig,
@@ -311,7 +311,10 @@ export class Registry {
     // bodies to pool: stacked under a boru-bodied definition it is simply
     // shadowed.
     if (entries.some((e) => e.native !== undefined)) return entries[0];
-    return { sigs: entries.flatMap((e) => e.sigs) };
+    // The pooled overloads in DISPATCH order, as Go's aggregate holds them:
+    // it is the order a call tries them in and the order the function
+    // lists them in as a value.
+    return { sigs: entries.flatMap((e) => e.sigs).sort(moreSpecificFirst) };
   }
 
   /**

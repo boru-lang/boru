@@ -90,13 +90,23 @@ them because the kernel had them, and each was recorded in
 the records closed: the model now states the rule, and the rows that pin
 each fix are in `core/spec` under the record's number.
 
-Four more are open, and the model reproduces them until they are ruled
+Five more are open, and the model reproduces them until they are ruled
 on: a `/uv` value is not collected by a waiting word as a `/v` value is
 (NUR390); a word with more than one definition is not equal to itself
-(NUR391); and an unmatched `(` is refused at the top level and in a
-literal but collected as a value in a loop's body (NUR392); and a function
+(NUR391); an unmatched `(` is refused at the top level and in a
+literal but collected as a value in a loop's body (NUR392); a function
 that is a function body's only result is refused as an uncalled call
-(NUR396). Each is marked where it is modelled and where it is pinned.
+(NUR396); and a word defined in boru is not retried from the stack when
+its forward plan fails, where the same function as a literal is (NUR398).
+Each is marked where it is modelled and where it is pinned.
+
+One the model never had, and the search found by disagreeing with the
+kernel: a loop's inert inputs — and a call frame's unnamed arguments —
+were stepped when the loop or the call ran inside a group a waiting word
+evaluates, so a function among them was called on what the body wrote
+after it (NUR397). The model stated the rule; the kernel was fixed to meet
+it, and `core/spec/divergent.tsv` pins the same loop out of a group and in
+one.
 
 Three the model does NOT reproduce, because each is an accident of how
 `core/go` compares values rather than a rule to state: typed containers

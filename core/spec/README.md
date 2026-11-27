@@ -102,7 +102,7 @@ built. They nest, and they work in `run` and `list` alike.
 | `d( … )` | a DISJUNCT of the listed items (`d( )` is the empty one) |
 | `[: T … ]` | a typed list: the child constraint, then any retained elements |
 | `{: T k: v … }` | a typed map: the child constraint, then any retained entries |
-| `fn( NAME PTYPE RTYPE [ body ] )` | a function value: one parameter, one return, a boru body |
+| `fn( NAME PTYPE … RTYPE [ body ] )` | a function value: its parameters in signature order — a name and a type each — then one return, and a boru body. All of them may be collected forward. The types are the seven the notation spells as literals, and `Number` and `Scalar`, so a row can declare a chain of types each above the next |
 
 The bare bracket is always the PARSER's form and the `q` variant the
 runtime's, because that distinction is load-bearing: the step loop
@@ -142,17 +142,20 @@ than silently re-baselined. Each runner also **fails a row whose `go` and
 belongs in, or this stops being an honest debt list. Shrink-only, exactly as
 `parser/spec/divergent.tsv` is.
 
-It holds **73 rows**. 53 are a mechanism `core/ts` does not have at all:
-closures (26 rows, the `afn` fixture) and driven loops (27 rows, the
-`eachq` fixture). One is a recorded kernel defect pinned as the kernel has
+It holds **84 rows**. 61 are a mechanism `core/ts` does not have at all:
+closures (26 rows, the `afn` fixture) and driven loops (35 rows, the
+`eachq` fixture — eight of them the same loop out of a group and inside one
+a waiting word evaluates, where the kernel once stepped the loop's inert
+inputs). One is a recorded kernel defect pinned as the kernel has
 it — NUR392, an unmatched `(` in a function's body — where `core/ts`
-refuses what Go lets through. The other 19 are what a Go-against-TS search
+refuses what Go lets through. The other 22 are what a Go-against-TS search
 of the fixture words, and the review of the port, found once the engine
 half had closed, each named in the file: the forward barrier's commit half
 (a `/u` word included), a type-arg slot that plans a word, the re-dispatch
 of a collection the run's end finds unfilled, a function value that parks,
 a frame's residual stepped again, a `/uv` word in a boru-bodied call's
-window (two rows, on NUR390's accident), and one asymmetry in the `undef`
+window (two rows, on NUR390's accident), a failed plan retried from the
+stack (three rows, on NUR398), and one asymmetry in the `undef`
 fixture. 135 were measured on 2026-08-08,
 none of them visible to the 1808-row engine crossdiff; the file grew to 219
 as the Lean model's differential search, the `d( )` / `[: ]` / `{: }`

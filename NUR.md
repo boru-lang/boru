@@ -118,6 +118,7 @@ list only by becoming **Resolved** (the record is then deleted) or
 | [NUR394](#nur394) | A disjunct held inside another value is compared as it prints: two alternatives that render alike are one, though they differ in structure or hold two different functions | the core/ts unifier port, differential against core/go (2026-11-27) |
 | [NUR395](#nur395) | The total order is not transitive between a typed list and plain lists of its size, so a disjunct's canonical form depends on the order its alternatives were written in | the core/ts unifier port, differential against core/go (2026-11-27) |
 | [NUR396](#nur396) | A function a function's body hands back as its only result is refused as an uncalled call: `def pk1 fn [[x:Map][Any][x.f]]` over `{f: add/v}` raises `uncalled_function` where `m.f` at the top level is the function | the core/ts engine port, checked against core/go and the Lean model (2026-11-27) |
+| [NUR398](#nur398) | A word defined in boru is not retried from the stack when its forward plan fails, where the same function written as a literal is, and the same word under a forced arity is: `"k" [] ov 5` is `signature_error`, `"k" [] ov/2 5` is `1 5` | the Lean specification's differential fuzzer over overloaded words, against core/go (2026-11-27) |
 
 Pending records normally use a compact form (rule / divergence /
 evidence / documentation status, plus a proposed verdict where one is
@@ -1459,5 +1460,63 @@ core/ts and the Lean specification reproduce the kernel
 **Proposed verdict:** resolve by fix — a frame's cleanup marker and return
 check end the window, as a close paren does: a function a body hands back
 alone is the body's result.
+
+---
+
+## NUR398 — a word defined in boru is not retried from the stack when its forward plan fails {#nur398}
+
+**Status:** Pending · **Recorded:** 2026-11-27 · measured on core/go through `boru do` and the core/spec notation · loud
+
+**Rule:** one dispatch for every callee. `matchForDispatch`
+(core/go/engine.go) states it: the plan is matched over the forward tokens
+and the stack, and when that fails for a callee with forward-collecting
+signatures the match is tried again with every argument taken from the
+stack (`ForceStack`). The step for a function value at the pointer says the
+same in its own words — "Function values at the pointer dispatch with the
+same forward+stack matching as words".
+
+**Divergence:** the function a NAME dispatches to carries a synthetic
+zero-argument fallback whenever one of its definitions has a body
+(`aggregateDispatch` → `fnFallbackSig`). `PlanMatch` returns that fallback
+when no real signature matches, so the match "succeeds", the retry never
+runs, and `stepWord` then raises `signature_error` for the fallback it was
+handed. A native word has no fallback and is retried; a function LITERAL
+has none either; a forced arity (`/N`) skips the fallback inside the
+matcher, so the same word under `/2` is retried; and a body of no tokens
+gets no fallback at all (`len(s.Body()) > 0`).
+
+```
+def ov fn [[a:Any b:Scalar][Any][1]]
+
+"k" [] ov 5                                  [boru/signature_error]: cannot call `ov`
+"k" [] ov/2 5                                1 5      the same word, arity forced
+"k" [] ov/s 5                                1 5      the same word, forced to the stack
+"k" [] fn [[a:Any b:Scalar][Any][1]] 5       1 5      the same function, as a literal
+"k" [] ov                                    1        nothing written after it
+"k" 4 ov 5                                   k 1      a Scalar on top: the plan holds
+```
+
+The forward `5` fits `a`, the list on top of the stack is no `Scalar`, so
+the plan — one argument forward, one from the stack — fails; with both
+taken from the stack (`a` the list, `b` the string) the call matches. Which
+of the two the caller gets depends on whether the function was reached by a
+name, and on whether that name was given an arity.
+
+In the core/spec notation: `run def ov fn( a Any b Scalar Any [ 1 ] ) ; null [q ] ov 5`
+is `signature_error` (core/spec/dispatch.tsv) where
+`run null [q ] fn( a Any b Scalar Any [ 1 ] ) 5` and the `ov/2` form are
+`1 5` (core/spec/divergent.tsv: core/ts retries for none of the three).
+
+The Lean specification reproduces the kernel
+(`spec/Boru/Core/Engine.lean` `answersItself`).
+
+**Proposed verdict:** resolve by fix, one of two ways, and the choice is
+the maintainer's. (a) The fallback is not a match: `matchForDispatch`
+retries when the plan hands back only the fallback, so a boru-defined word
+behaves as a native word and as its own literal do. (b) The retry is the
+special case: it was written for a `CallBoru` sub-engine's deepest-first
+inputs, and a call whose forward argument fits but whose stack half does
+not is refused for every callee. (a) is the smaller change and removes the
+name/literal difference without refusing any program that runs today.
 
 ---

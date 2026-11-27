@@ -395,6 +395,27 @@ Three things from it are worth carrying even if the tables are never read:
   was captured with. No corpus notation reaches it (a row cannot register
   mid-run) and no shipped program does; the fix is a table that is copied,
   not mutated, when a registration adds to it.
+- **A registered word's signatures are ordered by a score, not by the
+  dispatch order** (found while specifying the order, 2026-11-27).
+  core/go tries every callee's overloads in one order
+  (`CompareSignatures`): more arguments first, then — at the first
+  position that differs — the expectation that sorts greater in the total
+  order, then a piped barrier. core/ts orders a BORU-bodied function that
+  way since the same day (`signature.ts` `moreSpecificFirst`, on
+  `compareTypes`; `core/spec/dispatch.tsv` holds all three runners to it),
+  but a registered native word still sorts by `signatureScore` — the SUM
+  of its types' path lengths, plus ten for each concrete pattern — which
+  is not arity-first, counts positions together instead of in turn, and
+  holds a branch root equal to `Any`. Every fixture word has one
+  signature, so no corpus row reaches it; basic/ts registers words with
+  several, and the 1808-row crossdiff agrees on them today. The port is
+  `compareSignatures` over `compareValues` of each position's pattern or
+  bare type.
+- **A failed plan is not retried from the stack** for a function literal
+  at the pointer or a word under a forced arity, where core/go retries
+  (three rows in `core/spec/divergent.tsv`). They sit on NUR398 — core/go
+  does not retry for an ordinary boru-defined word either — and move with
+  its ruling.
 - NUR059: canon still renders sugar tags, `/r` and `/N` word modifiers,
   and paren groups in debug spelling. Both engines agree, so it is render
   quality rather than parity — pinned by corpus rows so a one-sided fix
