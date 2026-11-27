@@ -13,7 +13,7 @@ import type { RecorderOperand } from "./emit-recorder.ts";
 import { coerceBoolean } from "./coretype.ts";
 import { BoruError } from "./error.ts";
 import { valToString } from "./canon.ts";
-import { matchEntry } from "./match.ts";
+import { matchEntry, sigTypeMatches } from "./match.ts";
 import type { Registry } from "./registry.ts";
 import { resolveWordsDeep } from "./resolve.ts";
 import { sugarExpansion } from "./sugar.ts";
@@ -21,7 +21,9 @@ import {
   TAny,
   TAtom,
   TBoolean,
+  TDispatchMod,
   TFloat,
+  TFunction,
   TInteger,
   TList,
   TMap,
@@ -47,6 +49,7 @@ import {
   newFloat,
   newCarrier,
   newDynamicCarrier,
+  newEnd,
   newForwardMarker,
   newInteger,
   newInterpString,
@@ -102,6 +105,27 @@ function baseValue(t: BoruType): Value {
 import type { FunctionEntry } from "./registry.ts";
 import type { Signature } from "./signature.ts";
 
+/** A boru-bodied signature matched against the arguments at the pointer. */
+interface FnMatch {
+  /** Where the arguments were found, and the arguments in signature order. */
+  result: import("./match.ts").MatchResult;
+  /** The authored signature that matched. */
+  sig: import("./value.ts").FnSig;
+  /** How many of its parameters the call supplied (the rest are optional). */
+  usedK: number;
+}
+
+/**
+ * Would this value, stepped at the pointer, be CALLED rather than placed:
+ * an unquoted function value. The one home of that test — the literal
+ * step asks it to decide between a call and a push, and a collapsing paren
+ * group asks it to decide whether its lone survivor must be stepped past.
+ * Mirrors Go's fnValueDispatchesAtPointer.
+ */
+function callsAtPointer(v: Value): boolean {
+  return v.vType.equal(TFunction) && v.isFnDef() && !v.quoted;
+}
+
 const STEP_LIMIT = 22222;
 
 export class Engine {
@@ -123,6 +147,13 @@ export class Engine {
    * voidGroups tracking.
    */
   private lastPreEvalHadVoid = false;
+  /**
+   * This run is the BODY of a call frame. In Go the body stands on the
+   * caller's tape between the frame's open and its cleanup marker; here
+   * it runs in an engine of its own, and this is what that engine knows
+   * about where it stands — that tokens of the frame follow its last one.
+   */
+  private frameBody = false;
 
   constructor(registry: Registry) {
     this.registry = registry;
@@ -190,7 +221,17 @@ export class Engine {
         // scanner"). Which behaviour is right is a question for that test
         // and its Go twin, not a one-line change here. Pinned in
         // core/spec/divergent.tsv.
-        this.evalParenAt(this.pointer);
+        const produced = this.evalParenAt(this.pointer);
+        // THE PAREN RE-STEP RULE. A group's results are re-stepped where
+        // the group stood — except that a group which collapses to ONE
+        // value, a function, PLACES it: the pointer steps past, and the
+        // function is not called on what stands outside the group.
+        // `( negq/v ) 5` is the function and a 5; `( negq/v 5 )` is -5.
+        // With more than one survivor the rewind lands on the leading
+        // value and steps it as usual. Mirrors Go's fnReturnPark.
+        if (1 === produced && callsAtPointer(this.stack[this.pointer]!)) {
+          this.pointer++;
+        }
         continue;
       }
       if (isCloseParen(val)) {
@@ -284,6 +325,29 @@ export class Engine {
     }
   }
 
+  /**
+   * Check mode's stand-in for a name nothing binds: the diagnostic, and an
+   * Any carrier in the word's cell so analysis continues past it. The
+   * pointer is left on the placeholder — it must go through the literal
+   * path on the next step so a pending forward can consume it, which is
+   * what lets analysis continue past an unknown name inside a call. Go
+   * says the same thing in as many words (core/go/engine.go, "the
+   * placeholder atom can be consumed by a downstream operation and never
+   * reach the result stack") and likewise leaves its pointer alone.
+   * Advancing here stranded the marker instead: `idq nosuchword` left
+   * `forward(idq,0/1)` on the stack under a lenient pass.
+   */
+  private undefinedWordPlaceholder(name: string): void {
+    this.registry.check.addDiagnostic({
+      code: "undefined_word",
+      detail: `undefined word: ${name}`,
+      word: name,
+    });
+    const placeholder = newCarrier(TAny);
+    placeholder.undefined = true;
+    this.stack[this.pointer] = placeholder;
+  }
+
   private stepWord(val: Value): void {
     const w = val.asWord() as WordInfo;
     const name = w.name;
@@ -363,28 +427,21 @@ export class Engine {
       // (a placeholder so analysis continues) and emits a diagnostic,
       // rather than a hard error. Mirrors stepWord's check-mode path.
       if (this.registry.check.isActive()) {
-        this.registry.check.addDiagnostic({
-          code: "undefined_word",
-          detail: `undefined word: ${name}`,
-          word: name,
-        });
-        const placeholder = newCarrier(TAny);
-        placeholder.undefined = true;
-        this.stack[this.pointer] = placeholder;
-        // Do NOT advance: the placeholder must go through the literal
-        // path on the next iteration so a pending forward can consume it,
-        // which is what lets analysis continue past an unknown name
-        // inside a call. Go says the same thing in as many words
-        // (core/go/engine.go, "the placeholder atom can be consumed by a
-        // downstream operation and never reach the result stack") and
-        // likewise leaves its pointer alone. Advancing here stranded the
-        // marker instead: `idq nosuchword` left `forward(idq,0/1)` on the
-        // stack under a lenient pass.
+        this.undefinedWordPlaceholder(name);
         return;
       }
       throw new BoruError("undefined_word", `undefined word: ${name}`, name);
     }
 
+    this.dispatchEntry(name, fn);
+  }
+
+  /**
+   * Dispatch the word at the pointer through a registered word's
+   * signature table: the statement boundary, the forward window's paren
+   * groups, the match, and then a parked forward or an immediate run.
+   */
+  private dispatchEntry(name: string, fn: FunctionEntry): void {
     // STATEMENT BOUNDARY. Every bare function word beginning its own
     // dispatch is a forward-collection barrier — uniformly, regardless of
     // arity (REFERENCE.md:364, design/STRICT-FORWARD-BARRIER.0.md). A
@@ -952,22 +1009,71 @@ export class Engine {
    * → execFnDefSig" arc) compressed into a single function.
    */
   private dispatchFnDef(name: string, info: FnDefInfo): void {
+    const m = this.matchFnSigs(name, info, true);
+    if (null === m) {
+      // A group in the forward window that produced nothing is what the
+      // call lacked: blame the void, as a native word's miss does.
+      if (this.lastPreEvalHadVoid) {
+        throw new BoruError(
+          "no_value_error",
+          `argument expression produced no value for ${name}`,
+          name,
+        );
+      }
+      throw new BoruError(
+        "signature_error",
+        `cannot call \`${name}\` — no signature matches the arguments\n  = stack: ${this.describeStack()}`,
+        name,
+      );
+    }
+    this.callFnSig(m);
+  }
+
+  /**
+   * The overload of a boru-bodied function that the arguments around the
+   * pointer select, or null when none does.
+   *
+   * Each overload is tried at each arity from its full parameter count
+   * down to its required count — optional trailing parameters may be
+   * omitted — and the first match is taken. `reduce` false holds every
+   * overload to its FULL count: a function LITERAL standing in the
+   * program has no optional forms, where the same function reached
+   * through its name does (Go matches a named function's compiled
+   * signatures and a bare literal's authored ones, core/go/engine.go
+   * `stackMatchSig`).
+   */
+  private matchFnSigs(
+    name: string,
+    info: FnDefInfo,
+    reduce: boolean,
+  ): FnMatch | null {
     const maxParams = Math.max(0, ...info.sigs.map((s) => s.params.length));
     // Pre-evaluate forward parens so the matcher sees concrete values.
     this.preEvalParens(maxParams);
 
-    // Try each overload, and within it each arity from total down to
-    // the required count (optional trailing params may be omitted).
-    // Take the first that matches the available args.
-    let result: import("./match.ts").MatchResult | null = null;
-    let chosen: import("./value.ts").FnSig | null = null;
-    let usedK = 0;
+    const m = this.matchFnSigsOn(this.stack, name, info, reduce);
+    // A check pass analyses the match as it stands: stranding is a
+    // run-time refusal, and analysis is lenient about a call it cannot
+    // complete.
+    if (null === m || this.registry.check.isActive()) return m;
+    return this.settleForwardWord(name, info, reduce, m);
+  }
+
+  /** matchFnSigs' overload walk, over the given view of the stack. */
+  private matchFnSigsOn(
+    stack: readonly Value[],
+    name: string,
+    info: FnDefInfo,
+    reduce: boolean,
+  ): FnMatch | null {
     const ordered = [...info.sigs].sort(
       (a, b) => b.params.length - a.params.length,
     );
-    outer: for (const fsig of ordered) {
+    for (const fsig of ordered) {
       const total = fsig.params.length;
-      const required = fsig.params.filter((p) => !p.optional).length;
+      const required = reduce
+        ? fsig.params.filter((p) => !p.optional).length
+        : total;
       for (let k = total; k >= required; k--) {
         const sig: Signature = {
           args: fsig.params.slice(0, k).map((p) => p.type),
@@ -981,28 +1087,119 @@ export class Engine {
           forwardPrecedence: true,
           maxForwardArgs: k,
         };
-        const r = matchEntry(
-          fakeEntry,
-          this.stack,
-          this.pointer,
-          this.registry,
-        );
-        if (r) {
-          result = r;
-          chosen = fsig;
-          usedK = k;
-          break outer;
-        }
+        const r = matchEntry(fakeEntry, stack, this.pointer, this.registry);
+        if (r) return { result: r, sig: fsig, usedK: k };
       }
     }
-    if (!result || !chosen) {
-      throw new BoruError(
-        "signature_error",
-        `cannot call \`${name}\` — no signature matches the arguments\n  = stack: ${this.describeStack()}`,
-        name,
-      );
-    }
+    return null;
+  }
 
+  /**
+   * A boru-bodied match whose forward arguments include a WORD that is
+   * still a word — one the forward scan could not resolve to a value —
+   * has claimed a token that must be STEPPED before it can be an
+   * argument. Go parks the call, steps the token, and the token decides:
+   *
+   *   - an unbound name raises `undefined_word`;
+   *   - a function word begins its own dispatch, which is a statement
+   *     boundary: the parked call COMMITS if an overload takes exactly
+   *     what it has claimed so far, and is otherwise STRANDED — a
+   *     `signature_error` (design/STRICT-FORWARD-BARRIER.0.md);
+   *   - an engine-internal `__…` word is exempt from stranding and simply
+   *     runs, leaving the call to take what the stack holds.
+   *
+   * A boru-bodied call here does not park — it binds and runs at once —
+   * so the same three outcomes are decided at the match: the token's
+   * kind is known before it is stepped, and the arguments ahead of it
+   * are already values. A native word's call does park (beginForward),
+   * and reaches the same outcomes by stepping.
+   */
+  private settleForwardWord(
+    name: string,
+    info: FnDefInfo,
+    reduce: boolean,
+    m: FnMatch,
+  ): FnMatch | null {
+    const { result } = m;
+    let at = -1;
+    for (let i = 0; i < result.forwardCount && at < 0; i++) {
+      if (result.args[i]!.isWord()) at = i;
+    }
+    if (at < 0) return m;
+    const word = result.args[at]!;
+    const wname = word.asWord().name;
+    const kind = this.wordKind(wname);
+    if ("value" === kind) return m;
+    if ("undefined" === kind) {
+      throw new BoruError("undefined_word", `undefined word: ${wname}`, wname);
+    }
+    if (wname.startsWith("__")) {
+      // The frame-tail word runs on its own; the call is matched as if
+      // the window ended there.
+      const view = [...this.stack];
+      view[this.pointer + 1 + at] = newEnd();
+      return this.matchFnSigsOn(view, name, info, reduce);
+    }
+    // COMMIT: an overload of exactly the claimed arity — the forward
+    // arguments ahead of the word, then the stack arguments the plan
+    // took — fires with those and leaves the word to begin its own
+    // statement.
+    const claimed = [
+      ...result.args.slice(0, at),
+      ...result.args.slice(result.forwardCount),
+    ];
+    if (claimed.length > 0) {
+      for (const fsig of info.sigs) {
+        const total = fsig.params.length;
+        const required = reduce
+          ? fsig.params.filter((p) => !p.optional).length
+          : total;
+        if (claimed.length < required || claimed.length > total) continue;
+        if (!claimed.every((a, i) => sigTypeMatches(a, fsig.params[i]!.type)))
+          continue;
+        return {
+          result: {
+            sig: result.sig,
+            args: claimed,
+            forwardCount: at,
+            prefixCount: result.prefixCount,
+          },
+          sig: fsig,
+          usedK: claimed.length,
+        };
+      }
+    }
+    throw new BoruError(
+      "signature_error",
+      `${name} is still waiting for an argument when \`${wname}\` begins its own ` +
+        "dispatch — a function word is a barrier and never feeds forward collection " +
+        "(strict rule); group the call in parens so its RESULT becomes the argument: " +
+        `${name} (${wname} …)`,
+      name,
+    );
+  }
+
+  /**
+   * What stepping a word of this name would do: substitute a VALUE (a
+   * keyword, a builtin type name, a value binding), dispatch a FUNCTION
+   * (a function binding or a registered word), or fail as UNDEFINED. The
+   * word step's own cascade, asked without stepping.
+   */
+  private wordKind(name: string): "value" | "function" | "undefined" {
+    if ("true" === name || "false" === name) return "value";
+    if ("none" === name || "null" === name) return "value";
+    if (resolveBuiltinTypeName(name) !== undefined) return "value";
+    const top = this.registry.topOfDefStack(name);
+    if (top !== undefined) return top.isFnDef() ? "function" : "value";
+    return this.registry.lookup(name) !== undefined ? "function" : "undefined";
+  }
+
+  /**
+   * Run a matched boru-bodied signature: bind its parameters, run the
+   * body, and splice the body's residual where the call stood.
+   */
+  private callFnSig(m: FnMatch): void {
+    const { result, sig: chosen, usedK } = m;
     const total = chosen.params.length;
     // Bind each param on the def stack so the body can reference it.
     // Provided args bind directly; omitted optional params default to
@@ -1020,6 +1217,7 @@ export class Engine {
     let bodyResult: Value[];
     try {
       const sub = new Engine(this.registry);
+      sub.frameBody = true;
       bodyResult = sub.run([...chosen.body]);
     } finally {
       this.registry.popArgs();
@@ -1048,101 +1246,66 @@ export class Engine {
    * fixed-point refinement).
    */
   private dispatchFnDefCheck(name: string, info: FnDefInfo): void {
-    const maxParams = Math.max(0, ...info.sigs.map((s) => s.params.length));
-    this.preEvalParens(maxParams);
-
     // Try to match an overload (largest arity first, optional-trailing).
-    let result: import("./match.ts").MatchResult | null = null;
-    let chosen: import("./value.ts").FnSig | null = null;
-    let usedK = 0;
-    const ordered = [...info.sigs].sort(
-      (a, b) => b.params.length - a.params.length,
-    );
-    outer: for (const fsig of ordered) {
-      const total = fsig.params.length;
-      const required = fsig.params.filter((p) => !p.optional).length;
-      for (let k = total; k >= required; k--) {
-        const sig: Signature = {
-          args: fsig.params.slice(0, k).map((p) => p.type),
-          barrierPos: k,
-          handler: () => [],
-        };
-        const fakeEntry: FunctionEntry = {
-          name,
-          signatures: [sig],
-          declOrder: [sig],
-          forwardPrecedence: true,
-          maxForwardArgs: k,
-        };
-        const r = matchEntry(
-          fakeEntry,
-          this.stack,
-          this.pointer,
-          this.registry,
-        );
-        if (r) {
-          result = r;
-          chosen = fsig;
-          usedK = k;
-          break outer;
-        }
-      }
-    }
+    const m = this.matchFnSigs(name, info, true);
 
     // Gather the consumed span + args. A clean match uses the matcher's
     // positions; a no-match assumes the first overload, gathers adjacent
     // operands, and emits no_signature (the param types are violated).
-    let replaceFrom: number;
-    let replaceCount: number;
-    let args: Value[];
-    if (result && chosen) {
-      args = result.args.slice(0, usedK);
-      replaceFrom = this.pointer - result.prefixCount;
-      replaceCount = result.prefixCount + 1 + result.forwardCount;
-    } else {
-      chosen = ordered[0]!;
-      const n = chosen.params.length;
-      const isBoundary = (v: Value): boolean =>
-        v.isWord() || v.isForward() || v.isMark() || v.isMove();
-      let fwd = 0;
-      while (fwd < n && this.pointer + 1 + fwd < this.stack.length) {
-        if (isBoundary(this.stack[this.pointer + 1 + fwd]!)) break;
-        fwd++;
-      }
-      let stk = 0;
-      while (fwd + stk < n && this.pointer - 1 - stk >= 0) {
-        if (isBoundary(this.stack[this.pointer - 1 - stk]!)) break;
-        stk++;
-      }
-      args = [];
-      for (let i = 0; i < fwd; i++)
-        args.push(this.stack[this.pointer + 1 + i]!);
-      for (let i = 0; i < stk; i++)
-        args.push(this.stack[this.pointer - 1 - i]!);
-      replaceFrom = this.pointer - stk;
-      replaceCount = stk + 1 + fwd;
-      this.registry.check.addDiagnostic({
-        code: "no_signature",
-        detail: `cannot call \`${name}\` — no signature matches the arguments; assuming best-fit candidate for analysis`,
-        word: name,
-      });
-      // The assumed dispatch analyses the body under args the real match
-      // REJECTED — its dispatch failures are cascade noise (mirrors the Go
-      // checkModeAssumeSig suppression); the no_signature above is the one
-      // honest diagnostic.
-      this.registry.check.suppressBodyErrors++;
-      try {
-        const out = this.analyseFnBody(name, chosen, args);
-        this.stack.splice(replaceFrom, replaceCount, ...out);
-        this.pointer = replaceFrom + out.length;
-        return;
-      } finally {
-        this.registry.check.suppressBodyErrors--;
-      }
+    if (null !== m) {
+      this.analyseFnMatch(name, m);
+      return;
     }
+    const chosen = [...info.sigs].sort(
+      (a, b) => b.params.length - a.params.length,
+    )[0]!;
+    const n = chosen.params.length;
+    const isBoundary = (v: Value): boolean =>
+      v.isWord() || v.isForward() || v.isMark() || v.isMove();
+    let fwd = 0;
+    while (fwd < n && this.pointer + 1 + fwd < this.stack.length) {
+      if (isBoundary(this.stack[this.pointer + 1 + fwd]!)) break;
+      fwd++;
+    }
+    let stk = 0;
+    while (fwd + stk < n && this.pointer - 1 - stk >= 0) {
+      if (isBoundary(this.stack[this.pointer - 1 - stk]!)) break;
+      stk++;
+    }
+    const args: Value[] = [];
+    for (let i = 0; i < fwd; i++) args.push(this.stack[this.pointer + 1 + i]!);
+    for (let i = 0; i < stk; i++) args.push(this.stack[this.pointer - 1 - i]!);
+    const replaceFrom = this.pointer - stk;
+    const replaceCount = stk + 1 + fwd;
+    this.registry.check.addDiagnostic({
+      code: "no_signature",
+      detail: `cannot call \`${name}\` — no signature matches the arguments; assuming best-fit candidate for analysis`,
+      word: name,
+    });
+    // The assumed dispatch analyses the body under args the real match
+    // REJECTED — its dispatch failures are cascade noise (mirrors the Go
+    // checkModeAssumeSig suppression); the no_signature above is the one
+    // honest diagnostic.
+    this.registry.check.suppressBodyErrors++;
+    try {
+      const out = this.analyseFnBody(name, chosen, args);
+      this.stack.splice(replaceFrom, replaceCount, ...out);
+      this.pointer = replaceFrom + out.length;
+    } finally {
+      this.registry.check.suppressBodyErrors--;
+    }
+  }
 
-    const sig = chosen;
-    const out = this.analyseFnBody(name, sig, args);
+  /**
+   * The check twin of callFnSig: analyse a matched signature's body under
+   * the arguments the match found and splice its result carriers where the
+   * call stood.
+   */
+  private analyseFnMatch(name: string, m: FnMatch): void {
+    const { result, sig, usedK } = m;
+    const out = this.analyseFnBody(name, sig, result.args.slice(0, usedK));
+    const replaceFrom = this.pointer - result.prefixCount;
+    const replaceCount = result.prefixCount + 1 + result.forwardCount;
     this.stack.splice(replaceFrom, replaceCount, ...out);
     this.pointer = replaceFrom + out.length;
   }
@@ -1333,9 +1496,118 @@ export class Engine {
   private stepLiteral(): void {
     const fwdIdx = this.findPendingMarker();
     if (fwdIdx < 0) {
+      const val = this.stack[this.pointer]!;
+      // A dispatch-modifier marker reaching the pointer on its own stands
+      // after a value that was not a function — `( 1 addq 2 )/v`. The
+      // modifier has nothing to say about a non-function: it is dropped.
+      if (val.vType.equal(TDispatchMod)) {
+        this.stack.splice(this.pointer, 1);
+        return;
+      }
+      // A function VALUE standing at the pointer is a CALL.
+      if (callsAtPointer(val)) {
+        this.stepFnValue(val);
+        return;
+      }
       this.pointer++;
       return;
     }
+    this.collectArrival(fwdIdx);
+  }
+
+  /**
+   * A function VALUE at the pointer dispatches as its word would: the
+   * forward window's groups, the match, then a parked forward or an
+   * immediate run. Mirrors Go's execFnDefLiteral and the Lean model's
+   * dispatchFnValue.
+   *
+   * The value is DATA in exactly two cases. A `/v` or `/q` modifier
+   * marker right after it — what the parser emits for `( … )/v` — says
+   * so, and the value is placed. And a value that matches nothing with
+   * nothing to be called on is a function being passed around, not a
+   * failed call; with anything at all around it, a NAMED function that
+   * matches nothing is an error (fnValueUnmatched).
+   */
+  private stepFnValue(val: Value): void {
+    const info = val.asFnDef();
+    const next = this.stack[this.pointer + 1];
+    if (next !== undefined && next.vType.equal(TDispatchMod)) {
+      this.stack.splice(this.pointer + 1, 1);
+      this.pointer++;
+      return;
+    }
+    // A function reached through a NAME is the function its word calls,
+    // optional parameters and all; a bare literal is held to the
+    // signatures as written (matchFnSigs).
+    const name = val.fnName ?? "";
+    const m = this.matchFnSigs(name, info, val.fnName !== undefined);
+    if (null === m) {
+      this.fnValueUnmatched(val.fnName);
+      return;
+    }
+    if (this.registry.check.isActive()) this.analyseFnMatch(name, m);
+    else this.callFnSig(m);
+  }
+
+  /**
+   * A function value was called and matched no signature.
+   *
+   * A NAMED function with anything to be called on — a value beneath it
+   * in its paren scope, or a token after it up to the next boundary — is
+   * an `uncalled_function` error, raised here at the dispatch site: the
+   * program wrote a call and the call failed. With nothing at all around
+   * it, and for a nameless function always, the value is simply placed,
+   * which is how a function is passed as data. Mirrors the tail of Go's
+   * ExecFnDefSigStackMatch.
+   *
+   * PARITY NOTE: a check pass places the value in every case. Go reports
+   * the finding as a diagnostic where the position is unconditionally
+   * reached; the TS check piece has no reachability model to gate it on.
+   */
+  private fnValueUnmatched(name: string | undefined): void {
+    if (name !== undefined && !this.registry.check.isActive()) {
+      let candidates = 0;
+      for (let i = this.pointer - 1; i >= 0; i--) {
+        const v = this.stack[i]!;
+        if (isOpenParen(v)) break;
+        if (!v.isForward()) candidates++;
+      }
+      let bounded = false;
+      for (let i = this.pointer + 1; i < this.stack.length && !bounded; i++) {
+        const v = this.stack[i]!;
+        if (v.isForward()) continue;
+        if (isCloseParen(v) || isEnd(v) || v.isMark() || v.isMove())
+          bounded = true;
+        else candidates++;
+      }
+      // In a call frame the body is followed by the frame's own cleanup
+      // marker, and Go counts it: the walk over what follows stops at a
+      // close paren, an `end`, a mark or a move, and the marker is none
+      // of them. So a named function that matches nothing at the END of a
+      // frame's body is a failed call even with nothing else around it.
+      // (That reads as an accident of the walk rather than a rule — the
+      // marker is no argument — and is reported as such; it is what
+      // core/go and the Lean model both answer.)
+      if (this.frameBody && !bounded) candidates++;
+      if (candidates > 0) {
+        throw new BoruError(
+          "uncalled_function",
+          `call to '${name}' matched no signature\n` +
+            `  = hint: check the call's argument types and arity — or use ${name}/v ` +
+            "to push the function as a value deliberately",
+          name,
+        );
+      }
+    }
+    this.pointer++;
+  }
+
+  /**
+   * The value at the pointer ARRIVES at the collection parked at
+   * `fwdIdx`: it fills the next slot if it fits, and the collection
+   * fails if it does not.
+   */
+  private collectArrival(fwdIdx: number): void {
     const m = this.stack[fwdIdx]!.asForward();
     const nextIdx = m.collected.length;
     const expected = m.sig.args[nextIdx]!;

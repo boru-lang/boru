@@ -433,11 +433,94 @@ run addq/2f 1 2	3	arity and forward form together
 
 # --- a function VALUE in the program ---------------------------------------
 # One Function type (ADR-011): a function value standing where the pointer
-# reaches it is a CALL, planned exactly as its word would be. Most of this
-# surface is in divergent.tsv — core/ts leaves the value as data — and
-# these are the rows the two engines share: the value collected as an
-# argument, and the notation's own limit.
+# reaches it is a CALL, planned exactly as its word would be — the forward
+# window first (its paren groups evaluated, its bound names resolved), then
+# the value stack. `fn( … )` builds a NAMED function: the runners install
+# it under a scratch name, and the name is what the miss rule below turns
+# on.
 run boomq fn( n Integer Any [ n ] )	ERROR:fixture_boom	a function value fills an Any slot like any other value
+run fn( n Integer Integer [ addq n 1 ] ) 5	6	the value is called on the argument after it
+run 5 fn( n Integer Integer [ addq n 1 ] )	6	or on the one beneath it
+run 9 fn( n Integer Integer [ n ] ) 5	9 5	forward first: the 9 beneath is left alone
+run fn( n Integer Integer [ n ] ) 5 6	5 6	and it takes only what its signature has room for
+run def x 5 ; fn( n Integer Any [ n ] ) x	5	a bound name in the window resolves, as it does for a word
+run fn( n Integer Any [ n ] ) ( addq 1 2 )	3	a paren group in the window is evaluated first
+run fn( n Integer Any [ n ] ) p( addq 1 2 )	3	and so is a paren-expression value
+run fn( n Integer Integer [ addq n 1 ] ) ( fn( n Integer Integer [ addq n 1 ] ) 5 )	7	so calls nest through a group
+run ( 2 fn( n Integer Any [ negq n ] ) )	-2	inside a paren group
+run [ fn( n Integer Integer [ addq n 1 ] ) 5 ]	[6]	inside a list literal
+run [ [ fn( n Integer Any [ n ] ) 5 ] ]	[[5]]	at any depth
+run { a: [ fn( n Integer Any [ n ] ) 5 ] }	{a:[5]}	in a map member's list
+run { a: p( fn( n Integer Any [ n ] ) 5 ) }	{a:5}	and in a member that is a paren expression
+run [q fn( n Any Any [ n ] ) 5 ]	[fn [[n:Any][Any][n]] 5]	a QUOTED list is data: nothing in it is stepped
+run 5 tyq fn( n Integer Any [ negq n ] )	-5	a word's RESULT is re-stepped, so a function it hands back is called on what is there
+run bothq 1 fn( n Integer Any [ n ] ) 2	2	collected by a waiting word, handed back, and then called on the 2
+run addq 1 ( fn( n Integer Any [ n ] ) 2 )	3	a call in a group is an ordinary argument expression
+run fn( n Any Any [ fn( m Any Any [ m ] ) n ] ) 5	5	a function value in a BODY is called there like anywhere else
+run fn( n Any Any [ n fn( m Any Any [ m ] ) ] ) 5	5	from the frame's own stack too
+
+# A call that MATCHES NOTHING. A named function with anything to be called
+# on — a value beneath it in its paren scope, or a token after it up to
+# the next boundary — is a failed call: `uncalled_function`, raised where
+# it stands rather than left for a later word to trip over.
+run fn( n Integer Integer [ n ] ) 'x'	ERROR:uncalled_function	the argument after it does not fit
+run 'x' fn( n Integer Integer [ n ] )	ERROR:uncalled_function	nor does the one beneath
+run 2 'a' fn( n Integer Any [ n ] )	ERROR:uncalled_function	only the TOP of the stack is its argument
+run 'a' 2 fn( n Integer Any [ n ] )	'a' 2	and when the top fits, what lies deeper is not its business
+run fn( n Integer Any [ n ] ) Integer	ERROR:uncalled_function	a type literal is not an Integer
+run def x 'a' ; fn( n Integer Any [ n ] ) x	ERROR:uncalled_function	a bound name is judged by its value
+run fn( n Integer Any [ n ] ) ( 'a' )	ERROR:uncalled_function	and a group by its result
+run fn( n Integer Integer [ addq n 1 ] ) negq 5	ERROR:uncalled_function	a function word is a barrier: the value cannot reach past it
+run fn( n Integer Any [ n ] ) depthq	ERROR:uncalled_function	whatever the word
+run fn( n Integer Integer [ addq n 1 ] ) fn( n Integer Integer [ addq n 1 ] ) 5	ERROR:uncalled_function	another function value is not an Integer either
+run dupq fn( n Integer Any [ n ] )	ERROR:uncalled_function	two copies handed back: the first is called on the second
+run ( fn( n Integer Any [ n ] ) 'x' )	ERROR:uncalled_function	the same in a paren group
+run [ fn( n Integer Any [ n ] ) 'a' ]	ERROR:uncalled_function	in a list literal
+run { a: p( fn( n Integer Any [ n ] ) 'x' ) }	ERROR:uncalled_function	in a map member
+run boomq [ fn( n Integer Any [ n ] ) 'x' ]	ERROR:uncalled_function	and in an argument's program, before the word that wanted it runs
+
+# With NOTHING to be called on, the value is simply data — which is how a
+# function is passed around. An `end`, a close paren or the end of the
+# program bounds what "after it" means.
+run fn( n Any Any [ n ] )	fn [[n:Any][Any][n]]	alone, it is placed
+run fn( n Any Any [ n ] ) ;	fn [[n:Any][Any][n]]	and `end` after it changes nothing
+run fn( n Any Any [ n ] ) ; 5	fn [[n:Any][Any][n]] 5	`end` closes its window: the 5 is not an argument
+run 3 fn( n Any Any [ n ] ) ; 5	3 5	though the stack beneath is still read
+run fn( n Any Any [ n ] ) ( )	fn [[n:Any][Any][n]]	a group that produces nothing leaves nothing to call it on
+run fn( n Any Any [ n ] ) ( ) 5	5	and what follows the empty group is then its argument
+run [ fn( n Any Any [ n ] ) ]	[fn [[n:Any][Any][n]]]	alone in a list literal
+run {q a: fn( n Any Any [ n ] ) }	{a:fn [[n:Any][Any][n]]}	a runtime map's member is never stepped at all
+
+# An Any slot PLANS a word it cannot yet read, so the call waits on it —
+# and a function word beginning its own dispatch is a statement boundary
+# (design/STRICT-FORWARD-BARRIER.0.md): the waiting call is STRANDED. An
+# Integer slot never plans the word, which is why the same shape above is
+# a miss instead. A word's call and a value's call strand alike.
+run fn( n Any Any [ n ] ) negq 5	ERROR:signature_error	the function word strands the waiting call
+run 3 fn( n Any Any [ n ] ) negq 5	ERROR:signature_error	even with an argument beneath: the plan had already chosen the word
+run fn( n Any Any [ n ] ) zzz	ERROR:undefined_word	an unbound name planned the same way is reported by name
+run def inc fn( n Any Any [ ] ) ; inc sumq	ERROR:signature_error	the same for a function called by its WORD
+run def inc fn( n Any Any [ ] ) ; 5 inc sumq	ERROR:signature_error	with an argument beneath
+run def inc fn( n Any Any [ ] ) ; inc inc	ERROR:signature_error	when the word in the window is the function itself
+run def inc fn( n Any Any [ ] ) ; inc zzz	ERROR:undefined_word	and for an unbound name
+run def inc fn( n Any Any [ n ] ) ; inc depthq	ERROR:signature_error	a word of no arguments is a function word like any other
+run def inc fn( n Any Any [ n ] ) ; inc __pa	ERROR:signature_error	an engine-internal `__` word is not a boundary, but it is not an argument either
+run def inc fn( n Any Any [ n ] ) ; 1 inc __pa	1	so the call takes what the stack holds
+run def inc fn( n Any Any [ n ] ) ; inc ( )	ERROR:no_value_error	a VOID group in the window is blamed by name, as for a native word
+
+# THE PAREN RE-STEP RULE. A group's results are re-stepped where the group
+# stood — except that a group which collapses to exactly ONE value, a
+# function, PLACES it: the pointer steps past, and it is not called on
+# what stands outside. With a second survivor the rewind lands on the
+# leading value and steps it as usual.
+run ( fn( n Any Any [ n ] ) ) 5	fn [[n:Any][Any][n]] 5	one survivor, a function: placed, and the 5 is not its argument
+run 1 ( fn( n Any Any [ n ] ) )	1 fn [[n:Any][Any][n]]	nor is the 1 beneath
+run ( ( fn( n Any Any [ n ] ) ) ) 5	fn [[n:Any][Any][n]] 5	each paren places it again
+run ( fn( n Any Any [ n ] ) ) ( 1 )	fn [[n:Any][Any][n]] 1	a following group is no different from a following value
+run ( ( fn( n Any Any [ n ] ) ) 5 )	5	two survivors in the OUTER group: it is called there
+run ( 1 ( fn( n Any Any [ n ] ) ) )	1	whichever side the operand is on
+run bothq 1 ( fn( n Any Any [ n ] ) )	fn [[n:Any][Any][n]]	a group in a forward window hands the function to the waiting word
+run p( fn( n Any Any [ n ] ) ) 5	fn [[n:Any][Any][n]] 5	a paren-expression value places it the same way
 
 # An Integer is a signed 64-bit integer (REFERENCE.md:84), so the fixture
 # arithmetic WRAPS. The TypeScript fixture computed in bigint and handed

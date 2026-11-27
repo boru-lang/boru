@@ -191,15 +191,23 @@ function item(toks: string[], st: { i: number }): Value {
     st.i += 3;
     const body = item(toks, st);
     st.i++; // past the ')'
-    return newFnDef({
-      sigs: [
-        {
-          params: [{ name: pname, type: ptype }],
-          returns: [rtype],
-          body: body.asList(),
-        },
-      ],
-    });
+    // NAMED, because that is what the form builds in the Go runner: it
+    // installs the function under a scratch name and hands back the
+    // installed value. The name is what makes a failed call of the value
+    // an error (`uncalled_function`) rather than a function left as data,
+    // so a nameless one here would be a different value, not a twin.
+    return newFnDef(
+      {
+        sigs: [
+          {
+            params: [{ name: pname, type: ptype }],
+            returns: [rtype],
+            body: body.asList(),
+          },
+        ],
+      },
+      "__corespec_fn",
+    );
   }
   if ("d(" === tok) {
     // `d( … )` — a DISJUNCT of the listed items. The corpus could name

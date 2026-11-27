@@ -114,15 +114,21 @@ function item(toks: string[], st: { i: number }): Value {
     st.i += 3;
     const body = item(toks, st);
     st.i++; // past the ')'
-    return newFnDef({
-      sigs: [
-        {
-          params: [{ name: pname, type: ptype }],
-          returns: [rtype],
-          body: body.asList(),
-        },
-      ],
-    });
+    // NAMED, as the runner's copy is: the Go form installs the function
+    // under a scratch name, and the name is what makes a failed call of
+    // the value an error rather than a function left as data.
+    return newFnDef(
+      {
+        sigs: [
+          {
+            params: [{ name: pname, type: ptype }],
+            returns: [rtype],
+            body: body.asList(),
+          },
+        ],
+      },
+      "__corespec_fn",
+    );
   }
   if ("d(" === tok) {
     // `d( … )` — a DISJUNCT of the listed items. The corpus could name

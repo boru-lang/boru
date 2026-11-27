@@ -128,6 +128,14 @@ export interface FnSig {
   body: Value[];
 }
 
+/**
+ * A function's payload. The payload OBJECT is the function's identity: two
+ * values holding one FnDefInfo are the same function, and two holding
+ * payloads that merely read alike are two functions (Go's `sameFnIdentity`,
+ * core/go/compare.go). So a payload is shared, never copied, by everything
+ * that passes the function along — and what differs between two holders of
+ * it, the name each reached it through, lives on the holder (Value.fnName).
+ */
 export interface FnDefInfo {
   sigs: FnSig[];
 }
@@ -173,6 +181,22 @@ export class Value {
    * one.
    */
   typeName?: string;
+  /**
+   * The name this holder reached its FUNCTION through, when it has one: a
+   * `name/v` reference carries the name it was read by, and a host that
+   * installs a function under a name hands the value back carrying it. A
+   * function literal no name has reached carries none.
+   *
+   * It is the holder's and not the payload's because the payload is the
+   * function's identity and is shared (FnDefInfo): one function read
+   * through two names is one function with two holders. Go keeps the same
+   * split — "a binding names its holder" (core/go/CLAUDE.md, FnNameOf).
+   *
+   * The name is what makes a failed call of the value an ERROR: a named
+   * function that is called and matches nothing is `uncalled_function`,
+   * where a nameless one is left as data (Go's NamedDef).
+   */
+  fnName?: string;
 
   constructor(
     vType: BoruType,
@@ -1010,8 +1034,10 @@ export function withQuoted(v: Value): Value {
  * sigTypeMatches can route fn refs through TFunction sig slots, and
  * the engine's def-sub branch knows to dispatch instead of substitute.
  */
-export function newFnDef(info: FnDefInfo): Value {
-  return new Value(TFunction, info);
+export function newFnDef(info: FnDefInfo, name?: string): Value {
+  const v = new Value(TFunction, info);
+  if (name !== undefined) v.fnName = name;
+  return v;
 }
 
 /**
