@@ -359,6 +359,11 @@ func runModuleBodyCover(parent *Registry, elems []Value, coverID, coverSrc strin
 	// check under OwnerProgram, so the registry carries no "module scope"
 	// mark of its own. Pinned by lang/spec/open-words.tsv §6 and
 	// TestModuleExtendFileUserTypeRule (lang/go/test).
+	//
+	// NUR389: NextID counts the modules THIS parent has imported, and a
+	// module body's own imports count from zero again, so the token is
+	// not unique across an import tree — the Nth module here and the Nth
+	// module it imports itself both read "module#mod_N".
 	modID := parent.Modules.NextID()
 	modReg.Types.MintOwner = "module#" + modID
 	sub := New(modReg)
