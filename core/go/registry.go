@@ -172,15 +172,12 @@ type Registry struct {
 	// returns, without the signal having to ride the error channel.
 	// See flowctrl.go.
 	FlowCtrl FlowCtrl
-	// FlowAt is where a VM ISLAND run stood when a break/continue it could
-	// not resolve ended it (Engine.exitWithFlowCtrl): the position of the
-	// token at its pointer, which the interpreter's `outside loop` report
-	// points at when no loop takes the signal. FlowAtSet is false when the
-	// pointer had run off the island's tape — the report then points past
-	// the island's span, which only the compiled lowering knows
-	// (compiler.FlowExit). The VM takes both with the signal (NUR355).
-	FlowAt    SrcPos
-	FlowAtSet bool
+	// FlowAt is where a run stood when a break/continue it could not
+	// resolve ended it (Engine.exitWithFlowCtrl): the position of the token
+	// at its pointer, which the `outside loop` report points at when no loop
+	// takes the signal (NUR355). The zero position when the pointer had run
+	// off the run's tape.
+	FlowAt SrcPos
 	// FlowAtHeld reports that FlowAt already records where the pending
 	// signal stood, taken by the INNERMOST run that could not hand its tape
 	// back — an island, or a container literal's element run (NUR358). An

@@ -275,31 +275,15 @@ func DoListHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]
 }
 
 // bodyErrorPropagates reports whether a `do` body error must be
-// RE-RAISED rather than trapped as an Error value. Two kinds cross the
-// escape hatch unchanged:
-//
-//   - an IO.exit request — a control transfer, not a failure (trapping it
-//     as data would demote `IO.exit 4` to exit 0);
-//   - a designed VM defer (IsVMDefer: an internal_error the compiled VM
-//     raises when it cannot continue — DISPATCH_GENERIC with no
-//     live unit, a poly no-match, a recovered lowering panic). Trapping it
-//     as an Error value STRANDS the fallback — the defer never reaches the
-//     top-level run that re-runs interpreted, so the internal message
-//     surfaces as data (a top-level `do [risky]` printed it) or an enclosing
-//     fn's return contract rejects the Error (`type_error … got Error`)
-//     where the interpreter answers cleanly.
-//
-// The marker (not the public `internal_error` code) is what distinguishes a
-// defer: a user `raise internal_error "…"` carries the same code but no
-// VMDefer marker, so it stays trapped and `do [raise internal_error …] error
-// […]` still catches it — as does every other genuine boru error
-// (type_error, undefined_word, a user `raise`), the escape-hatch semantics
-// intend.
+// RE-RAISED rather than trapped as an Error value. One kind crosses the
+// escape hatch unchanged: an IO.exit request — a control transfer, not a
+// failure (trapping it as data would demote `IO.exit 4` to exit 0). Every
+// genuine boru error (type_error, undefined_word, a user `raise`, a user
+// `raise internal_error "…"` among them) stays trapped, as the escape-hatch
+// semantics intend.
 func bodyErrorPropagates(err error) bool {
-	if _, isExit := ExitCode(err); isExit {
-		return true
-	}
-	return IsVMDefer(err)
+	_, isExit := ExitCode(err)
+	return isExit
 }
 
 func DoListReturnsFn(args []Value, r *Registry) []Value {
@@ -420,7 +404,6 @@ func DoListReturnsFn(args []Value, r *Registry) []Value {
 			if shuffleOnlyBody(bl.Elems(), r) {
 				return nil
 			}
-			r.Check.ValuelessDoBodies++
 			return []Value{NewCarrier(TError)}
 		}
 		return nil
@@ -708,13 +691,8 @@ func if3ReturnsFn(args []Value, r *Registry) []Value {
 	// The then arm may be a `[…]` code body or an already-evaluated VALUE
 	// (`if cond 99 88` — a literal, a def-bound value, a paren result),
 	// exactly like the else arm below. A non-body arm is its own value.
-	// An arm that may not run is bracketed (EnterSpecArm): a fn def inside
-	// one is speculative. Only the arm a DECIDED condition takes goes
-	// unbracketed — its defs are the post-branch bindings exactly
-	// (armsKnownToRun).
-	thenRuns, elseRuns := armsKnownToRun(args[0])
-	thenStk, thenDefs := ifArmResidual(r, args[0], args[1], thenRuns, ApplyGuardNarrowing)
-	elseStk, elseDefs := ifArmResidual(r, args[0], args[2], elseRuns, ApplyComplementNarrowing)
+	thenStk, thenDefs := ifArmResidual(r, args[0], args[1], ApplyGuardNarrowing)
+	elseStk, elseDefs := ifArmResidual(r, args[0], args[2], ApplyComplementNarrowing)
 	InstallJoinedDefs(r, thenDefs, elseDefs)
 	joined := JoinCarrierStacks(thenStk, elseStk)
 	if len(joined) == 0 {
@@ -734,22 +712,15 @@ func if3ReturnsFn(args []Value, r *Registry) []Value {
 }
 
 // ifArmResidual analyses one arm of an undecided `if`: a `[…]` code body
-// runs under the narrowing its condition licenses (narrow), bracketed as a
-// speculative arm unless the model knows it runs; any other arm is its own
-// value.
-func ifArmResidual(r *Registry, cond, arm Value, runs bool, narrow func(*Registry, Value) func()) ([]Value, map[string]Value) {
+// runs under the narrowing its condition licenses (narrow); any other arm
+// is its own value.
+func ifArmResidual(r *Registry, cond, arm Value, narrow func(*Registry, Value) func()) ([]Value, map[string]Value) {
 	if !(IsConcrete(&arm) && arm.Parent().ConformsTo(TList)) {
 		return []Value{arm}, nil
 	}
 	restore := narrow(r, cond)
 	defer restore()
-	var stk []Value
-	var defs map[string]Value
-	func() {
-		defer r.EnterSpecArm(runs)()
-		stk, defs = RunCarrierBodyWithDefs(r, arm)
-	}()
-	return stk, defs
+	return RunCarrierBodyWithDefs(r, arm)
 }
 
 // ifTakenArmReturns models a branch whose condition is DECIDED at check
@@ -892,23 +863,6 @@ func reduceStaticArm(r *Registry, cond, arm Value, isThen bool) []Value {
 	return stk
 }
 
-// armsKnownToRun reports which arm of a branch the model knows RUNS: the
-// taken arm of a DECIDED condition — a literal `[true]` / `[false]` — whose
-// defs are the post-branch bindings exactly. Every other arm may not run, so
-// a fn def in it is bound at run time only if it does — speculative, as an
-// undecided arm's is. The arm a decided condition skips is the NEVER case of
-// that (NUR244: left unbracketed, the join kept its fn value and a read past
-// the merge called it, `if false [def f fn […]] [] end 3 f` answering the
-// fn's result for undefined_word). A bare concrete Boolean (a def-bound or
-// folded one) never reaches here: ReduceStaticIf takes it first, on both
-// `if` forms, and analyses the taken arm alone.
-func armsKnownToRun(cond Value) (thenRuns, elseRuns bool) {
-	if lit, ok := LiteralCondValue(cond); ok {
-		return lit, !lit
-	}
-	return false, false
-}
-
 func If2ReturnsFn(args []Value, r *Registry) []Value {
 	// A statically-false bare condition's dead then-arm warns (a true one
 	// has no dead arm without an else), as in if3ReturnsFn.
@@ -923,17 +877,7 @@ func If2ReturnsFn(args []Value, r *Registry) []Value {
 		EmitUnreachableBranch(r, false, "then")
 	}
 	restore := ApplyGuardNarrowing(r, args[0])
-	// The arm runs only when the condition holds: bracketed unless the model
-	// decides it true, like if3's arms (NUR244 — unbracketed, a fn def in
-	// the arm was the join's own value, called past the merge on the path
-	// that skipped it).
-	thenRuns, _ := armsKnownToRun(args[0])
-	var thenStk []Value
-	var thenDefs map[string]Value
-	func() {
-		defer r.EnterSpecArm(thenRuns)()
-		thenStk, thenDefs = RunCarrierBodyWithDefs(r, args[1])
-	}()
+	thenStk, thenDefs := RunCarrierBodyWithDefs(r, args[1])
 	restore()
 	InstallJoinedDefs(r, thenDefs, nil)
 	// 2-arg if: a VARIADIC result (0 or 1 values at run time). An empty
@@ -1168,15 +1112,7 @@ func forCarrierAnalyse(r *Registry, iterName string, iterType *Type, args []Valu
 			}
 		}
 	}
-	// provenTrips: the loop provably runs at least once (all three bounds
-	// static, count >= 1 — the statically-zero prune above already returned
-	// for a static zero-trip). It arms the S9.2a LoopBodyDepth stamp inside
-	// AnalyseLoopBody; a COMPUTED count must not (a runtime count of 0 runs
-	// the body zero times and would leak an admitted split's analysis-only
-	// binding — PR #280 review).
-	provenTrips := staticBounds &&
-		LoopIterations(AsInt64Or(startV, 0), AsInt64Or(endV, 0), AsInt64Or(stepV, 1)) >= 1
-	stk := AnalyseLoopBody(r, body, []string{iterName}, []Value{iter}, provenTrips)
+	stk := AnalyseLoopBody(r, body, []string{iterName}, []Value{iter})
 	out := NewCarrier(TList)
 	if len(stk) > 0 {
 		top := stk[len(stk)-1]

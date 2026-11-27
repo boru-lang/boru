@@ -289,7 +289,6 @@ func (a *Boru) Check(src string) (CheckResult, error) {
 
 	a.registry.Source = src
 	defer a.registry.Check.Begin()()
-	native.ResetModuleExportGrowth(a.registry)
 	native.ResetCheckFnCarrierBinds(a.registry)
 
 	eng := native.NewTop(a.registry)

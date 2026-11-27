@@ -79,22 +79,6 @@ func NoMatchDiag(source, name string, fn *FnDefInfo, written []Value, pos SrcPos
 	return ae
 }
 
-// runtimeNoMatch is the compiled VM's twin of the interpreter's
-// sigError: a runtime param-contract guard (checkParamContract /
-// checkNativeParamContract) that rejects `written` (the actual runtime
-// argument values, sig order) rebuilds the SAME rich diagnostic the
-// interpreter would raise over those values. It runs on the failure
-// path only; the VM stamps the source position afterward (stampAt).
-func RuntimeNoMatch(r *Registry, name string, written []Value) *BoruError {
-	var fn *FnDefInfo
-	src := ""
-	if r != nil {
-		fn = r.Lookup(name)
-		src = r.Source
-	}
-	return NoMatchDiag(src, name, fn, written, SrcPos{}, ReorderHintFor(name, fn, written))
-}
-
 // insufficientArgsDetail is the Detail line for a forward collection
 // that could not gather the arguments its matched signature planned
 // for (the word's strict forward window ran out of usable tokens).

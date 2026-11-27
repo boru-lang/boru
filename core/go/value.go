@@ -968,11 +968,6 @@ type FnDefInfo struct {
 // the program one shared token and make them all eq. Its fields keep the
 // addresses distinct.
 type fnIdent struct {
-	// closure is the identity SEQUENCE of the compiled closure this token
-	// stands in for (NewFunctionIdentified): two tokens with the same
-	// non-zero sequence are one function, however many bridges minted
-	// them. Zero for an interpreter-minted fn, which identifies by ADDRESS.
-	closure uint64
 	// dispatch caches the interpreter's compiled dispatch form of the
 	// function (compileFnDef's result) for the registry that built it —
 	// see compiledFnDefFor. The token is the one reference every copy of
@@ -980,9 +975,6 @@ type fnIdent struct {
 	// copies go (an instance's method slot, a list of callbacks, the tape)
 	// and dies with it. Atomic: forked engines apply one value concurrently.
 	dispatch atomic.Pointer[compiledFnDef]
-	// view caches the function's dispatch-ordered signature list
-	// (FnDispatchSigs), keyed by the authored list it was built from.
-	view atomic.Pointer[sigView]
 	// install caches the signatures binding the function under a name
 	// installs (installedFnSigsFor) — a Function parameter is bound again
 	// on every call.
@@ -991,56 +983,6 @@ type fnIdent struct {
 	// function that is its name's only fn binding (singleAggregateFor) — the
 	// table Lookup rebuilds after every re-binding of a Function parameter.
 	aggregate atomic.Pointer[singleAggregate]
-}
-
-// FnIdentity is a fn value's identity token handed out OPAQUELY, so a value
-// built outside core that stands in for one authored function can carry the
-// token that function's copies share: a compiled closure (ClosurePayload.Ident,
-// minted once at its push and copied with the value) and the FnDefInfo the VM
-// bridges it to for the interpreter's dispatch. `eq` then answers what the
-// interpreter answers for the source lambda — one function, however many
-// copies the tape holds, bridged or not. A zero FnIdentity is "none": a
-// hand-built payload has no identity and is eq to nothing, the honest answer
-// for a value with no fn behind it.
-//
-// The identity is a process-wide SEQUENCE number, not a heap token: a closure
-// is constructed on the VM's hot path (every `do body`, every element of an
-// `each`), and the compiled lane's allocation ceilings (lang/go's alloc guard)
-// hold one heap object per push against it — a counter costs an atomic add
-// and nothing else. The token a bridge needs is minted at the bridge, where
-// an allocation is already the price of the dispatch.
-type FnIdentity struct{ seq uint64 }
-
-var closureIdentSeq atomic.Uint64
-
-// NewFnIdentity mints a fresh identity — one per fn CONSTRUCTION, as
-// NewFunction mints one per authored function.
-func NewFnIdentity() FnIdentity { return FnIdentity{seq: closureIdentSeq.Add(1)} }
-
-// NewFunctionIdentified is NewFunction for a payload that stands in for a
-// function whose identity already exists (the closure bridge): the token it
-// mints carries id's sequence when id is one, else it is NewFunction's own.
-func NewFunctionIdentified(info FnDefInfo, id FnIdentity) Value {
-	if id.seq != 0 {
-		info.ident = &fnIdent{closure: id.seq}
-	}
-	return NewFunction(info)
-}
-
-// WithFreshFnIdentity returns v with the identity one more CONSTRUCTION of
-// its fn would mint (NewFunction's own token) when v is a fn value, and v
-// itself otherwise. A fn literal written in a fn body is a new function on
-// every evaluation, so a compiled push of its pooled const re-identifies it
-// per push (OpPushConstFresh) — `def mk fn [[][Any][([x:Any] => [x])]] end
-// mk mk eq` is false on both lanes (NUR288).
-func WithFreshFnIdentity(v Value) Value {
-	prev, ok := FnDefOf(v.Data())
-	if !ok {
-		return v
-	}
-	fd := *prev
-	fd.ident = &fnIdent{}
-	return MintPayload(&v, &fd)
 }
 
 // CapturedBinding is one lexically-captured name in a closure. The
@@ -1683,35 +1625,6 @@ const (
 	WrapRebarrier
 )
 
-// UnwrapModifierChain resolves a stack of modifier wrappers to the value they
-// ultimately re-dispatch, and to the permutation the whole chain applies.
-//
-// It walks rather than reading ArgsReversed because that flag does not
-// compose: it is set true by UsurpFunction and propagated by the others, so
-// two usurps report reversed where they cancel. Parity is the property that
-// matters here, and only the walk has it.
-//
-// ok is false when v is not a wrapper, in which case base is v unchanged.
-func UnwrapModifierChain(v Value) (base Value, reverse bool, ok bool) {
-	base = v
-	for depth := 0; depth < 64; depth++ {
-		fd, isFn := base.Data().(*FnDefInfo)
-		if !isFn || fd.Wraps == nil {
-			return base, reverse, ok
-		}
-		if fd.Wrap == WrapReverse {
-			reverse = !reverse
-		}
-		base = *fd.Wraps
-		ok = true
-	}
-	// A cycle is impossible by construction (each wrapper captures an
-	// ALREADY-BUILT value, so the chain is a finite tree path), but a bound
-	// costs nothing and a runaway walk in the VM would be far worse than a
-	// declined fast path.
-	return v, false, false
-}
-
 // WordInfo carries the name and optional modifiers for a function reference.
 type WordInfo struct {
 	Name         string
@@ -2025,11 +1938,6 @@ type typeMeta struct {
 	// registers it (DeclareRefinementBase, NUR009); canonicalBaseType walks
 	// to the nearest declaring ancestor instead of a hand-listed switch.
 	RefinementBase *Type
-	// RunForward, non-nil, is the node the RUN installed under the name the
-	// analysis pass minted this node for — a type over a refinement whose
-	// bound only the run knows (NUR308, RunTypeInstall). Compiled references
-	// name this node; ForwardedType follows the forward to the run's.
-	RunForward *Type
 	// node is the lattice node this metadata belongs to — the *Type a type
 	// table minted or registered (MintType, RegisterType, the builtin
 	// table, Adopt). Every copy of a node shares its metadata, so every
@@ -2444,10 +2352,6 @@ func IDPrefixForType(t *Type) string {
 // (data == nil: type literals, carriers) always mint — canon, unify and
 // the type registry read their IDs at runtime.
 var checkPassDepth atomic.Int64
-
-// CheckPassActive reports whether any check/compile pass is live in the
-// process — the condition under which runtime value mints carry IDs.
-func CheckPassActive() bool { return checkPassDepth.Load() > 0 }
 
 // BeginIDMintScope arms eager ID minting for a non-pass producer whose
 // values must still carry compile identities — the PARSER. Program tokens

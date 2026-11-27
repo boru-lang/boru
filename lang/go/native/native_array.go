@@ -1599,20 +1599,12 @@ func analyseHigherOrderBodyVals(r *Registry, body Value, vals ...Value) []Value 
 	sub := New(r)
 	// A higher-order body (each/fold/scan/outer/inner/…) is CONDITIONALLY
 	// reached — the collection may be empty, so the body runs zero times.
-	// Raise CondBodyDepth (as the branch/loop bodies do) so an in-place fn
-	// redefinition that clobbers an enclosing overload here fails to compile
-	// (installDef): compiled resolution would bake the body's shadow while the
-	// interpreter keeps the outer fn on an empty collection. Balanced around
-	// the body run; Suspend (above) stops recording but still lets the compile failure
-	// latch the program's compilability.
-	r.Check.CondBodyDepth++
-	// The body is a speculative region (zero iterations possible): an
-	// `undef` of an enclosing binding inside it must not leak the deletion
-	// into the pass model (SpecUndefBlocked — the wrapped-undef FP class).
+	// It is a speculative region: an `undef` of an enclosing binding inside
+	// it must not leak the deletion into the pass model (SpecUndefBlocked —
+	// the wrapped-undef FP class).
 	r.Check.PushSpecBaseline(r.Defs.Snapshot())
 	result, err := sub.Run(input)
 	r.Check.PopSpecBaseline()
-	r.Check.CondBodyDepth--
 	if err != nil {
 		r.Check.AddDiagnostic(CheckDiagnostic{
 			Code:   "body_error",

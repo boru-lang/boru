@@ -186,8 +186,7 @@ func fixForReturnsFn(args []core.Value, r *core.Registry) []core.Value {
 		}
 	}
 
-	provenTrips := staticCount >= 1
-	stk := check.AnalyseLoopBody(r, body, []string{"i"}, []core.Value{iter}, provenTrips)
+	stk := check.AnalyseLoopBody(r, body, []string{"i"}, []core.Value{iter})
 	out := core.NewCarrier(core.TList)
 	if len(stk) > 0 {
 		top := stk[len(stk)-1]
@@ -404,8 +403,7 @@ func fixForRangeReturnsFn(args []core.Value, r *core.Registry) []core.Value {
 			}
 		}
 	}
-	provenTrips := staticBounds && staticCount >= 1
-	stk := check.AnalyseLoopBody(r, body, []string{"i"}, []core.Value{iter}, provenTrips)
+	stk := check.AnalyseLoopBody(r, body, []string{"i"}, []core.Value{iter})
 	out := core.NewCarrier(core.TList)
 	if len(stk) > 0 {
 		top := stk[len(stk)-1]

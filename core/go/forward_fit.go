@@ -30,37 +30,6 @@ type ForwardFit struct {
 	Chosen bool
 }
 
-// ForwardValueFits reports whether the interpreter's forward scan takes v —
-// a concrete value, not a fn it would dispatch — at sig's position k: a form
-// or quoted slot captures any token; otherwise the value must match the
-// slot, or the slot be Any, and a bare type node is refused at a
-// concrete-payload slot (CollectCandidateScan's literal and def-binding
-// arms, which agree on every non-fn value).
-func ForwardValueFits(sig *Signature, k int, v Value) bool {
-	if sig == nil || k < 0 || k >= sig.TotalArgs() {
-		return false
-	}
-	if (sig.FormArgs != nil && sig.FormArgs[k]) || (sig.QuoteArgs != nil && sig.QuoteArgs[k]) {
-		return true
-	}
-	expected := SigArgType(sig, k)
-	if !SigArgMatches(sig, k, &v) && !expected.Equal(TAny) {
-		return false
-	}
-	isTypeArg := sig.TypeArgs != nil && sig.TypeArgs[k]
-	return isTypeArg || !rejectsTypeLiteral(v, expected)
-}
-
-// ForwardFitsAll reports whether v fits every slot of fits.
-func ForwardFitsAll(fits []ForwardFit, v Value) bool {
-	for _, f := range fits {
-		if !ForwardValueFits(f.Sig, f.Idx, v) {
-			return false
-		}
-	}
-	return true
-}
-
 // BarrierBars reports whether an overload among sigs stops its forward
 // collection short of nFwd written operands and then reads the stack: its
 // barrier (the unmodified word's forward limit) is below nFwd and below its

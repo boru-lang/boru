@@ -147,15 +147,7 @@ type Engine struct {
 	// hazard (a frame that already popped) cannot occur here: the enclosing
 	// container eval runs in-frame at its own recordable site.
 	ElemEvalRecordable bool
-	// ArmBody marks the model's run of a branch arm or a loop body
-	// (runCarrierBodyDefsAdds, a rolled-back conditional body): its end-of-run
-	// sweep of residual containers runs under CheckState.ArmResidualSweep.
-	ArmBody bool
-	// armResidue records, for an ArmBody run, the observable pending
-	// literals its end-of-run sweep evaluated — the ones a SPLICED arm leaves
-	// pending past itself on the interpreter (RunCarrierArmBody, NUR356).
-	armResidue PendingResidue
-	ReuseTape  bool // when set, Run reloads the existing tape in place instead of allocating (the VM's reusable island engine)
+	ReuseTape          bool // when set, Run reloads the existing tape in place instead of allocating (a pooled sub-engine)
 	// DeferResidual leaves the finished stack's pending containers
 	// UNEVALUATED instead of running the end-of-run sweep (autoEvalStack).
 	// Set by CallBoru for a body whose residual defers past the frame
@@ -163,22 +155,6 @@ type Engine struct {
 	// container while the params are still bound — the caller sweeps it
 	// after the teardown, in the scope the consumer would have.
 	DeferResidual bool
-	// flowUnwind marks a VM ISLAND engine: a break/continue that escapes the
-	// island's tape (no enclosing loop there) must TEAR DOWN the island's live
-	// spliced frames before returning — in the interpreter the frame and the
-	// enclosing loop always share one tape (handleLoopBreak's unwindLiveFrames
-	// runs at the loop), but the island boundary separates them, so the frame
-	// cleanup (args pop, def truncation, capture teardown) would otherwise be
-	// lost with the discarded tape. exitWithFlowCtrl then returns NO values —
-	// the VM discards the signalled iteration's partials anyway (flowSignal) —
-	// with the registry FlowCtrl flag left set for the VM to translate.
-	//
-	// The field is the ISLAND marker itself, and it has a second consequence
-	// beyond flow — see isIsland, which Run consults for scoping. Anything
-	// that opens a new island MUST set it, which is why there is one field
-	// rather than one per consequence: a second island entry point that set
-	// only the flow half would silently regress the scoping half.
-	FlowUnwind bool
 	// ContainerRun marks the sub-engine that evaluates a container literal's
 	// elements — a pending list's contents, a map member, an interpolation
 	// hole (runContainerSub). A literal is not a loop and not a body whose
@@ -1089,14 +1065,6 @@ func validateReturnTypesIn(reg *Registry, rc ReturnCheckInfo, results []Value, e
 	return nil
 }
 
-// returnTypeError builds a detailed BoruError for a return type mismatch. The
-// detail/hint text is shared with the VM via returnTypeErrorText; the two
-// secondary spans — where the offending value was produced, and where the
-// return contract was declared — are interpreter-side enrichment (phase 5).
-func (e *Engine) returnTypeError(rc ReturnCheckInfo, index int, expected *Type, got Value) *BoruError {
-	return BuildReturnTypeError(e.effectiveSource(), rc.FuncName, index, expected, got, rc.Pos, rc.Decl)
-}
-
 // attachDeclSpan labels the return contract's declaration site as a
 // secondary span. A zero declaration site attaches nothing — the
 // no-guessed-locations rule; the declared type is already in the Detail.
@@ -1319,24 +1287,10 @@ func (e *Engine) run(prefix, input []Value) (result []Value, runErr error) {
 	// Push a scoped context Store whose prototype is the parent context.
 	// This is THE context boundary: a nested body runs in a sub-engine, so
 	// one push here is what makes `do` / `each` / a `case` clause / an
-	// auto-evaluated list contain their `context set` writes. The VM's
-	// enterBodyUnit is the compiled twin.
-	//
-	// An ISLAND is not a body, so it does not push (see isIsland). An island
-	// CONTINUES an in-progress compiled expression on the interpreter — a
-	// fn-value apply the emitter could not lower, a FALLBACK span — and the
-	// interpreter reaching the same tokens inline pushes nothing, so pushing
-	// here made the compiled path MORE isolated than the interpreter it is
-	// supposed to mirror. Measured: `(m.f 1) drop` with a `context set` in
-	// the map-slot lambda contained the write compiled (CALL_DYN_METHOD
-	// islands the apply) and leaked it interpreted. A body reached from
-	// INSIDE an island still gets its own frame, because that body opens its
-	// own sub-engine. See design/verse-report-defects-investigation.0.md §B.
-	if !e.isIsland() {
-		parent := e.Registry.Contexts.Top()
-		e.Registry.Contexts.Push(parent)
-		defer e.Registry.Contexts.Pop()
-	}
+	// auto-evaluated list contain their `context set` writes.
+	parent := e.Registry.Contexts.Top()
+	e.Registry.Contexts.Push(parent)
+	defer e.Registry.Contexts.Pop()
 
 	// In static type-check mode, convert concrete literal values to
 	// carriers before execution. The same dispatch/matching machinery
@@ -1510,7 +1464,7 @@ func (e *Engine) run(prefix, input []Value) (result []Value, runErr error) {
 	// A DeferResidual run (CallBoru's deferring lambda body) hands them
 	// back pending; the caller sweeps them after its frame teardown.
 	if !e.DeferResidual {
-		if err := e.sweepResidual(); err != nil {
+		if err := e.autoEvalStack(); err != nil {
 			return nil, e.faultReturn(err)
 		}
 		if e.Registry.FlowCtrl != FlowNone {
@@ -1537,13 +1491,7 @@ func (e *Engine) run(prefix, input []Value) (result []Value, runErr error) {
 					"gen", e.effectiveSource(),
 					"hint: follow gen [...] with refine Record [...], class {...}, fnsig [...], or fn [...]")
 			}
-			// Check mode is lenient (no error), but the compiled stream
-			// elides gen. Record a TERMINAL trap so a compiled program raises
-			// the byte-identical gen_without_constructor error at this point
-			// (orphan gen errors at end-of-run, exactly where this fires)
-			// instead of declining; if the trap can't be recorded (nested), keep
-			// the blanket-compile failure flag so the program falls back.
-			e.Registry.noteSuppressedRuntimeError()
+			// Check mode is lenient (no error).
 		}
 	}
 
@@ -2274,7 +2222,7 @@ func (e *Engine) evalParenGroupAt(scanIdx int) error {
 			continue
 		}
 		if e.Registry.FlowCtrl != FlowNone {
-			e.Registry.HoldFlowAt(e.currentPos(), e.Pointer < e.Tape.Len())
+			e.Registry.HoldFlowAt(e.currentPos())
 			e.unwindLiveFrames(scanIdx, e.Tape.Len())
 			e.abandonDrivenLoops(scanIdx, e.Tape.Len())
 			e.Tape.Splice(scanIdx, groupExtent(e.Tape, scanIdx))
@@ -2914,11 +2862,6 @@ func (e *Engine) stepWord(val *Value) error {
 	if abandon {
 		return err
 	}
-	// The word-dispatch commit, as planned (dispatch_probe.go): the
-	// admission-agreement census reads it here, before the check-mode
-	// Fallback recovery below, which analysis alone reaches.
-	e.probeDispatch(fn, w, sig, positions, specAt)
-
 	// In check mode, if matchSignature fell through to the 0-arg /
 	// Fallback handler because no typed signature matched (but
 	// typed signatures exist), treat it as an unmatched call and go
@@ -4300,18 +4243,8 @@ func (e *Engine) resolveInertTypeShapeIn(slot *Value) bool {
 	return false
 }
 
-// sweepResidual is the end-of-run sweep (autoEvalStack), bracketed by
-// CheckState.ArmResidualSweep for a branch arm's or loop body's model run
-// (ArmBody).
-func (e *Engine) sweepResidual() error {
-	if e.ArmBody {
-		e.Registry.Check.ArmResidualSweep++
-		defer func() { e.Registry.Check.ArmResidualSweep-- }()
-		e.armResidue = pendingResidueOf(e.Registry, e.Tape)
-	}
-	return e.autoEvalStack()
-}
-
+// autoEvalStack is the end-of-run sweep: it evaluates the pending container
+// literals the finished run left on its stack.
 func (e *Engine) autoEvalStack() error {
 	for i := 0; i < e.Tape.Len(); i++ {
 		if c := e.Tape.Ref(i); !isPendingResidualContainer(c) {
@@ -5482,14 +5415,6 @@ func (e *Engine) execFnDefLiteral(valIdx int) error {
 		return e.insertForward(w, sig, fwdCount, stkCount, specAt)
 	}
 
-	// The fn-value dispatch COMMIT (dispatch_probe.go): past every
-	// non-dispatch exit — the handler-less/nil reroute, the
-	// anonymous-lambda/macro parking (the value stays DATA; probing there
-	// counted non-dispatches, Codex P2 on PR #420), and the insertForward
-	// deferral (which re-enters here with args on the stack, so a parked
-	// dispatch is probed exactly once, at its real commit).
-	e.probeDispatch(fn, w, sig, positions, specAt)
-
 	// All args resolved on the stack. Anonymous FnDefs (no Go
 	// Handler) take the legacy stack-match path, which splices the
 	// body via execFnDefSig and binds named params via def-stack.
@@ -5879,17 +5804,6 @@ func stackParamMatches(sig *Signature, j int, v Value, p FnParam) bool {
 	}
 	_, ok := Unify(v, pat)
 	return ok
-}
-
-// FnValueStackMatches reports whether the interpreter's legacy pure-stack
-// dispatch of the fn VALUE fnDef (ExecFnDefSigStackMatch — the path a value at
-// the pointer takes when the plan matched nothing) would dispatch one of its
-// own signatures over resolved, the stack beneath it. The VM's no-match park
-// asks it (eng vm_fnvalue_park.go) so that the park it performs is the one
-// this path's no-match tail performs, never a dispatch it skipped.
-func FnValueStackMatches(fnDef FnDefInfo, resolved []Value) bool {
-	i, _ := stackMatchSig(fnDef.OwnSigs(), resolved)
-	return i >= 0
 }
 
 // ExecFnDefSigStackMatch is the legacy pure-stack dispatch path for
@@ -7874,18 +7788,6 @@ func (e *Engine) handleFlowCtrl() bool {
 	return handled
 }
 
-// isIsland reports whether this engine runs a VM ISLAND — a token window that
-// CONTINUES an in-progress compiled expression on the interpreter (a fn-value
-// apply the emitter could not lower, a FALLBACK span), rather than entering a
-// nested body. The two island entry points (vmContext.islandRun and
-// runIslandResolved) are the only setters of the underlying marker.
-//
-// Two consumers, both reading the same fact: exitWithFlowCtrl needs the frame
-// teardown because the island's tape is separate from any enclosing loop's,
-// and Run needs to SKIP the per-body context frame because an island is not a
-// body. Named so each call site says which consequence it wants.
-func (e *Engine) isIsland() bool { return e.FlowUnwind }
-
 // exitWithFlowCtrl returns from Run when a flow-control signal could
 // not be resolved on this tape. For a top-level engine this is the
 // "break/continue outside loop" error path; for a sub-engine, the flag
@@ -7901,16 +7803,16 @@ func (e *Engine) exitWithFlowCtrl() ([]Value, error) {
 		// where it escaped, and the pointer here has moved on (NUR358).
 		return nil, e.Registry.RaiseFlowOutsideLoop(e.currentPos(), e.effectiveSource())
 	}
-	if e.FlowUnwind || e.ContainerRun {
-		// A VM island, or a container literal's element run: no outer TAPE
-		// adopts the residual — tear down the live spliced frames (their
-		// registry state: args stack, body-local defs, captures) and return
-		// nothing; the VM translates the signal, or the literal's evaluator
-		// abandons the value and its run resolves the signal (NUR358).
+	if e.ContainerRun {
+		// A container literal's element run: no outer TAPE adopts the
+		// residual — tear down the live spliced frames (their registry
+		// state: args stack, body-local defs, captures) and return nothing;
+		// the literal's evaluator abandons the value and its run resolves
+		// the signal (NUR358).
 		// Where the run stood goes with it (Registry.FlowAt): the token the
 		// interpreter's own `outside loop` report points at, when no loop
 		// takes the signal (NUR355) — an inner run's, when one holds it.
-		e.Registry.HoldFlowAt(e.currentPos(), e.Pointer < e.Tape.Len())
+		e.Registry.HoldFlowAt(e.currentPos())
 		e.unwindLiveFrames(0, e.Tape.Len())
 		e.Tape.TakeAll()
 		return nil, nil
@@ -8702,12 +8604,11 @@ func (e *Engine) hasPendingForwardFormArg() bool {
 
 // MatchSignature is the Engine's seat on PlanMatch (collect_plan.go): the
 // plan-level matcher over this engine's tape, at its pointer, with the
-// check-mode facts the registry holds. The three per-dispatch facts are
-// computed once here rather than once per candidate — `compiling` is only
-// ever read under `checkActive`, so the runtime hot path never asks.
+// check-mode fact the registry holds, computed once here rather than once
+// per candidate.
 func (e *Engine) MatchSignature(fn *FnDefInfo, w WordInfo, resolved []Value) (*Signature, []int, int) {
 	checkActive := e.Registry != nil && e.Registry.analysisActive()
-	return PlanMatch(e, e.Tape, e.Registry, fn, w, resolved, e.Pointer, e.isInsidePendingForward(), checkActive, false)
+	return PlanMatch(e, e.Tape, e.Registry, fn, w, resolved, e.Pointer, e.isInsidePendingForward(), checkActive)
 }
 
 // matchForDispatch is a word dispatch's signature match (stepWord, and a
@@ -8766,7 +8667,7 @@ func (e *Engine) matchSignatureDispatching(fn *FnDefInfo, w WordInfo, resolved [
 		// (dispatch_plan.go); an analysis pass always plans afresh.
 		return planDispatch(patternDispatch{e}, e.Tape, e.Registry, fn, w, resolved, e.Pointer, e.isInsidePendingForward())
 	}
-	return PlanMatch(patternDispatch{e}, e.Tape, e.Registry, fn, w, resolved, e.Pointer, e.isInsidePendingForward(), checkActive, false)
+	return PlanMatch(patternDispatch{e}, e.Tape, e.Registry, fn, w, resolved, e.Pointer, e.isInsidePendingForward(), checkActive)
 }
 
 // patternDispatch is the dispatching engine as the matcher's host
@@ -8891,7 +8792,7 @@ func SingleOverloadRecoverable(sig *Signature, fn *FnDefInfo) bool {
 	return len(sole.Body()) > 0
 }
 
-func (e *Engine) TryRecordRecoveredUserFn(sig *Signature, fn *FnDefInfo, args []Value, nStack int, positions []int) bool {
+func (e *Engine) TryRecoverUserFn(sig *Signature, fn *FnDefInfo, args []Value, nStack int, positions []int) bool {
 	if !SingleOverloadRecoverable(sig, fn) {
 		return false
 	}

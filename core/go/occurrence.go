@@ -263,11 +263,6 @@ func IsDynamic(v *Value) bool { return occFlag(v, occDynamic) }
 // SetDynamic marks or clears v as a gradual carrier, for this holder only.
 func SetDynamic(v *Value, on bool) { setOccFlag(v, occDynamic, on) }
 
-// IdentityOnly is a Value carrying the identity id and nothing else: the
-// key an ID-keyed table is asked with when all its caller holds is the ID
-// (a recorded landing's own value, a hazard's lead).
-func IdentityOnly(id string) Value { return Value{occ: idOcc(id)} }
-
 // IsApplied reports `apply`'s ONE-SHOT signal that an application was
 // explicitly ASKED for at this fn value — set only on a fn whose only
 // signatures are 0-arg (MarkApplied), and consumed by the very next

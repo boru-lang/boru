@@ -306,7 +306,7 @@ func TestLaneRemovalLoopJoinSkipsNarrowingOnlyAdd(t *testing.T) {
 			}, core.RunInCheck()),
 		}},
 	})
-	AnalyseLoopBody(r, core.NewList([]core.Value{core.NewWord("lrrefq")}), nil, nil, false)
+	AnalyseLoopBody(r, core.NewList([]core.Value{core.NewWord("lrrefq")}), nil, nil)
 	if d := r.Defs.Depth("lrnq"); d != 1 {
 		t.Fatalf("a narrowing-only body add is not re-pushed after the loop: depth = %d, want 1", d)
 	}
@@ -328,7 +328,7 @@ func TestLaneRemovalLoopBindNameDefNotJoined(t *testing.T) {
 		core.NewWord("pushq"), core.NewWord("lraccq"), core.NewInteger(7),
 		core.NewWord("pushq"), core.NewWord("lrfreshq"), core.NewInteger(3),
 	})
-	AnalyseLoopBody(r, body, []string{"lriq"}, []core.Value{core.NewCarrier(core.TInteger)}, true)
+	AnalyseLoopBody(r, body, []string{"lriq"}, []core.Value{core.NewCarrier(core.TInteger)})
 	if got, ok := r.Defs.Top("lriq"); !ok || !core.IsConcrete(&got) || core.IDOf(&got) != core.IDOf(&outer) {
 		t.Errorf("the pre-loop binding of the loop's own bind name survives untouched, got %#v", got)
 	}
@@ -372,7 +372,7 @@ func TestLaneRemovalLoopSpecUndefReRounds(t *testing.T) {
 		defer r.Check.Begin()()
 		r.Defs.Push("lrk", core.NewInteger(5))
 		body := core.NewList([]core.Value{core.NewWord("lrundefq"), core.NewWord("lrk")})
-		AnalyseLoopBody(r, body, []string{"lri"}, []core.Value{core.NewCarrier(core.TInteger)}, true)
+		AnalyseLoopBody(r, body, []string{"lri"}, []core.Value{core.NewCarrier(core.TInteger)})
 		if undef {
 			if k, ok := r.Defs.Top("lrk"); !ok || core.IsConcrete(&k) {
 				t.Errorf("the speculative undef keeps the binding as a carrier, got %#v", k)

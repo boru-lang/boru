@@ -313,7 +313,6 @@ var (
 	IsResourceType           = core.IsResourceType
 	IsFlatInstance           = core.IsFlatInstance
 	IsOptionsType            = core.IsOptionsType
-	PendingLiteralSteps      = core.PendingLiteralSteps
 	NewReach                 = core.NewReach
 	NewReachFromKeys         = core.NewReachFromKeys
 	ApplyReach               = core.ApplyReach
@@ -390,7 +389,6 @@ var (
 	GenerateID               = core.GenerateID
 	GenerateObjectTypeID     = core.GenerateObjectTypeID
 	BeginIDMintScope         = core.BeginIDMintScope
-	ResetModuleExportGrowth  = core.ResetModuleExportGrowth
 	MakeClassFieldValue      = core.MakeClassFieldValue
 	MakeClassInstance        = core.MakeClassInstance
 	MakeResource             = core.MakeResource
@@ -421,8 +419,6 @@ var (
 	FoldVariadicArms         = core.FoldVariadicArms
 	MakeBoruError            = core.MakeBoruError
 	ExitCode                 = core.ExitCode
-	IsInternalError          = core.IsInternalError
-	IsVMDefer                = core.IsVMDefer
 	NewExitError             = core.NewExitError
 	RenderCheckDiagnostic    = core.RenderCheckDiagnostic
 	MapFieldBoolean          = core.MapFieldBoolean
@@ -436,7 +432,6 @@ var (
 	ApplyGuardNarrowing      = core.ApplyGuardNarrowing
 	ApplyComplementNarrowing = core.ApplyComplementNarrowing
 	RunCarrierBodyWithDefs   = core.RunCarrierBodyWithDefs
-	RunCarrierArmBody        = core.RunCarrierArmBody
 	RunCarrierCondBody       = core.RunCarrierCondBody
 	InstallJoinedDefs        = core.InstallJoinedDefs
 	InstallTakenArmDefs      = core.InstallTakenArmDefs

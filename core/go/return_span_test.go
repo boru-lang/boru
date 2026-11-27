@@ -11,17 +11,15 @@ import (
 // value produced at the error position is not re-labelled.
 
 func TestReturnTypeErrorSpans(t *testing.T) {
-	e := engWithTape(t, nil, 0)
-	e.SetSource("def f fn [[n:Integer] String [n]]\n42 f")
-	rc := ReturnCheckInfo{
-		FuncName: "f",
-		Returns:  []*Type{TString},
-		Pos:      SrcPos{Row: 2, Col: 4, Src: "f"},
-		Decl:     DeclSite{Pos: SrcPos{Row: 1, Col: 23, Src: "String"}},
-	}
+	src := "def f fn [[n:Integer] String [n]]\n42 f"
+	pos := SrcPos{Row: 2, Col: 4, Src: "f"}
+	decl := DeclSite{Pos: SrcPos{Row: 1, Col: 23, Src: "String"}}
 	got := NewInteger(42)
 	got.SetPos(SrcPos{Row: 2, Col: 1, Src: "42"})
-	ae := e.returnTypeError(rc, 1, TString, got)
+	ae := BuildReturnTypeError(src, "f", 1, TString, got, pos, decl)
+	if ae.Src != "f" {
+		t.Errorf("the primary site is the call position's token, got %q", ae.Src)
+	}
 	if len(ae.Spans) != 2 {
 		t.Fatalf("want 2 spans, got %+v", ae.Spans)
 	}
@@ -39,22 +37,22 @@ func TestReturnTypeErrorSpans(t *testing.T) {
 }
 
 func TestReturnTypeErrorSpanNegatives(t *testing.T) {
-	e := engWithTape(t, nil, 0)
 	// No declaration site: no decl span. The value carries a position, so
 	// the produced-value span DOES attach — the attachment is decided by
-	// the value's own position alone (engine-independent), which is what
-	// keeps the compiled and interpreted span sets identical even though
-	// the primary caret sits at different places in the two engines
-	// (design/DIAGNOSTICS.0.md phase 7).
-	rc := ReturnCheckInfo{FuncName: "f", Pos: SrcPos{Row: 2, Col: 4}}
+	// the value's own position alone.
+	pos := SrcPos{Row: 2, Col: 4}
 	got := NewInteger(42)
 	got.SetPos(SrcPos{Row: 2, Col: 4})
-	ae := e.returnTypeError(rc, 1, TString, got)
+	ae := BuildReturnTypeError("", "f", 1, TString, got, pos, DeclSite{})
 	if len(ae.Spans) != 1 || ae.Spans[0].Label != "the returned value was produced here" {
 		t.Errorf("want exactly the value span, got %+v", ae.Spans)
 	}
+	// A position that names no token leaves the word as the primary site.
+	if ae.Src != "f" {
+		t.Errorf("a tokenless position keeps the word, got %q", ae.Src)
+	}
 	// A positionless value attaches no span at all (no location to point at).
-	ae = e.returnTypeError(rc, 1, TString, NewInteger(42))
+	ae = BuildReturnTypeError("", "f", 1, TString, NewInteger(42), pos, DeclSite{})
 	if len(ae.Spans) != 0 {
 		t.Errorf("positionless value must attach no span, got %+v", ae.Spans)
 	}

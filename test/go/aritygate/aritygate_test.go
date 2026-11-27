@@ -98,7 +98,7 @@ var pinnedAritySites = map[string]int{
 	// hasPendingForwardExpectingFunction's still-collecting test
 	// (`nextIdx < fwd.Sig.TotalArgs()`). No site was added: a bare fn name
 	// now calls at every slot, so nothing asks which slot is open.
-	// 27 -> 28 (2026-09-26, the merge of main's #509): TryRecordRecoveredUserFn
+	// 27 -> 28 (2026-09-26, the merge of main's #509): TryRecoverUserFn
 	// refuses a recovered window shorter than the sole sig (`len(window) <
 	// sig.TotalArgs()`) — the matcher's own arity rule, mirrored so the
 	// guarded CALL_USER never binds a partial window the interpreter's

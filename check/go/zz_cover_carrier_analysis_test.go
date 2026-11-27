@@ -693,7 +693,7 @@ func TestZcaAnalyseLoopBodyKleeneRounds(t *testing.T) {
 		core.NewWord("pushq"), core.NewWord("zcagrowq"),
 		core.NewOpenParen(), core.NewWord("zcastepq"), core.NewWord("zcagrowq"), core.NewCloseParen(),
 	})
-	AnalyseLoopBody(r, body, []string{"iq"}, []core.Value{core.NewCarrier(core.TInteger)}, true)
+	AnalyseLoopBody(r, body, []string{"iq"}, []core.Value{core.NewCarrier(core.TInteger)})
 
 	acc, ok := r.Defs.Top("zcagrowq")
 	if !ok {
@@ -709,19 +709,15 @@ func TestZcaAnalyseLoopBodyKleeneRounds(t *testing.T) {
 	}
 }
 
-func TestZcaAnalyseLoopBodySentinelUnproven(t *testing.T) {
+func TestZcaAnalyseLoopBodySentinelPopsBind(t *testing.T) {
 	r := zcaRegistry(t)
 	done := r.Check.Begin()
 	defer done()
 
-	// A body carrying a flow-control sentinel declines the proven-trips
-	// stamp even when the caller proves a trip count: the split's
-	// soundness argument breaks under break/continue.
+	// A body carrying a flow-control sentinel still leaves the loop-local
+	// bind popped when the analysis returns.
 	body := core.NewList([]core.Value{core.NewWord("break")})
-	AnalyseLoopBody(r, body, []string{"iq"}, []core.Value{core.NewCarrier(core.TInteger)}, true)
-	if r.Check.LoopBodyDepth != 0 {
-		t.Errorf("LoopBodyDepth leaked to %d after a sentinel body", r.Check.LoopBodyDepth)
-	}
+	AnalyseLoopBody(r, body, []string{"iq"}, []core.Value{core.NewCarrier(core.TInteger)})
 	if _, ok := r.Defs.Top("iq"); ok {
 		t.Error("the loop-local bind must be popped")
 	}

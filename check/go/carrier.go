@@ -688,7 +688,6 @@ func declaredReturnCarriers(r *core.Registry, word string, sig *core.Signature, 
 		out = shortWindowCarriers(sig)
 	case sig.ReturnsFn != nil:
 		r.Check.CurCallPos = pos // expose call site to ReturnsFn (e.g. make Array identity)
-		r.Check.CurCallWord = word
 		raw := sig.ReturnsFn(resolveTypeNameArgs(args), r)
 		out = make([]core.Value, len(raw))
 		for i, v := range raw {
@@ -2164,40 +2163,6 @@ func ReturnsAddConcat() core.ReturnsFunc {
 	}
 }
 
-// carrierMixedConform reports whether v is a genuinely MIXED gradual
-// carrier with respect to type t: a non-concrete Disjunct carrier whose
-// flattened alternatives include at least one that conforms to t AND at
-// least one that does not. Such a carrier makes a forward/stack dispatch
-// split AMBIGUOUS — a concrete value drawn from it could match a more-
-// specific overload (and be grabbed from the stack) or not (and be
-// skipped, so the word forward-collects instead). The two splits leave
-// different stacks, so the bytecode compiler cannot statically reproduce
-// the runtime one. A pure carrier (all alternatives conform, or none do)
-// and a bare dynamic carrier are NOT mixed and return false: the split is
-// consistent, or is the dynamic path handled elsewhere.
-func carrierMixedConform(v core.Value, t *core.Type) bool {
-	if t == nil || !v.Carrier() || core.IsConcrete(&v) || core.IsDynamic(&v) {
-		return false
-	}
-	alts := core.FlattenAlternatives(v)
-	if len(alts) < 2 {
-		return false
-	}
-	someConform, someReject := false, false
-	for _, alt := range alts {
-		// core.FlattenAlternatives yields type LITERALS; the denoted type is
-		// typeNodeOf(alt), NOT alt.Parent (a literal's Parent is the
-		// denoted node's lattice parent — the `Boolean` literal's Parent
-		// is `Scalar`).
-		if node := core.TypeNodeOf(alt); node != nil && node.ConformsTo(t) {
-			someConform = true
-		} else {
-			someReject = true
-		}
-	}
-	return someConform && someReject
-}
-
 // loopAnalysisRounds bounds the Kleene iteration for loop-body
 // analysis: round 1 with the pre-loop bindings, then re-runs with the
 // joined bindings until stable. Three rounds suffice for ascent in a
@@ -2226,18 +2191,6 @@ const FnAnalysisQuota = 64
 // post-loop environment); the loop-local binds are popped. Returns
 // the final round's residual carrier stack.
 //
-// provenTrips asserts the CALLER's proof that the loop executes at least
-// once at run time — a static trip count >= 1 (forCarrierAnalyse's
-// staticBounds). Combined with the body carrying no flow-control sentinel
-// (bodyHasSentinel — a break/continue/return can bypass a site or discard
-// an iteration's spilled values), it gates the LoopBodyDepth stamp the
-// S9.2a first-value split consults: the split's soundness argument is
-// "every enclosing body runs unconditionally per iteration AND the split
-// site is reached with its residual intact", which a computed count (zero
-// trips leak the analysis-only binding) or loop control (PR #280 review:
-// `continue` bypassed the bind, `break` kept a discarded iteration's
-// value) breaks. A non-proven loop body still analyses identically — it
-// just declines the split (NestedBodyDepth != LoopBodyDepth).
 // isBindName reports whether name is one of a loop's own bind variables.
 func isBindName(bindNames []string, name string) bool {
 	for _, n := range bindNames {
@@ -2248,8 +2201,7 @@ func isBindName(bindNames []string, name string) bool {
 	return false
 }
 
-func AnalyseLoopBody(r *core.Registry, body core.Value, bindNames []string, bindVals []core.Value, provenTrips bool) []core.Value {
-	proven := provenTrips && !BodyHasSentinel(body)
+func AnalyseLoopBody(r *core.Registry, body core.Value, bindNames []string, bindVals []core.Value) []core.Value {
 	var stk []core.Value
 	var installed []string
 	diagBase := len(r.Check.Diagnostics)
@@ -2274,13 +2226,7 @@ func AnalyseLoopBody(r *core.Registry, body core.Value, bindNames []string, bind
 			r.Defs.Push(n, bindVals[i])
 		}
 		var adds map[string]core.Value
-		if proven {
-			r.Check.LoopBodyDepth++
-		}
 		stk, adds = core.RunCarrierBodyWithDefs(r, body)
-		if proven {
-			r.Check.LoopBodyDepth--
-		}
 		for i := len(bindNames) - 1; i >= 0; i-- {
 			for r.Defs.Depth(bindNames[i]) > bindDepths[i] {
 				r.Defs.Pop(bindNames[i])
@@ -2643,16 +2589,6 @@ func emptyBodyResidual(paramNames []string, args []core.Value) []core.Value {
 // the analyser aborted (recursion detected or body not available) —
 // callers should treat that as an Any carrier.
 func AnalyseFnBody(r *core.Registry, name string, paramNames []string, body []core.Value, args []core.Value, captures []core.CapturedBinding, declared []*core.Type, anonymous bool) []core.Value {
-	// A callee's body is its OWN control flow: an undecidable arm the
-	// CALLER is inside (CheckState.SpecArmDepth) says nothing about a def
-	// in the callee — `sift-spec-from-map`'s fn-local `check-keys`, defined
-	// at the top of its body, was taken as conditional because the caller
-	// dispatched it inside `if (v is Map) […]`, and 73 corpus rows declined
-	// (the seventieth increment's corpus finding). The depth is the body's:
-	// zero on entry, the caller's again on exit.
-	savedSpecArm := r.Check.SpecArmDepth
-	r.Check.SpecArmDepth = 0
-	defer func() { r.Check.SpecArmDepth = savedSpecArm }()
 	if len(body) == 0 {
 		return emptyBodyResidual(paramNames, args)
 	}

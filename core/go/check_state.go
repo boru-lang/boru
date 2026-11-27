@@ -33,16 +33,6 @@ type CheckState struct {
 	// ReturnsFunc signature carries no pos. Overwritten on every dispatch; not
 	// persistent state. Zero = unknown (synthetic/top-level).
 	CurCallPos SrcPos
-	// CurCallWord is CurCallPos's twin for the dispatching word's NAME:
-	// written beside it, read by the user-fn ReturnsFn at ENTRY (before the
-	// callee's body analysis dispatches and overwrites both), and handed to
-	// RecordUserCall so Phase B can claim the region capture the interpreter
-	// offered under exactly this (word, position) — the name the dispatch
-	// RESOLVED to, at the token that dispatched it (for a namespaced `M.m 5`
-	// that is the member word `m` at the `M.m` token's position). Empty
-	// where no dispatch published one (a fn-value apply), which makes the
-	// claim miss and is the safe direction.
-	CurCallWord string
 	// BareCallPos is the position of the dispatch whose ReturnsFn is running
 	// when that dispatch sits in a BARE context (Engine.bareCallContext): the
 	// top-level program's own stream, no value beneath its operands inside
@@ -250,16 +240,6 @@ type CheckState struct {
 	// `do` result is one Error, not the failed call's wreckage.
 	RaiseWatches []RaiseWatch
 
-	// ValuelessDoBodies counts the `do` bodies the pass modelled as a
-	// RAISE for want of a residual (doListReturnsFn: a non-empty body with
-	// an empty residual stands as an Error carrier). A body that simply nets
-	// nothing — `do [def x 5]` — runs to no value at all, and inside a
-	// branch fragment the lowering then works over a value that is not there
-	// (NUR222). Monotone: a caller compares it around a body run. The kept
-	// `if` condition does (basic's analyseCondFragment), declining a binding
-	// condition that holds one rather than compile it over that model.
-	ValuelessDoBodies int
-
 	// NestedBodyDepth, when > 0, marks analysis running inside ANY nested
 	// body region (RunCarrierBodyWithDefs — if/case branches, loop bodies,
 	// quotation/closure bodies). A diagnostic that is only sound for
@@ -294,60 +274,6 @@ type CheckState struct {
 	// re-recorded against the carrier.
 	SpecUndefCarriers map[string]string
 	SpecUndefGen      int
-
-	// SpecArmDepth, when > 0, marks analysis running inside a branch arm
-	// whose CONDITION the model cannot decide (the `if` native's dynamic
-	// path; a literal or folded condition takes the static path, whose
-	// arm the model knows to run or not). Only such an arm makes a fn def
-	// speculative: a loop or each body, a known arm and a `do` body keep
-	// the twin machinery that already answers them.
-	SpecArmDepth int
-	// UnsealedArmDepth, when > 0, marks analysis inside an `if` whose chosen
-	// body the interpreter re-steps at the `if` rather than runs as an arm —
-	// the clause-list form (basic's ifClauseRecord) — so its arms, and every
-	// arm nested in them, are captured UNSEALED: no arm trap is recorded
-	// there (EmitRecorder.ArmSealedBranchCapture, NUR332).
-	UnsealedArmDepth int
-	// ArmResidualSweep, when > 0, marks the model's end-of-run evaluation of
-	// a branch arm's or a loop body's residual containers (Engine.ArmBody):
-	// a list or map literal the body leaves on the stack, which the
-	// interpreter leaves PENDING — evaluated where it is consumed, or at the
-	// end of the enclosing run, or never (a code-body slot takes it raw:
-	// `each (if c [[dup]] [3]) [2 3]` runs `[dup]` as each's body). A raise
-	// the model meets there is no raise of the arm, so no arm trap is
-	// recorded under it (NUR352).
-	ArmResidualSweep int
-
-	// LoopBodyDepth, when > 0, marks analysis running inside a PROVEN
-	// counted-for LOOP body (AnalyseLoopBody brackets each round's body run,
-	// gated on its provenTrips arg AND a sentinel-free body). Unlike the
-	// other NestedBodyDepth contributors (branch arms, quotation bodies), a
-	// proven loop body executes UNCONDITIONALLY once per iteration AND at
-	// least once — so when NestedBodyDepth == LoopBodyDepth every enclosing
-	// body is such a loop body and a per-iteration binding is definitely
-	// reached with its residual intact. The S5 first-value loop split
-	// (SplitLoopRegionBind) consults exactly that equality for the
-	// loop-carried variadic def (COMPILE FAILURE-CLOSURE S9.2a); a branch arm keeps
-	// the decline (a conditionally-reached split would leak the
-	// analysis-only binding — PR #278 review P1-b), and a computed-count or
-	// break/continue-bearing loop body never stamps (a zero-trip run leaks
-	// the binding; loop control bypasses the site or discards its values —
-	// PR #280 review).
-	LoopBodyDepth int
-
-	// CondBodyDepth, when > 0, marks analysis running inside a
-	// CONDITIONALLY-reached, def-rolled-back body — an if/case branch arm
-	// or a loop body (the `keep=false` bodies of runCarrierBodyDefsAdds,
-	// whose net def growth is snapshot-restored). It EXCLUDES `do`
-	// (keep=true — always executes, leaks its defs by design). The compiler
-	// consults it to decline a fn REDEFINITION that clobbers an enclosing
-	// binding in-place (the overlap-removal drops the outer overload without
-	// growing depth, so the branch rollback can't restore it): compiled
-	// resolution would statically bake the conditional shadow while the
-	// interpreter keeps the outer fn when the branch is not taken. Declining
-	// keeps compiled == interpreter, at the price of not compiling at all —
-	// a defect owed a fix, not a resting place.
-	CondBodyDepth int
 
 	// InflightBails counts Any-placeholder bail-outs taken by
 	// recursive calls of UNCHECKED fns (declared returns use the
@@ -449,39 +375,11 @@ type CheckState struct {
 	// so we emit at most one diagnostic per check run.
 	BudgetTripped bool
 
-	// SuppressedRuntimeError is set when a word that is deliberately
-	// lenient in check mode skips an error the interpreter raises at
-	// runtime — an orphan `gen [...]` (gen_without_constructor), an
-	// `unpack` of a missing key (unpack_error). The bytecode compiler
-	// reads it after the check pass: the compiled stream elides such
-	// words, so it would silently succeed where the interpreter errors —
-	// the program is therefore uncompilable and must fall back.
-	SuppressedRuntimeError bool
-
-	// AmbiguousGradualSplit is set when matchSignature's forward/stack
-	// split for a dispatch depended on whether a GENUINELY MIXED gradual
-	// carrier (a Disjunct with some alternatives conforming to a more-
-	// specific overload's slot and some not — e.g. `and 0 false` typed
-	// Disjunct(Integer,Boolean)) matched that overload. At runtime the
-	// concrete value resolves the split one way; the check pass picked the
-	// other (a less-specific overload that forward-collects instead of
-	// grabbing the carrier from the stack). The two splits produce
-	// different result stacks, so the bytecode compiler reads this after
-	// the check pass and declines — the program is uncompilable and must
-	// not compile. Dispatch itself is unchanged; this is
-	// a compile-time advisory only.
-	AmbiguousGradualSplit bool
-
 	// DefsInstalled records the names (and source positions) that
 	// the user's program defined during a check run via the def
 	// word. Populated by RecordCheckDef; consulted at end of run
 	// to emit unused_def warnings.
 	DefsInstalled map[string]SrcPos
-
-	// DefsDone counts the defs the check run completed (RecordDef): an
-	// engine that sees it move tells the recorder the stack it steps its
-	// next token over (Engine.noteDefStack, NUR336).
-	DefsDone int
 
 	// DefsUsed records names looked up via Registry.Lookup or
 	// simple-value substitution in check mode. Used to filter out
@@ -1008,7 +906,6 @@ func (c *CheckState) Clone() *CheckState {
 	cp.FnBinders = cloneNestedSet(c.FnBinders)
 	cp.FnCallGraph = cloneNestedSet(c.FnCallGraph)
 	cp.SpecUndefCarriers = cloneMap(c.SpecUndefCarriers)
-	cp.SpecArmDepth = c.SpecArmDepth
 	if c.FnNameStack != nil {
 		cp.FnNameStack = append([]string(nil), c.FnNameStack...)
 	}
@@ -1063,10 +960,7 @@ func (c *CheckState) Begin() func() {
 	c.Diagnostics = nil
 	c.StepCount = 0
 	c.BudgetTripped = false
-	c.SuppressedRuntimeError = false
-	c.AmbiguousGradualSplit = false
 	c.DefsInstalled = nil
-	c.DefsDone = 0
 	c.PassEndCleanups = nil
 	c.PendingBindPos = SrcPos{}
 	c.DefsUsed = nil
@@ -1093,16 +987,10 @@ func (c *CheckState) Begin() func() {
 	c.CallShapeDepth = 0
 	c.CaughtBodyDepth = 0
 	c.RaiseWatches = nil
-	c.ValuelessDoBodies = 0
 	c.NestedBodyDepth = 0
-	c.CondBodyDepth = 0
-	c.LoopBodyDepth = 0
 	c.SpecBaselines = nil
 	c.SpecUndefCarriers = nil
 	c.SpecUndefGen = 0
-	c.SpecArmDepth = 0
-	c.UnsealedArmDepth = 0
-	c.ArmResidualSweep = 0
 	c.ArgsFrameUnnamed = false
 	c.ParenPlacedFnIDs = nil
 	c.ReachSurvivorFnIDs = nil
@@ -1355,7 +1243,6 @@ func (c *CheckState) RecordDef(name string, pos SrcPos) {
 	if !c.IsActive() {
 		return
 	}
-	c.DefsDone++
 	if name == "" || strings.HasPrefix(name, "_") {
 		return
 	}

@@ -35,22 +35,6 @@ func lrReg(t *testing.T) *Registry {
 	return r
 }
 
-func TestLaneRemovalEnterSpecArm(t *testing.T) {
-	r := covRegistry(t, nil)
-	r.EnterSpecArm(true)()
-	if r.Check.SpecArmDepth != 0 {
-		t.Fatalf("a known arm takes no bracket: depth %d", r.Check.SpecArmDepth)
-	}
-	leave := r.EnterSpecArm(false)
-	if r.Check.SpecArmDepth != 1 {
-		t.Fatalf("an undecidable arm raises the depth: %d", r.Check.SpecArmDepth)
-	}
-	leave()
-	if r.Check.SpecArmDepth != 0 {
-		t.Fatalf("leaving lowers it: %d", r.Check.SpecArmDepth)
-	}
-}
-
 func TestLaneRemovalFnMemberReads(t *testing.T) {
 	r := newTestRegistry(t)
 	c := r.Check
@@ -415,8 +399,8 @@ func TestLaneRemovalNilReceivers(t *testing.T) {
 	}
 	idle := &CheckState{}
 	idle.RecordDef("k", SrcPos{Row: 1, Col: 1})
-	if idle.DefsDone != 0 || idle.DefsInstalled != nil {
-		t.Errorf("RecordDef outside a pass records nothing: %d %v", idle.DefsDone, idle.DefsInstalled)
+	if idle.DefsInstalled != nil {
+		t.Errorf("RecordDef outside a pass records nothing: %v", idle.DefsInstalled)
 	}
 }
 

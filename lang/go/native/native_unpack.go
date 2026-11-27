@@ -276,15 +276,10 @@ func bindUnpackEntry(r *Registry, localName, srcKey string, get func(string) (Va
 				core.CheckAddUniqueDiagnostic(r, "unpack_error",
 					"unpack: key "+srcKey+" not found in source", "unpack", pos)
 			}
-			// Lenient binding either way, but the interpreter errors at
-			// runtime — ONLY against a PROVEN source, so the pass latches the
-			// suppressed-runtime-error flag for one. An UNPROVEN source (a
-			// carrier Map — a param, a fn's result) misses through the stub
-			// getter whatever it holds, and the run-time unpack over the real
-			// value succeeds or raises on its own.
-			if proven {
-				r.Check.SuppressedRuntimeError = true
-			}
+			// Lenient binding either way: an UNPROVEN source (a carrier Map —
+			// a param, a fn's result) misses through the stub getter whatever
+			// it holds, and the run-time unpack over the real value succeeds
+			// or raises on its own.
 		} else {
 			return r.BoruError("unpack_error", "unpack: key "+srcKey+" not found in source", "unpack")
 		}

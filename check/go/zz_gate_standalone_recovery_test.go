@@ -111,12 +111,13 @@ func TestGateStandaloneRecoverUserFnBarrier(t *testing.T) {
 	e := core.NewTop(r)
 	e.Tape = core.NewTape([]core.Value{core.NewWord("zgsbaruser"), one, two}, core.StackHeadroom)
 	e.Pointer = 0
-	r.Check.CurCallWord = "zgsprior"
+	prior := core.SrcPos{Row: 9, Col: 9}
+	r.Check.CurCallPos = prior
 	if recoverUserFn(e, w, pos, sig, fn, []core.Value{one, two}, 0, []int{1, 2}) {
-		t.Fatal("a window written past the barrier must not record a call")
+		t.Fatal("a window written past the barrier must not model a call")
 	}
-	if r.Check.CurCallWord != "zgsprior" || e.Tape.Len() != 3 {
-		t.Errorf("a refused window leaves the cursor and the tape alone (cursor %q, tape len %d)", r.Check.CurCallWord, e.Tape.Len())
+	if r.Check.CurCallPos != prior || e.Tape.Len() != 3 {
+		t.Errorf("a refused window leaves the cursor and the tape alone (cursor %+v, tape len %d)", r.Check.CurCallPos, e.Tape.Len())
 	}
 
 	// One stack operand beneath, one written after: within the barrier.
@@ -124,10 +125,10 @@ func TestGateStandaloneRecoverUserFnBarrier(t *testing.T) {
 	e.Tape = core.NewTape([]core.Value{one, core.NewWord("zgsbaruser"), two}, core.StackHeadroom)
 	e.Pointer = 1
 	if !recoverUserFn(e, w, pos, sig, fn, []core.Value{one, two}, 1, []int{0, 2}) {
-		t.Fatal("a window within the barrier records the guarded call")
+		t.Fatal("a window within the barrier models the call")
 	}
-	if r.Check.CurCallWord != "zgsbaruser" || r.Check.CurCallPos != pos {
-		t.Errorf("the recovered call publishes its word cursor, got %q at %+v", r.Check.CurCallWord, r.Check.CurCallPos)
+	if r.Check.CurCallPos != pos {
+		t.Errorf("the recovered call publishes its cursor, got %+v", r.Check.CurCallPos)
 	}
 	if e.Tape.Len() != 1 || !e.Tape.At(0).Parent().Equal(core.TInteger) {
 		t.Errorf("the recovered call's results replace the window, tape len %d", e.Tape.Len())

@@ -568,15 +568,13 @@ func CollectForward(h CollectHost, fn *FnDefInfo, w WordInfo, start int, viable 
 // tokens filled and specAt the first slot a dispatching word filled (-1 for
 // none).
 //
-// checkActive and compiling are hoisted by the caller rather than asked
-// here. Both are per-DISPATCH facts, so the per-signature loop asks them
-// once instead of once per candidate — and `compiling` is only ever read
-// under `checkActive`, so the caller computes it under the same guard and
-// the runtime hot path never asks at all. They are plain bools rather than
-// host methods for the same reason: a seam method that only one arm calls,
-// under a condition the rest of the walk does not reach, is a method whose
-// only proof of life is that one arm.
-func CollectCandidateScan(h CollectHost, sig *Signature, forwardLimit int, positions []int, start int, checkActive, compiling bool) (fwd, specAt int) {
+// checkActive is hoisted by the caller rather than asked here: it is a
+// per-DISPATCH fact, so the per-signature loop asks it once instead of once
+// per candidate. It is a plain bool rather than a host method for the same
+// reason: a seam method that only one arm calls, under a condition the rest
+// of the walk does not reach, is a method whose only proof of life is that
+// one arm.
+func CollectCandidateScan(h CollectHost, sig *Signature, forwardLimit int, positions []int, start int, checkActive bool) (fwd, specAt int) {
 	win := h.Window()
 	specAt = -1
 	scanIdx := start
@@ -660,7 +658,7 @@ func CollectCandidateScan(h CollectHost, sig *Signature, forwardLimit int, posit
 						break
 					}
 				}
-				gradualAny := checkActive && !compiling &&
+				gradualAny := checkActive &&
 					top.Parent() != nil && top.Parent().Equal(TAny)
 				// A BARE name bound to a function CALLS (NUR078, ADR-011
 				// as amended): it never arrives as its own value, so its

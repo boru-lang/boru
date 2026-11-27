@@ -23,16 +23,22 @@ func TestS5bEBoruErrorColDefaultsToOne(t *testing.T) {
 	}
 }
 
-func TestS5bEBoruErrSiteClampsRowCol(t *testing.T) {
-	// row < 1 and col < 1 clamp to 1.
-	out := boruErrSite("one\ntwo\nthree", "one", "msg", 0, 0)
-	if out == "" {
-		t.Fatal("expected a non-empty site extract")
+func TestS5bERenderSiteClampsRowCol(t *testing.T) {
+	// row < 1 and col < 1 clamp to 1: the caret sits under the first column
+	// of the first line.
+	out := renderSite("one\ntwo\nthree", "one", "msg", 0, 0, RenderOpts{}, primarySiteStyle)
+	if !strings.Contains(out, "one") || !strings.Contains(out, "^^^ msg") {
+		t.Fatalf("clamped site must excerpt line 1 with its caret:\n%s", out)
 	}
 	// row beyond the line count clamps to the last line.
-	out = boruErrSite("one\ntwo", "two", "msg", 99, 1)
-	if out == "" {
-		t.Fatal("expected a non-empty site extract for an out-of-range row")
+	out = renderSite("one\ntwo", "two", "msg", 99, 1, RenderOpts{}, primarySiteStyle)
+	if !strings.Contains(out, "two") {
+		t.Fatalf("an out-of-range row must excerpt the last line:\n%s", out)
+	}
+	// An in-range position is not clamped: line 2, not line 1's caret.
+	out = renderSite("one\ntwo\nthree", "two", "msg", 2, 1, RenderOpts{}, primarySiteStyle)
+	if !strings.Contains(out, "two") || strings.Contains(out, "three\n") && !strings.Contains(out, "two") {
+		t.Fatalf("an in-range row excerpts its own line:\n%s", out)
 	}
 }
 

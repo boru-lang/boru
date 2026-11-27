@@ -68,10 +68,10 @@ func TestRecoveryRefusesACallingForwardWord(t *testing.T) {
 	prev := CheckBraid.SpliceCheckResults
 	CheckBraid.SpliceCheckResults = func(e *Engine, positions []int, results []Value) { spliced++ }
 	t.Cleanup(func() { CheckBraid.SpliceCheckResults = prev })
-	if e.TryRecordRecoveredUserFn(&fn.Signatures[1], fn, []Value{fnv}, 0, []int{1}) {
+	if e.TryRecoverUserFn(&fn.Signatures[1], fn, []Value{fnv}, 0, []int{1}) {
 		t.Error("a forward fn-bound name calls: the recovery declines")
 	}
-	if !e.TryRecordRecoveredUserFn(&fn.Signatures[1], fn, []Value{NewInteger(1)}, 0, []int{2}) || spliced != 1 {
+	if !e.TryRecoverUserFn(&fn.Signatures[1], fn, []Value{NewInteger(1)}, 0, []int{2}) || spliced != 1 {
 		t.Errorf("a forward value binding recovers (spliced %d)", spliced)
 	}
 }

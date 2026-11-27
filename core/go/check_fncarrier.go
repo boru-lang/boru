@@ -122,7 +122,7 @@ func DropCheckFnCarrierBind(r *Registry, name string) {
 
 // ResetCheckFnCarrierBinds clears the fn-carrier side table so it is scoped
 // to a single check pass (a reused instance must not resolve a stale name).
-// Called at the start of every check pass alongside ResetModuleExportGrowth.
+// Called at the start of every check pass.
 func ResetCheckFnCarrierBinds(r *Registry) {
 	if r == nil || r.Capabilities == nil {
 		return

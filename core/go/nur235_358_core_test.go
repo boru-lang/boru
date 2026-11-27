@@ -149,7 +149,7 @@ func TestNUR358CoreSubEngineContracts(t *testing.T) {
 		t.Fatalf("container sub-run = %v / %v (flow %v held %v), want nothing and a held signal", res, err, r.FlowCtrl, r.FlowAtHeld)
 	}
 	first := r.FlowAt
-	r.HoldFlowAt(SrcPos{Row: 99, Col: 1}, true)
+	r.HoldFlowAt(SrcPos{Row: 99, Col: 1})
 	if r.FlowAt != first {
 		t.Fatalf("an inner run's held position must survive: %v, want %v", r.FlowAt, first)
 	}

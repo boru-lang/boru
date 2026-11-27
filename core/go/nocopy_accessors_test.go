@@ -135,35 +135,6 @@ func TestReadListRefIsTheElement(t *testing.T) {
 	}
 }
 
-// FnDispatchSigs builds a fn value's dispatch view once per identity and
-// authored list: the all-forward barrier resolved, the sigs sorted; a second
-// read is the same list, a rebuilt authored list (one identity, new sigs)
-// rebuilds, and an identity-less payload builds per call.
-func TestFnDispatchSigsCachedOnIdentity(t *testing.T) {
-	one := Signature{Params: []FnParam{{Type: TInteger}}, BarrierPos: BarrierAllForward}
-	fv := NewFunction(FnDefInfo{Signatures: []Signature{one}})
-	fd := fv.Data().(*FnDefInfo)
-	first := FnDispatchSigs(fd)
-	if len(first) != 1 || first[0].BarrierPos != 1 {
-		t.Fatalf("the all-forward barrier must resolve to the arg count: %+v", first)
-	}
-	if fd.Signatures[0].BarrierPos != BarrierAllForward {
-		t.Fatal("the authored signature must stay as written")
-	}
-	if again := FnDispatchSigs(fd); &again[0] != &first[0] {
-		t.Error("a second read of one function must hit the cache")
-	}
-	grown := *fd // one identity, a rebuilt authored list
-	grown.Signatures = append([]Signature{{Params: []FnParam{{Type: TString}, {Type: TString}}}}, fd.Signatures...)
-	if got := FnDispatchSigs(&grown); len(got) != 2 {
-		t.Fatalf("a rebuilt list must rebuild the view, got %d sigs", len(got))
-	}
-	bare := FnDefInfo{Signatures: []Signature{one}} // no identity
-	if a, b := FnDispatchSigs(&bare), FnDispatchSigs(&bare); &a[0] == &b[0] {
-		t.Error("an identity-less payload has no cache")
-	}
-}
-
 // A dynamic record carrier is built whole: dynamic, a carrier, the schema,
 // and an ID of its own each time.
 func TestNewDynamicRecordCarrier(t *testing.T) {
@@ -198,11 +169,11 @@ func TestOccurrenceRecordIsTheHolders(t *testing.T) {
 	if v.occ != nil {
 		t.Fatal("an empty record must not stay allocated")
 	}
-	if key := IdentityOnly("k"); IDOf(&key) != "k" || key.Parent() != nil || key.Data() != nil {
-		t.Fatalf("IdentityOnly carries the identity and nothing else: %v", key)
+	if idOcc("") != nil {
+		t.Fatal("no identity is no record")
 	}
-	if empty := IdentityOnly(""); !empty.IsUnboundSlot() {
-		t.Fatal("IdentityOnly of no identity is the zero Value")
+	if o := idOcc("k"); o == nil || o.id != "k" {
+		t.Fatalf("an identity alone is a record holding it: %+v", o)
 	}
 }
 

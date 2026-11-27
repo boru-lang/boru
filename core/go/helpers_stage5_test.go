@@ -45,12 +45,9 @@ func TestStage5InstallDefOverlapRemoval(t *testing.T) {
 		t.Fatalf("premise: two stacked entries, got %d", got)
 	}
 
-	// Redefine the Integer overload from inside a conditional body: the
-	// overlapping entry is dropped (the String one is kept) and the
-	// analysis marks the program uncompilable (a no-op recorder here).
-	r.Check.CondBodyDepth = 1
+	// Redefine the Integer overload: the overlapping entry is dropped and
+	// the String one is kept.
 	InstallDef(r, "st5re", NewFunction(stage5IntFn(TInteger)))
-	r.Check.CondBodyDepth = 0
 
 	stack := r.Defs.Stack("st5re")
 	if len(stack) != 2 {

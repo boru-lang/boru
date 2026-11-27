@@ -786,7 +786,7 @@ func checkModeAssumeSig(e *core.Engine, w core.WordInfo, fn *core.FnDefInfo, fal
 	// recovery. The matched path publishes it in declaredReturnCarriers;
 	// this is the unmatched twin, reached with pos = val.Pos(), the word's
 	// own position.
-	e.Registry.Check.CurCallWord, e.Registry.Check.CurCallPos = w.Name, pos
+	e.Registry.Check.CurCallPos = pos
 	defer e.ClearRecoveryRaw()
 	// Gather candidate positions once and try to pick a signature
 	// whose arity matches and whose declared types are compatible
@@ -1030,7 +1030,6 @@ func installAnalysisImpl() {
 	core.AnalysisImpl.ReturnsFn = BuildFnBodyReturnsFn
 	core.AnalysisImpl.StripToCarriers = StripToCarriers
 	core.AnalysisImpl.CarrierResults = CarrierResults
-	core.AnalysisImpl.MixedConform = carrierMixedConform
 	core.AnalysisImpl.ValueCarriesCarrier = valueCarriesCarrier
 	core.AnalysisImpl.AtUncaughtTopLevel = CheckAtUncaughtTopLevel
 	core.AnalysisImpl.AnalyseFnBody = AnalyseFnBody
@@ -1183,7 +1182,7 @@ func recoveryArgsAt(e *core.Engine, positions []int) []core.Value {
 }
 
 // recoverUserFn is the single-overload user-fn recovery
-// (Engine.TryRecordRecoveredUserFn) with the dispatching word's cursor
+// (Engine.TryRecoverUserFn) with the dispatching word's cursor
 // published again right before it: the recovery's earlier probes (the poly
 // re-match's CarrierResults) analyse the callee's body, whose own dispatches
 // move the cursor, and the recovered call's ReturnsFn reads it as the call
@@ -1198,6 +1197,6 @@ func recoverUserFn(e *core.Engine, w core.WordInfo, pos core.SrcPos, sig *core.S
 	if core.BarrierBars([]core.Signature{*sig}, len(args)-nStack) {
 		return false
 	}
-	e.Registry.Check.CurCallWord, e.Registry.Check.CurCallPos = w.Name, pos
-	return e.TryRecordRecoveredUserFn(sig, fn, args, nStack, positions)
+	e.Registry.Check.CurCallPos = pos
+	return e.TryRecoverUserFn(sig, fn, args, nStack, positions)
 }

@@ -391,7 +391,6 @@ var (
 	GenerateID                = core.GenerateID
 	GenerateObjectTypeID      = core.GenerateObjectTypeID
 	BeginIDMintScope          = core.BeginIDMintScope
-	ResetModuleExportGrowth   = core.ResetModuleExportGrowth
 	MakeClassFieldValue       = core.MakeClassFieldValue
 	MakeClassInstance         = core.MakeClassInstance
 	MakeResource              = core.MakeResource

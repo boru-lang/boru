@@ -22,42 +22,6 @@ func fnShapeGoSig(nParams int) Signature {
 	return sig
 }
 
-func TestIsSelfContainedGoFnDef(t *testing.T) {
-	self := FnDefInfo{Name: "const", Anonymous: true, Signatures: []Signature{fnShapeGoSig(1)}}
-	if !IsSelfContainedGoFnDef(self) {
-		t.Error("an anonymous fn value whose own sigs are all Go handlers is self-contained")
-	}
-	named := self
-	named.Anonymous = false
-	if IsSelfContainedGoFnDef(named) {
-		t.Error("a non-anonymous fn resolves through its name — not self-contained")
-	}
-	macro := self
-	macro.Macro = true
-	if IsSelfContainedGoFnDef(macro) {
-		t.Error("a macro is data, applied only by name")
-	}
-	inner := NewFunction(self)
-	wrapper := self
-	wrapper.Wrap = WrapRebarrier
-	wrapper.Wraps = &inner
-	if IsSelfContainedGoFnDef(wrapper) {
-		t.Error("a modifier wrapper re-dispatches what it wraps — excluded")
-	}
-	reversed := self
-	reversed.ArgsReversed = true
-	if IsSelfContainedGoFnDef(reversed) {
-		t.Error("usurp's one-way mark excludes the value")
-	}
-	boru := FnDefInfo{Anonymous: true, Signatures: []Signature{{Impl: Boru([]Value{NewInteger(1)})}}}
-	if IsSelfContainedGoFnDef(boru) {
-		t.Error("a boru-bodied lambda needs the interpreter's frame")
-	}
-	if IsSelfContainedGoFnDef(FnDefInfo{Anonymous: true}) {
-		t.Error("a sig-less value has nothing to dispatch on")
-	}
-}
-
 func TestNoteFnShapeArms(t *testing.T) {
 	r := newTestRegistry(t)
 	out := NewCarrier(TFunction)

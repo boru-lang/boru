@@ -296,9 +296,6 @@ func allZeroArgSigs(fn *core.FnDefInfo) bool {
 func shapedMethodReturnArity(e *core.Engine, sig *core.Signature, args []core.Value, pos core.SrcPos) int {
 	if sig.ReturnsFn != nil {
 		e.Registry.Check.CurCallPos = pos
-		// No WORD dispatched this apply, so the ReturnsFn's region claim must
-		// miss rather than key on whatever the previous dispatch published.
-		e.Registry.Check.CurCallWord = ""
 		return len(sig.ReturnsFn(args, e.Registry))
 	}
 	return len(sig.Returns)

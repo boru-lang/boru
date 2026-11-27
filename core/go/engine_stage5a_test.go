@@ -310,8 +310,8 @@ func TestS5ARunOrphanGenCheckMode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("check mode must be lenient: %v", err)
 	}
-	if !r.Check.SuppressedRuntimeError {
-		t.Error("SuppressedRuntimeError not latched")
+	if r.TakePendingGen() != nil {
+		t.Error("the orphan spec must be taken, lenient or not")
 	}
 }
 

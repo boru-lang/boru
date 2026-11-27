@@ -122,26 +122,3 @@ func TestModuleGateStage5StampModuleCallGates(t *testing.T) {
 		t.Errorf("sub-registry ModuleRef must keep its first ref, got %q", sub.ModuleRef)
 	}
 }
-
-func TestModuleGateStage5StampedModuleCallReader(t *testing.T) {
-	r, err := NewRegistry()
-	if err != nil {
-		t.Fatal(err)
-	}
-	// An unstamped fn binding walks its sigs and yields nothing.
-	r.Defs.Push("zz-plain", modgateStage5Fn("zz-plain", []Signature{{
-		Impl: Boru(nil), BarrierPos: BarrierAllForward,
-	}}))
-	if id := StampedModuleCall(r, "zz-plain"); id != nil {
-		t.Errorf("an unstamped binding has no stamp, got %+v", id)
-	}
-	// A stamped sig is found and returned.
-	want := &ModuleCallID{Module: "boru:zz-m", Export: "usage"}
-	r.Defs.Push("zz-stamped", modgateStage5Fn("zz-stamped", []Signature{
-		{Impl: Boru(nil), BarrierPos: BarrierAllForward},
-		{Impl: Boru(nil), BarrierPos: BarrierAllForward, ModuleCall: want},
-	}))
-	if id := StampedModuleCall(r, "zz-stamped"); id != want {
-		t.Errorf("stamp reader = %+v, want %+v", id, want)
-	}
-}

@@ -315,7 +315,7 @@ func (e *Engine) escapeSealed(at, end int) {
 	if set {
 		pos = e.Tape.Ref(e.Pointer).Pos()
 	}
-	e.Registry.HoldFlowAt(pos, set)
+	e.Registry.HoldFlowAt(pos)
 	e.unwindLiveFrames(at, end)
 	e.abandonDrivenLoops(at, end)
 	e.Tape.Splice(at, end-at)

@@ -66,9 +66,9 @@ func TestGatecarrier2584PayloadlessBodyFailedToCompile(t *testing.T) {
 			if len(r.Check.Diagnostics) != 0 {
 				t.Errorf("payload-less body must not diagnose, got %v", r.Check.Diagnostics)
 			}
-			if r.Check.NestedBodyDepth != 0 || r.Check.CondBodyDepth != 0 {
-				t.Errorf("body depths must be untouched, got nested=%d cond=%d",
-					r.Check.NestedBodyDepth, r.Check.CondBodyDepth)
+			if r.Check.NestedBodyDepth != 0 || len(r.Check.SpecBaselines) != 0 {
+				t.Errorf("body depth and baselines must be untouched, got nested=%d baselines=%d",
+					r.Check.NestedBodyDepth, len(r.Check.SpecBaselines))
 			}
 		})
 	}

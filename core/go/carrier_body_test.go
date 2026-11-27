@@ -65,10 +65,10 @@ func TestRunCarrierBodyRollsBackDefs(t *testing.T) {
 		t.Error("a rolled-back body must not leave its binding installed")
 	}
 
-	// The depths it raised are restored.
-	if r.Check.NestedBodyDepth != 0 || r.Check.CondBodyDepth != 0 {
-		t.Errorf("depths after run: nested=%d cond=%d, want 0/0",
-			r.Check.NestedBodyDepth, r.Check.CondBodyDepth)
+	// The depth it raised and the baseline it pushed are restored.
+	if r.Check.NestedBodyDepth != 0 || len(r.Check.SpecBaselines) != 0 {
+		t.Errorf("after run: nested=%d baselines=%d, want 0/0",
+			r.Check.NestedBodyDepth, len(r.Check.SpecBaselines))
 	}
 }
 
@@ -88,20 +88,19 @@ func TestRunCarrierBodyKeepDefsLeaks(t *testing.T) {
 	}
 }
 
-func TestRunCarrierCondBodyIsCondDepthExempt(t *testing.T) {
+func TestRunCarrierCondBodyIsNotSpeculative(t *testing.T) {
 	r := bodyProbeReg(t)
 	defer r.Check.Begin()()
 
 	// A condition fragment runs unconditionally exactly once BEFORE the
-	// branch decision, so an in-place redefinition there is not
-	// path-dependent and must not raise CondBodyDepth. Observe the depth
-	// from inside the body.
-	var sawCond, sawNested int
+	// branch decision, so it is no speculative region: it pushes no
+	// baseline. Observe the state from inside the body.
+	var sawBaselines, sawNested int
 	r.RegisterNativeFunc(NativeFunc{
 		Name: "cdepth",
 		Signatures: []Signature{{
 			Impl: Go(func(_ []Value, _ map[string]Value, _ []Value, reg *Registry) ([]Value, error) {
-				sawCond, sawNested = reg.Check.CondBodyDepth, reg.Check.NestedBodyDepth
+				sawBaselines, sawNested = len(reg.Check.SpecBaselines), reg.Check.NestedBodyDepth
 				return nil, nil
 			}, RunInCheck()),
 			Returns: []*Type{}, BarrierPos: -1,
@@ -112,20 +111,19 @@ func TestRunCarrierCondBodyIsCondDepthExempt(t *testing.T) {
 	}
 
 	RunCarrierCondBody(r, NewList([]Value{NewWord("cdepth")}))
-	if sawCond != 0 {
-		t.Errorf("condition fragment raised CondBodyDepth to %d, want 0", sawCond)
+	if sawBaselines != 0 {
+		t.Errorf("condition fragment pushed %d baseline(s), want 0", sawBaselines)
 	}
 	if sawNested != 1 {
 		t.Errorf("condition fragment NestedBodyDepth = %d, want 1", sawNested)
 	}
 
-	// A branch arm (keep=false, condFrag=false) DOES raise it — its
-	// bindings are conditional, so an in-place redefinition there is
-	// unsound to compile.
-	sawCond, sawNested = -1, -1
+	// A branch arm (keep=false, condFrag=false) IS speculative — its
+	// bindings are conditional, so an undef inside it must not leak.
+	sawBaselines, sawNested = -1, -1
 	RunCarrierBodyWithDefs(r, NewList([]Value{NewWord("cdepth")}))
-	if sawCond != 1 {
-		t.Errorf("branch arm CondBodyDepth = %d, want 1", sawCond)
+	if sawBaselines != 1 {
+		t.Errorf("branch arm baselines = %d, want 1", sawBaselines)
 	}
 }
 
@@ -145,10 +143,10 @@ func TestRunCarrierBodyRecordsBranchError(t *testing.T) {
 	if !found {
 		t.Errorf("a raising body must record branch_error, got %+v", r.Check.Diagnostics)
 	}
-	// The depths are still unwound after the error path.
-	if r.Check.NestedBodyDepth != 0 || r.Check.CondBodyDepth != 0 {
-		t.Errorf("depths after error: nested=%d cond=%d, want 0/0",
-			r.Check.NestedBodyDepth, r.Check.CondBodyDepth)
+	// The depth and the baseline are still unwound after the error path.
+	if r.Check.NestedBodyDepth != 0 || len(r.Check.SpecBaselines) != 0 {
+		t.Errorf("after error: nested=%d baselines=%d, want 0/0",
+			r.Check.NestedBodyDepth, len(r.Check.SpecBaselines))
 	}
 }
 

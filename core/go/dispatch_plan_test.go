@@ -61,7 +61,7 @@ func pmPlan(t *testing.T, e *Engine, w WordInfo) (sig *Signature, positions []in
 	}
 	resolved := e.EffectiveResolved()
 	inside := e.isInsidePendingForward()
-	sig, positions, specAt = PlanMatch(patternDispatch{e}, e.Tape, e.Registry, fn, w, resolved, e.Pointer, inside, false, false)
+	sig, positions, specAt = PlanMatch(patternDispatch{e}, e.Tape, e.Registry, fn, w, resolved, e.Pointer, inside, false)
 	for pass := 0; pass < 2; pass++ {
 		s, p, sp := planDispatch(patternDispatch{e}, e.Tape, e.Registry, fn, w, resolved, e.Pointer, inside)
 		if s != sig || sp != specAt || (p == nil) != (positions == nil) || !equalInts(p, positions) {

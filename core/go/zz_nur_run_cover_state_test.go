@@ -232,46 +232,6 @@ func TestNurRunEmitLateBindingHints(t *testing.T) {
 
 // --- replay_hazard.go ---------------------------------------------------------------
 
-// Pins BindNameToken: a bare word or a quoted atom yields its name; anything
-// else (a computed name) yields "".
-func TestNurRunBindNameToken(t *testing.T) {
-	if got := BindNameToken(NewWord("Foo")); got != "Foo" {
-		t.Fatalf("word: %q", got)
-	}
-	if got := BindNameToken(NewAtom("bar")); got != "bar" {
-		t.Fatalf("atom: %q", got)
-	}
-	if got := BindNameToken(NewInteger(3)); got != "" {
-		t.Fatalf("a computed operand has no static name: %q", got)
-	}
-}
-
-// Pins BodyHasReplayHazard: an import, and a capitalised def/var/undef, flag
-// the body (also nested in a list or a paren); a lowercase binder, a binder
-// with no operand, a non-container and a hazard-free nested body do not.
-func TestNurRunBodyHasReplayHazard(t *testing.T) {
-	list := func(vs ...Value) Value { return NewList(vs) }
-	for _, tc := range []struct {
-		name string
-		body Value
-		want bool
-	}{
-		{"import", list(NewWord("import"), NewString("./m.boru")), true},
-		{"capitalised def", list(NewWord("def"), NewWord("T"), NewInteger(1)), true},
-		{"capitalised var atom", list(NewWord("var"), NewAtom("Tv"), NewInteger(1)), true},
-		{"capitalised undef", list(NewWord("undef"), NewWord("T")), true},
-		{"nested in a paren", NewParenExpr([]Value{NewInteger(1), list(NewWord("def"), NewWord("T"), NewInteger(2))}), true},
-		{"lowercase def", list(NewWord("def"), NewWord("t"), NewInteger(1)), false},
-		{"binder without operand", list(NewInteger(1), NewWord("def")), false},
-		{"hazard-free nesting", list(list(NewWord("def"), NewWord("t"), NewInteger(1)), NewWord("other")), false},
-		{"not a container", NewInteger(7), false},
-	} {
-		if got := BodyHasReplayHazard(tc.body); got != tc.want {
-			t.Errorf("%s: BodyHasReplayHazard = %v, want %v", tc.name, got, tc.want)
-		}
-	}
-}
-
 // --- bind_twin_apply.go: the type-name re-check ---------------------------------
 
 // --- analysis_hooks.go: the foreign-registry drain arm (NUR128) ----------------
