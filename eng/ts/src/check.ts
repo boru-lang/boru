@@ -9,9 +9,9 @@
 // PARITY NOTE: this is the Phase-1 core — carriers, StripToCarriers,
 // carrierResults (returnsFn → returns → missing_returns), gradual
 // contagion, and the diagnostic store. Fn-body analysis, the step
-// budget's fixed-point machinery, disjunct partitioning, and the
-// bytecode recording pass land in later phases.
-import { BoruType, TAny } from '@boru-lang/core'
+// budget's fixed-point machinery and disjunct partitioning land in
+// later phases.
+import { type BoruType, TAny } from '@boru-lang/core'
 import type { Signature } from '@boru-lang/core'
 import { isSugar, newCarrier, newDynamicCarrier, Value } from '@boru-lang/core'
 import type { Registry } from '@boru-lang/core'
@@ -41,8 +41,8 @@ export function toCarrier(v: Value): Value {
   if (v.carrier) return v
   // Control / structural tokens are not values to strip. A sugar
   // marker MUST keep its SugarInfo payload — a stripped marker can
-  // never lower and would bake as inert data in the compiled program
-  // (the Go carrier-strip has the same exemption, eng/go/carrier.go).
+  // never lower, so the sugar would be opaque in check mode (the Go
+  // carrier-strip has the same exemption, check/go/carrier.go).
   if (v.isWord() || v.isForward() || v.isMark() || v.isMove() || v.isParenExpr()) return v
   if (v.isInterpString() || v.isXmlInterp() || isSugar(v)) return v
   // Lists and maps keep their concrete payload — matching needs it.
@@ -107,35 +107,6 @@ export function carrierResults(
   })
   return [newDynamicCarrier(TAny)]
 }
-
-/**
- * joinCarriers merges two branch-arm result carriers into one. Mirrors
- * the lattice-join half of eng/go/carrier.go::JoinCarriers (Phase-4
- * subset — no disjunct construction yet): equal leaves keep the type;
- * a subtype/supertype pair widens to the supertype; otherwise the type
- * is the longest common lattice-path prefix (Scalar, Node, … or Any).
- * The result is always a STRICT carrier (never dynamic) so a branch's
- * merged result keeps stable provenance through carrierResults.
- *
- * The carrier type is informational for the compiler — the differential
- * gate compares concrete VM values — so a coarse join still verifies.
- */
-export function joinCarriers(a: Value, b: Value): Value {
-  const ta = a.vType
-  const tb = b.vType
-  if (ta.equal(tb)) return newCarrier(ta)
-  if (ta.matches(tb)) return newCarrier(tb)
-  if (tb.matches(ta)) return newCarrier(ta)
-  // Longest common prefix of the two lattice paths.
-  const common: string[] = []
-  const n = Math.min(ta.parts.length, tb.parts.length)
-  for (let i = 0; i < n; i++) {
-    if (ta.parts[i] !== tb.parts[i]) break
-    common.push(ta.parts[i]!)
-  }
-  return newCarrier(common.length > 0 ? new BoruType(common) : TAny)
-}
-
 
 // Install this piece's implementations over core's NAMED inactive defaults —
 // the TS twin of check/go's init replacing core/go's AnalysisImpl. Importing

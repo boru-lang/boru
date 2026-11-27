@@ -151,8 +151,9 @@ func BuildTimeModule(parent *native.Registry) (native.ModuleDesc, error) {
 	// The temporal add / sub overloads, exported as WORD EXTENSIONS
 	// (design/OPEN-WORDS.0.md): import transplants them onto the
 	// importer's bare add / sub, and TimeUtil.add / TimeUtil.sub work
-	// namespaced. The duration operand types are this import's mints,
-	// which is what satisfies the module-scope user-type rule.
+	// namespaced. Every tuple carries a type boru:time-util owns (this
+	// import's duration mints, or Date / DateTime / Instant), which is
+	// what the ownership-anchor rule requires (design/OPEN-WORDS.1.md R1).
 	for _, ext := range native.TemporalArithmeticExtensions(tt) {
 		exports.Set(ext.Extends, native.NewFunction(ext))
 	}
