@@ -195,8 +195,47 @@ run [ negq ( 5 ) ]	[-5]	a matched group inside a literal is unaffected
 # rest in the total order — whenever a disjunct is resolved, whatever its
 # alternatives are. core/go reduced one only when resolution had REBUILT an
 # alternative (a word, a map, a non-empty list), so `d( 5 5 Integer )` was
-# left as written while the same disjunct with a list in it was reduced.
-# Most of these rows are in divergent.tsv: core/ts does not reduce at all.
+# left as written while the same disjunct with a list in it was reduced;
+# core/ts did not reduce at all, and never resolved a disjunct left on the
+# stack in the first place.
 run d( Integer 5 )	Integer tor 5	a disjunct already in canonical form is left exactly as it is
 run [q d( 5 5 Integer ) ]	[(5 tor 5 tor Integer)]	inside quoted data nothing is resolved, so nothing is reduced
 run d( 5 )	5	a one-alternative disjunct renders as its alternative
+run d( 5 5 Integer )	Integer tor 5	the repeat goes; a type and a value OF that type are two alternatives
+run d( 5 Integer )	Integer tor 5	only a strictly WIDER type absorbs
+run d( String 5 Integer 'a' )	Integer tor 5 tor String	`'a'` is a ProperString, strictly under String, and is absorbed
+run d( [q ] [q ] 1 1 )	1 tor []	equality is by value: two empty lists are one alternative
+run d( [q 1 2 ] [q 1 2 ] 5 )	5 tor [1 2]
+run d( {q a: 1 b: 2 } {q b: 2 a: 1 } )	{a:1 b:2}	two maps are equal whatever their key order; the earlier one is kept
+run d( Never 1 )	1	a Never alternative adds nothing to a union
+run d( Any 1 )	Any	and Any absorbs everything
+run d( Scalar Number Integer 5 )	Scalar	absorption is by the widest type present
+run d( d( 6 5 ) String 5 )	5 tor String tor 5 tor 6	a nested disjunct is ONE alternative: canonical in itself, never flattened
+run [ d( 2 1 2 ) ]	[(1 tor 2)]	an evaluated list resolves the disjunct it holds
+run { a: d( 2 1 ) }	{a:(1 tor 2)}	and so does an evaluated map
+run [: d( String Integer ) ]	[:(Integer tor String)]	a typed container's child constraint resolves the same way
+
+# --- the order of the alternatives: the total order ---------------------------
+# One order over every value, whatever its type (design/TYPE-ORDERING.10.md):
+# a family that owns a comparison decides inside it — numbers by magnitude,
+# strings and atoms by text, booleans false first, a bare TYPE before any
+# value of its family; across families the lattice RANK of the two types
+# decides; two containers of one type order by size, then member by member.
+# What the order cannot separate, the canonical text does.
+run d( 2 1 )	1 tor 2
+run d( 10 9 )	9 tor 10	numbers by magnitude, not by text
+run d( -5 5 0 )	-5 tor 0 tor 5
+run d( 'b' 'B' 'a' )	'B' tor 'a' tor 'b'	strings by code point
+run d( true false )	false tor true
+run d( bar foo )	bar tor foo	a word in a disjunct is an atom, ordered by its name
+run d( 1 'a' true )	true tor 1 tor 'a'	across scalar families: Boolean, Number, String — by rank
+run d( 'a' ProperString )	ProperString tor 'a'	a bare type sorts before any value of its family
+run d( Float Integer )	Integer tor Float	two bare types by rank
+run d( Word Type Ideal Node Scalar )	Scalar tor Node tor Ideal tor Word tor Type	the five branch roots, in rank order
+run d( Absent None Integer )	None tor Absent tor Integer	the degenerate roots rank below every branch
+run d( [q 1 ] { a: 1 } 5 'a' )	5 tor 'a' tor [1] tor {a:1}	scalars, then lists, then maps
+run d( [q 1 2 ] [q 3 ] )	[3] tor [1 2]	two lists: the shorter first
+run d( [q 1 'a' ] [q 1 2 ] )	[1 2] tor [1 'a']	at one length, element by element
+run d( { a: 1 b: 2 } { c: 3 } )	{c:3} tor {a:1 b:2}	two maps: the smaller first
+run d( { b: 1 } { a: 1 } )	{a:1} tor {b:1}	at one size, by sorted keys, then by the values under them
+run d( List [: Integer ] [q 1 ] )	List tor [:Integer] tor [1]	a type and a typed container have size zero

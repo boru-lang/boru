@@ -1,11 +1,12 @@
 // Type-introspection words ported from eng/go/core_type.go:
 // typeof, pathof, and the IsValueOfType conformance check behind `is`.
 //
-// PARITY NOTE: this is the subset the eng/spec corpus reaches through
-// the current (no-parser) TS runner — bare type literals and concrete
-// scalars/lists. The typed-list / typed-map / record-shape branches of
-// IsValueOfType (which need ChildType payloads) and the Disjunct/Enum
-// membership branches are added by their owning port increments.
+// PARITY NOTE: IsValueOfType carries the shape arms whose subset rule is
+// its own — typed list, typed map, record shape, the bare metatype — and
+// hands everything else (a disjunct or enum, a concrete value, a list
+// template) to the unifier in unify.ts, as Go's does to `Unify`. The
+// symmetric predicate `unifiesValue` lived here as a flat function with
+// its own disjunct arm; it is the unifier's predicate now.
 import {
   BoruType,
   TAny,
@@ -19,6 +20,7 @@ import {
   TType,
 } from "./type.ts";
 import { valToString } from "./canon.ts";
+import { unifiesValue } from "./unify.ts";
 import { newList, newTypeLiteral, OrderedMap, Value } from "./value.ts";
 
 /**
@@ -137,91 +139,19 @@ export function isTypeBody(v: Value): boolean {
 }
 
 /**
- * IsValueOfType reports whether v satisfies type t. Subset of
- * core_type.go::IsValueOfType:
+ * IsValueOfType reports whether v satisfies type t — the membership
+ * question `is` asks. Mirrors core_type.go::IsValueOfType:
+ *   - t is a typed list / typed map: v is a concrete container whose every
+ *     member satisfies the child;
+ *   - t is a record shape (a map): v is a concrete map carrying every
+ *     declared key with a satisfying value — extra keys are allowed;
  *   - t is the bare metatype Type: v is itself a type;
- *   - t is any other bare type literal: lattice subtyping
- *     (v.VType conforms to t.VType);
- *   - otherwise: structural identity on the carried types (best effort).
+ *   - t is any other bare type literal: lattice subtyping;
+ *   - otherwise — a disjunct, a concrete value, a list template — v and t
+ *     UNIFY (unify.ts). There is one unifier; this predicate adds only the
+ *     shape arms above, whose subset rule is asymmetric where unification
+ *     is not.
  */
-/**
- * The symmetric unifier's PREDICATE half: do these two values unify?
- *
- * EXPORTED so core/spec can reach it. The corpus had no expression that
- * touched unification at all — its fixture registry calls it from nowhere,
- * and unify's real clients (`is`, `case`, typed defs, record shapes) are
- * all basic/lang-layer words — so the most fundamental thing core does
- * after dispatch was invisible to the very instrument built to compare the
- * two ports. `unifyq` in the three corpus runners is the door; this is
- * what it opens.
- *
- * Go's twin is `UnifyR(a, b, r) (Value, bool)` and returns the unified
- * VALUE as well. This one cannot: core/ts has a predicate, not a meet, so
- * there is no intersection to hand back. That asymmetry is deliberate and
- * recorded rather than papered over with a fake meet — the corpus asks
- * only the question both engines can currently answer, and the value half
- * lands with the real port.
- *
- * unifiesValue mirrors Go's symmetric Unify over the fixture's value
- * subset — the path IsValueOfType falls to for a concrete RHS and for
- * disjunct alternatives (unify.go::unifyInner). A bare type literal on
- * either side admits a conforming partner (`Integer is 5`, `[3] is
- * [Integer]`); lists unify element-wise; concrete maps unify with
- * EXACT key sets (the open subset pattern applies only at
- * IsValueOfType's record-shape arm and unifyDisjunct's immediate map
- * alternative, never to nested maps); scalar leaves need compatible
- * types and equal payloads.
- */
-export function unifiesValue(a: Value, b: Value): boolean {
-  if (a.data === null || b.data === null) {
-    return a.vType.matches(b.vType) || b.vType.matches(a.vType);
-  }
-  const ae = listElements(a);
-  const be = listElements(b);
-  if (ae !== null && be !== null) {
-    return (
-      ae.length === be.length && ae.every((x, i) => unifiesValue(x, be[i]!))
-    );
-  }
-  if (ae !== null || be !== null) return false;
-  // `isMap()` tests the lattice node only; a TYPED map carries a ChildType
-  // payload, not an OrderedMap, so `asMap()` on one threw a raw
-  // `AsMap: not a map value` — an uncoded host exception escaping
-  // `Engine.run` with no `boru/` code at all. Worse than a wrong answer,
-  // and the class the crossdiff treats most leniently: a GAP is logged and
-  // permitted, so nine such rows would have gone by unreported. Two
-  // independent sweeps found it — `unifyq { a: 1 } {: Integer }` in the
-  // core corpus and nine `is` shapes at the engine level.
-  //
-  // Gating on the PAYLOAD rather than the type keeps the arm honest: a
-  // typed map falls through to the leaf comparison below rather than
-  // pretending to be a plain one. Unifying a typed map properly needs the
-  // child-constraint arm core/ts does not have yet, which is tracked as
-  // debt rather than faked here.
-  if (a.data instanceof OrderedMap && b.data instanceof OrderedMap) {
-    const am = a.asMap();
-    const bm = b.asMap();
-    const ak = am.sortedKeys();
-    const bk = bm.sortedKeys();
-    return (
-      ak.length === bk.length &&
-      ak.every((k, i) => k === bk[i] && unifiesValue(am.get(k)!, bm.get(k)!))
-    );
-  }
-  // Scalars / atoms: compatible leaves and equal payload.
-  if (!(a.vType.matches(b.vType) || b.vType.matches(a.vType))) return false;
-  if (typeof a.data === "bigint" && typeof b.data === "bigint")
-    return a.data === b.data;
-  return a.data === b.data;
-}
-
-/** Extract a list's elements whether it is a plain or a typed list. */
-function listElements(v: Value): Value[] | null {
-  if (Array.isArray(v.data)) return v.data as Value[];
-  if (v.isTypedList()) return v.asChildType().elements;
-  return null;
-}
-
 export function isValueOfType(v: Value, t: Value): boolean {
   // A named type IS a type (Value.typeName) whatever its body's kind:
   // `def N 5  N is Type` holds — the singleton's members are still just 5.
@@ -244,7 +174,7 @@ export function isValueOfType(v: Value, t: Value): boolean {
   // satisfies T. A typed-map VALUE (`{:T a:1 b:2}` — ChildType data
   // with inline entries) validates its entries the same way.
   if (t.isTypedMap()) {
-    if (!v.isMap()) return false;
+    if (!v.isMap() || !v.isConcrete()) return false;
     const child = t.asChildType().child;
     if (v.isTypedMap()) {
       return v
@@ -266,35 +196,6 @@ export function isValueOfType(v: Value, t: Value): boolean {
       .keys()
       .every((k) => vm.has(k) && isValueOfType(vm.get(k)!, tm.get(k)!));
   }
-  // Disjunct / Enum membership, mirroring unify_disjunct.go: v
-  // satisfies the union if some alternative unifies with it — a
-  // type-literal alternative is a subtype check; a concrete map
-  // alternative is an OPEN pattern (subset matching); any other
-  // concrete alternative admits an equal value OR a bare-literal
-  // candidate the alternative's type conforms to (`Integer is E`
-  // holds for `enum [1 2]` because 1 unifies with Integer).
-  if (t.isDisjunct()) {
-    if (v.data === null && !v.carrier && v.vType.equal(TAny)) return true;
-    for (const alt of t.asDisjunct().alternatives) {
-      if (alt.data === null) {
-        if (isValueOfType(v, alt)) return true;
-        continue;
-      }
-      if (alt.data instanceof OrderedMap && v.data instanceof OrderedMap) {
-        const am = alt.asMap();
-        const vm = v.asMap();
-        if (
-          am
-            .keys()
-            .every((k) => vm.has(k) && unifiesValue(vm.get(k)!, am.get(k)!))
-        )
-          return true;
-        continue;
-      }
-      if (unifiesValue(v, alt)) return true;
-    }
-    return false;
-  }
   if (isBareTypeNode(t)) {
     if (t.vType.equal(TType)) {
       if (v.carrier) return false;
@@ -302,9 +203,8 @@ export function isValueOfType(v: Value, t: Value): boolean {
     }
     return v.vType.matches(t.vType);
   }
-  // Concrete RHS that is not a type — including a concrete list
-  // template `[A B …]` — routes through the symmetric unify walk, like
-  // Go's terminal `Unify(v, t)`: `5 is 5` → true, `Integer is 5` →
-  // true, `[3 2] is [Integer 2]` → true.
+  // Everything else — a disjunct or enum, a concrete value, a list
+  // template `[A B …]` — is Go's terminal `Unify(v, t)`: `5 is 5`,
+  // `Integer is 5`, `[3 2] is [Integer 2]`, `5 is (Integer tor String)`.
   return unifiesValue(v, t);
 }

@@ -53,6 +53,8 @@ def fixtureDefs : Defs :=
     -- a TYPE-LITERAL pattern on a stack slot
     word "tpatq" [p "v" TAny (pattern := some (.typeLit TInteger))] [TInteger] 0,
     word "unifyq" [p "a" TAny, p "b" TAny] [TBoolean] 2,
+    -- unifyq's VALUE half: the meet itself, or `fixture_no_meet`
+    word "meetq" [p "a" TAny, p "b" TAny] [TAny] 2,
     -- the FULL-STACK fixture
     word "depthq" [] [] 0 (fullStack := true)
   ].map fun (n, v) => (n, [v])
@@ -76,6 +78,10 @@ def fixtureNatives : Natives :=
     ("tyq", .plain fun a d => pure ([a.getD 0 .none], d)),
     ("tpatq", .plain fun a d => pure ([a.getD 0 .none], d)),
     ("unifyq", .plain fun a d => pure ([.bool (unifies (a.getD 0 .none) (a.getD 1 .none))], d)),
+    ("meetq", .plain fun a d =>
+      match unify (a.getD 0 .none) (a.getD 1 .none) with
+      | some meet => pure ([meet], d)
+      | none => throw { code := "fixture_no_meet", detail := "the two values do not unify" }),
     ("depthq", .fullStack fun _ stack => pure (stack ++ [.int stack.length]))
   ]
 

@@ -92,7 +92,13 @@ describe('fixture guard probes', () => {
     ['def x:w/99 1', { err: 'declared type word(w)' }],
     ['def x:-inf -inf', ''],
     ['def x:inf inf', ''],
-    ['def x:nan nan', { err: 'does not satisfy declared type nan' }],
+    // NaN is the same VALUE as itself: the kernel's value equality reads a
+    // Float by its bits (core/go: `nan unify nan` is `nan true`, and
+    // `nan is nan` holds). This row pinned the opposite — an error — which
+    // was JavaScript's `NaN !== NaN` leaking through the old flat predicate,
+    // not a rule. A value that is not nan is still refused.
+    ['def x:nan nan', ''],
+    ['def x:nan 1.5', { err: 'does not satisfy declared type nan' }],
   ]
   for (const [input, want] of rows) {
     it(JSON.stringify(input), () => {

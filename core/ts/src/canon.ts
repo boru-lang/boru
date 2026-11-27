@@ -494,10 +494,15 @@ function canonTypeTag(v: Value): string {
 function canonFnDef(fd: FnDefInfo): string {
   const sigs = fd.sigs
     .map((s) => {
+      // A parameter's and a return's type render by LEAF name — `Integer`,
+      // not `Scalar/Number/Integer` — as every type literal does and as
+      // Go's canonFnDef writes them (`p.Type.String()`). The full path is
+      // not source: a fn literal spelled with it re-parses, but no canon
+      // anywhere else writes a type that way.
       const params = s.params
-        .map((p) => `${p.name}:${p.type.toString()}`)
+        .map((p) => `${p.name}:${p.type.leaf()}`)
         .join(" ");
-      const returns = s.returns.map((r) => r.toString()).join(" ");
+      const returns = s.returns.map((r) => r.leaf()).join(" ");
       const body = canon(s.body);
       return `[${params}][${returns}][${body}]`;
     })

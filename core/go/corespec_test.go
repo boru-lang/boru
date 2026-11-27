@@ -555,17 +555,32 @@ func coreSpecRegistry(t *testing.T) *Registry {
 	// FIXTURE over a mechanism core owns, exactly like __pa over the args
 	// stack.
 	//
-	// It returns the PREDICATE half only — did the two values unify — and
-	// not the unified value, because core/ts has a predicate and no meet.
-	// Asking a question one engine cannot answer would produce rows that
-	// pin a port gap as a language contract; the value half lands with the
-	// real port.
+	// It returns the PREDICATE half — did the two values unify. The VALUE
+	// half is `meetq` below: the two were one word short while core/ts had
+	// a predicate and no meet, and a question one engine cannot answer
+	// pins a port gap as a language contract.
 	r.Register("unifyq", Signature{
 		Params:  []FnParam{{Name: "a", Type: TAny}, {Name: "b", Type: TAny}},
 		Returns: []*Type{TBoolean},
 		Impl: Go(func(a []Value, _ map[string]Value, _ []Value, reg *Registry) ([]Value, error) {
 			_, ok := UnifyR(a[0], a[1], reg)
 			return []Value{NewBoolean(ok)}, nil
+		}),
+		BarrierPos: 2,
+	})
+	// meetq is unifyq's VALUE half: the unified value itself — the meet of
+	// the two — or the fixture error `fixture_no_meet` when they do not
+	// unify. The predicate cannot tell `5 tor 6` from `5` as the answer to
+	// `d( 5 6 )` against `Integer`; this can.
+	r.Register("meetq", Signature{
+		Params:  []FnParam{{Name: "a", Type: TAny}, {Name: "b", Type: TAny}},
+		Returns: []*Type{TAny},
+		Impl: Go(func(a []Value, _ map[string]Value, _ []Value, reg *Registry) ([]Value, error) {
+			meet, ok := UnifyR(a[0], a[1], reg)
+			if !ok {
+				return nil, &BoruError{Code: "fixture_no_meet", Detail: "the two values do not unify"}
+			}
+			return []Value{meet}, nil
 		}),
 		BarrierPos: 2,
 	})

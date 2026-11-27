@@ -363,9 +363,15 @@ Three things from it are worth carrying even if the tables are never read:
 - **basic/ts**: everything past the stack vocabulary, the escape hatch
   and `if`. The next word is `case`, and it is blocked on a SUBSYSTEM
   rather than a primitive: `CaseClauses` matches a clause by `UnifyR`,
-  and core/ts has `isValueOfType`/`unifiesValue` over a value subset
-  rather than the unifier. Porting unification is its own piece of work
-  and should be scoped as one. `for` needs the loop fixed point, and
+  and core/ts had `isValueOfType`/`unifiesValue` over a value subset
+  rather than the unifier. **Ported 2026-11-27** for the kernel's own
+  value shapes: `core/ts/src/unify.ts` is the meet (`unify`, with
+  `unifiesValue` as its predicate) over scalars, types, lists, maps,
+  typed containers and disjuncts, on the total order and canonical
+  disjunct form of `compare.ts`; `core/spec/unify.tsv` holds all three
+  runners to the VALUE through `meetq`. What `case` still lacks from
+  core/go's unifier is everything registry-armed or lang-minted:
+  predicate types, dependent scalars, negation, records and options. `for` needs the loop fixed point, and
   `break`/`continue` do nothing but set the flow-control flag only `for`
   reads.
 

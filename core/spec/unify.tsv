@@ -7,24 +7,25 @@
 # core registry called the unifier from nowhere, and core/spec's notation
 # could name seven builtin type literals and no type CONSTRUCTOR at all.
 #
-# Two additions open it, and both are in the established idiom:
+# Two fixture words and three notation forms open it:
 #
-#   unifyq a b   the fixture word, over core's own UnifyR / unifiesValue.
-#                The PREDICATE half only — did the two values unify — not
-#                the unified value: Go's UnifyR returns a meet and core/ts
-#                has a predicate, so asking for the value would pin a port
-#                gap as a language contract.
+#   unifyq a b   the PREDICATE: did the two values unify — true or false.
+#   meetq a b    the VALUE: the unified value itself, the MEET of the two,
+#                or ERROR:fixture_no_meet when they do not unify.
 #
 #   d( … )       a disjunct of the listed items
 #   [: T … ]     a typed list — child constraint, then retained elements
 #   {: T k: v … }  a typed map, likewise
 #
-# The type-constructor forms are what make this corpus reach the surface
-# the two ports actually differ on. Without them every candidate agreed:
-# 70 of 70 over scalars, lattice roots, plain lists and plain maps. That
-# negative result is worth as much as the divergences — it says the value
-# subset core/ts implements is FAITHFUL, and the gap is entirely in the
-# constructors it has no arm for.
+# Both words sit over core's own unifier (Go `UnifyR`, TS `unify`, Lean
+# `unify`). For a long time there was only `unifyq`: core/ts had a flat
+# predicate and no meet, so asking for the value would have pinned a port
+# gap as a language contract. The predicate alone cannot tell `5 tor 6`
+# from `5` as the answer to `d( 5 6 )` against `Integer`; the value rows
+# at the end of this file can, and they are where the rules are stated.
+#
+# The answer is always the MORE SPECIFIC of the two: a concrete value over
+# the type that admits it, a narrower type over a wider one.
 
 # --- the shared subset: scalars, roots, plain containers -------------------
 # Every one of these agreed on first measurement.
@@ -100,26 +101,48 @@ run unifyq 0 false	false
 run unifyq '' ''	true
 run unifyq '' String	true
 
-# --- type constructors: what the two ports DO agree on ---------------------
-# The rest of this surface is in divergent.tsv; these are the rows that hold.
-
+# --- a DISJUNCT against a VALUE ------------------------------------------------
+# A value unifies with a disjunct when some alternative admits it, and the
+# answer is the value. A nested disjunct is an alternative like any other.
+run unifyq 5 d( Integer String )	true
+run unifyq 'a' d( Integer String )	true
+run unifyq d( Integer String ) 5	true	whichever side the disjunct is on
+run unifyq 5 d( 5 6 )	true
+run unifyq d( Integer ) 5	true
+run unifyq 5 d( d( Integer ) String )	true	a nested disjunct is walked, not compared
+run unifyq { a: 1 } d( Map List )	true
+run unifyq [q 1 ] d( Map List )	true
 run unifyq true d( Integer String )	false
 run unifyq 7 d( 5 6 )	false
-run unifyq d( ) 5	false
-run unifyq [q 1 'a' ] [: Integer ]	false
+run unifyq d( ) 5	false	the empty disjunct admits nothing
+
+# --- TYPED containers: the child constraint ------------------------------------
+# `[: T ]` and `{: T }` are TYPES. Against a plain container the child
+# constrains every member; against each other the two children must unify.
+# The elements a typed container RETAINS are not part of the type: two
+# typed lists over one child unify whatever each retains.
+run unifyq [q 1 2 ] [: Integer ]	true
+run unifyq [: Integer ] [q 1 2 ]	true
+run unifyq [q 1 'a' ] [: Integer ]	false	one element the child refuses is enough
 run unifyq [q ] [: Integer ]	true
+run unifyq [: Any ] [q 1 'a' ]	true
 run unifyq [: Integer ] [: Integer ]	true
+run unifyq [: Integer ] [: String ]	false	two children with no meet
 run unifyq [: Integer 1 2 ] [: Integer 1 2 ]	true
+run unifyq [: Integer 1 2 ] [: Integer 1 3 ]	true	the retained elements are not compared
 run unifyq [: Integer 1 ] [q 1 ]	true
 run unifyq [: Integer ] List	true
-run unifyq {: Integer } Map	true
 run unifyq [: Integer ] Any	true
-run unifyq d( Integer String ) Any	true
-
-# Closed by the payload gate in unifiesValue: a typed map is no longer
-# handed to asMap(), so these answer cleanly instead of throwing.
+run unifyq [: d( Integer String ) ] [q 1 'a' ]	true	a disjunct child admits each element by some alternative
+run unifyq [: d( Integer String ) ] [: d( Boolean ) ]	false	two disjunct children with no alternative in common
+run unifyq [: d( Integer String ) ] [: d( String Integer ) ]	true	reordered alternatives are one disjunct
+run unifyq { a: 1 } {: Integer }	true
+run unifyq {: Integer } { a: 1 }	true
 run unifyq { a: 'x' } {: Integer }	false
+run unifyq {: Integer } {: Integer }	true
 run unifyq {: Integer } {: String }	false
+run unifyq {: Integer a: 1 } {: Integer a: 1 }	true
+run unifyq {: Integer } Map	true
 
 # --- a ROOT type literal is not `Any` to a disjunct ------------------------
 # `Any` keeps a disjunct whole; nothing else does. core/go asked "is the
@@ -127,48 +150,213 @@ run unifyq {: Integer } {: String }	false
 # Parent() is its LATTICE parent, and Scalar, Node, Ideal, Word and Type
 # all sit directly under Any — so each of them passed for Any, and
 # `d( 'a' )` unified with `Node`, an empty disjunct with `Scalar`. Found
-# by the Lean model's differential search (spec/tools/diff-fuzz.py); the
-# pairs below are the point — the same disjunct against `Any` still holds.
+# by the Lean model's differential search (spec/tools/diff-fuzz.py). A root
+# that DOES sit over an alternative narrows to it like any other type.
 run unifyq d( 0 ) Word	false
 run unifyq d( 'a' ) Node	false
 run unifyq d( 0 ) Ideal	false
+run unifyq d( 0 ) Type	false	the alternatives are walked, and none of them is a Type
 run unifyq Node d( 0 )	false
 run unifyq d( ) Scalar	false
 run unifyq d( ) Node	false
+run unifyq d( 0 ) Scalar	true	Scalar sits over the Integer 0
 run unifyq d( 0 ) Any	true
+run unifyq d( Integer String ) Any	true
 
 # --- a DISJUNCT against a DISJUNCT -------------------------------------------
 # The meet of two disjuncts is the disjunct of the pairwise meets of their
 # alternatives; no pair unifying is no meet. (The kernel used to answer the
 # FIRST alternative that matched — `Integer` for `Integer tor String`
-# against itself — NUR386.) The rows below are the pairs with no meet, which
-# both ports already refuse; the pairs that DO meet are in divergent.tsv,
-# because core/ts's unifier has no disjunct arm at all.
-#
-# The EMPTY disjunct denotes the empty set, so it is `Never`: it meets
-# `Never` and another empty disjunct, and nothing else.
-run unifyq d( ) d( 5 )	false
-run unifyq d( 5 ) d( )	false
+# against itself — NUR386.)
+run unifyq d( 5 6 ) d( 5 6 )	true
+run unifyq d( Integer String ) d( Integer String )	true
+run unifyq d( Integer String ) d( String Integer )	true
+run unifyq d( 5 6 ) d( 6 7 )	true	one pair in common is enough
+run unifyq d( Integer String ) d( 5 'a' )	true
+run unifyq d( d( 5 6 ) String ) d( 5 6 )	true
+run unifyq [q d( 5 6 ) ] [q d( 6 7 ) ]	true	the same rule one level down
 run unifyq d( 5 6 ) d( 7 8 )	false
 run unifyq d( Integer String ) d( true none )	false
 run unifyq [q d( 5 6 ) ] [q d( 7 8 ) ]	false
-# Two map alternatives are two open patterns: a key both name must unify.
-run unifyq d( { a: 1 } ) d( { a: 2 } )	false
-run unifyq d( { a: 1 } ) d( 1 2 )	false
-# Reordered alternatives are one disjunct, as a typed container's child too.
-run unifyq [: d( Integer String ) ] [: d( String Integer ) ]	true
+
+# Two MAP alternatives are two open patterns. Each admits any map carrying
+# its keys, so both admit the maps carrying the keys of either: they meet
+# as the two MERGED, whichever side each is on, and only a key both name
+# can clash.
+run unifyq d( { a: 1 } ) d( { a: 1 b: 2 } )	true
+run unifyq d( { a: 1 b: 2 } ) d( { a: 1 } )	true
+run unifyq d( { a: 1 } ) d( { b: 2 } )	true	no key in common, so nothing to clash
+run unifyq d( { a: Integer } ) d( { a: 3 } )	true
+run unifyq d( { a: 1 } ) d( { a: 2 } )	false	a key both name must unify
+run unifyq d( { a: 1 } ) d( 1 2 )	false	a map alternative and a scalar one never meet
+
+# The EMPTY disjunct denotes the empty set, so it IS `Never`: it meets
+# `Never` and another empty disjunct, and nothing else — not even `Any`.
+run unifyq d( ) d( )	true
+run unifyq d( ) Never	true
+run unifyq Never d( )	true
+run unifyq { a: d( ) } { a: Never }	true	wherever it stands
+run unifyq d( ) Any	false
+run unifyq Any d( )	false
+run unifyq d( ) d( 5 )	false
+run unifyq d( 5 ) d( )	false
 
 # --- a DISJUNCT against a TYPE ------------------------------------------------
 # The same rule with a set of one on the other side: a type against a
 # disjunct meets EVERY alternative (`Integer` against `5 tor 6` is
 # `5 tor 6`, where the kernel answered `5`), and a type no alternative
 # meets has no meet. A list or a map HOLDING a type is a shape, not a
-# value, and is treated the same way; a map alternative stays an open
-# pattern against it — the shape must carry the keys the pattern names.
+# value, and is treated the same way.
+run unifyq Integer d( Integer String )	true
+run unifyq d( 5 6 ) Integer	true
+run unifyq Integer d( 5 6 )	true
+run unifyq d( Integer String ) Scalar	true
+run unifyq d( Integer String ) Number	true
+run unifyq d( [q 5 ] [q 6 ] ) [q Integer ]	true	a list holding a type is a shape
+run unifyq d( [q 5 ] [q 'a' ] ) [: Integer ]	true	a typed container is a type
+run unifyq d( [q 5 ] ) [q d( 5 6 ) ]	true
 run unifyq d( 5 6 ) String	false
 run unifyq d( [q 5 ] [q 6 ] ) [q String ]	false
 run unifyq d( Integer String ) [: Integer ]	false
 run unifyq d( 5 6 ) [q d( 5 ) ]	false
-run unifyq d( { a: 1 } ) { b: Integer }	false
-run unifyq d( { a: 1 } ) { a: String }	false
-run unifyq d( { a: 1 } ) { b: 2 }	false
+
+# A map alternative stays an open PATTERN: against a map VALUE it admits
+# one carrying its keys, and against a map SHAPE the shape must carry the
+# keys the pattern names.
+run unifyq d( { a: 1 } { a: 2 } ) { a: 1 b: 2 }	true	a value with an extra key
+run unifyq d( { a: 1 } { a: 2 } ) { a: Integer }	true
+run unifyq d( { a: 1 } ) { a: Integer b: String }	true
+run unifyq { a: Integer } d( { a: 1 } )	true
+run unifyq d( { a: [q 1 ] } ) { a: [q Integer ] }	true	a map holding a list that holds a type is a shape too
+run unifyq d( { a: 1 } ) { b: Integer }	false	the shape lacks the key
+run unifyq d( { a: 1 } ) { a: String }	false	the shape refuses the key
+run unifyq d( { a: 1 } ) { b: 2 }	false	the value lacks the key
+
+# === THE VALUE HALF ===========================================================
+# `meetq a b` is the unified value. Every rule above is restated here as the
+# value it produces, because a predicate cannot tell a right answer from a
+# wrong one that also happens to exist.
+
+# --- scalars and types ---------------------------------------------------------
+# Two values of one type are equal or have no meet. A type admits a value
+# of it, and the VALUE is the meet. Of two types on one lattice chain the
+# narrower is the meet. `Any` yields the other side — the none value
+# included; the other degenerate roots unify only with themselves.
+run meetq 5 5	5
+run meetq 5 6	ERROR:fixture_no_meet
+run meetq 'a' 'a'	'a'
+run meetq Integer 5	5	a type against a value of it: the value
+run meetq 5 Integer	5
+run meetq '' String	''
+run meetq Integer Integer	Integer
+run meetq Number Integer	Integer	two types on one chain: the narrower
+run meetq Integer Number	Integer
+run meetq Integer String	ERROR:fixture_no_meet
+run meetq Any 5	5
+run meetq Integer Any	Integer
+run meetq Any Any	Any
+run meetq None none	none	the None literal against the none value is the value
+run meetq Any none	none
+run meetq None None	None
+run meetq Never Never	Never
+run meetq Never Any	ERROR:fixture_no_meet	Never unifies only with Never
+
+# --- lists ---------------------------------------------------------------------
+# Element by element, at one length: each side narrows the other. The bare
+# `List` literal — and `Node`, the family root over it — admits any list.
+run meetq [q 1 2 ] [q 1 2 ]	[1 2]
+run meetq [q 1 Integer ] [q Integer 2 ]	[1 2]	each side narrows the other
+run meetq [q [q 1 ] ] [q [q Integer ] ]	[[1]]
+run meetq [q 1 2 ] [q 1 3 ]	ERROR:fixture_no_meet
+run meetq [q 1 2 ] [q 1 ]	ERROR:fixture_no_meet	two lengths never meet
+run meetq List [q 1 2 ]	[1 2]
+run meetq Node [q 1 ]	[1]
+run meetq [ addq 1 2 ] [q 3 ]	[3]	an eval list is evaluated before it is unified
+
+# --- closed maps ---------------------------------------------------------------
+# Two plain maps are CLOSED: a key only one side has stands as `Absent` on
+# the other, which only a value admitting `Absent` unifies with — and a key
+# whose meet is `Absent` is not in the result. Keys keep the LEFT map's
+# order, then the right map's extras.
+run meetq { a: 1 } { a: Integer }	{a:1}
+run meetq { a: Integer b: 2 } { a: 1 b: Integer }	{a:1 b:2}
+run meetq { a: 1 b: 2 } { b: 2 a: 1 }	{a:1 b:2}	the left map's key order
+run meetq { b: 2 a: 1 } { a: 1 b: 2 }	{b:2 a:1}
+run meetq { a: { b: Integer } } { a: { b: 1 } }	{a:{b:1}}
+run meetq { a: 1 } { a: 1 b: 2 }	ERROR:fixture_no_meet	closed: a key only one side has is a mismatch
+run meetq { a: d( Integer Absent ) b: 1 } { b: 1 }	{b:1}	unless its value admits Absent — and then the key is dropped
+run meetq { a: d( Integer Absent ) b: 1 } { b: 1 a: 5 }	{a:5 b:1}
+run meetq Map { a: 1 }	{a:1}
+run meetq Node { a: 1 }	{a:1}
+
+# --- typed containers ----------------------------------------------------------
+# A typed container against a plain one is the PLAIN container, every
+# member narrowed by the child. Two typed containers are the typed
+# container over the meet of their children — and nothing else: what each
+# retained is gone.
+run meetq [: Integer ] [q 1 2 ]	[1 2]
+run meetq [q 1 2 ] [: Integer ]	[1 2]
+run meetq [: Integer 1 ] [q 1 ]	[1]
+run meetq [: d( Integer String ) ] [q 1 'a' ]	[1 'a']
+run meetq [: Integer ] [q Integer ]	[Integer]	a type element narrowed by the child stays a type
+run meetq [: Integer ] [: Number ]	[:Integer]	the meet of the two children
+run meetq [: Integer 1 2 ] [: Integer 1 3 ]	[:Integer]	the retained elements are not part of the type
+run meetq [: Integer ] [: String ]	ERROR:fixture_no_meet
+run meetq [: d( Integer String ) ] [: d( String Integer ) ]	[:(Integer tor String)]
+run meetq [: d( 1 2 3 ) ] [: d( 2 3 4 ) ]	[:(2 tor 3)]	two disjunct children meet as disjuncts do
+run meetq [: Integer ] List	[:Integer]
+run meetq { a: 1 } {: Integer }	{a:1}
+run meetq {: Integer } {: Number }	{:Integer}
+run meetq {: Integer a: 1 } {: Integer a: 1 }	{:Integer}
+run meetq {: d( 1 2 3 ) } {: d( 2 ) }	{:2}	one surviving meet is that value, as a child too
+run meetq { a: 'x' } {: Integer }	ERROR:fixture_no_meet
+
+# --- disjuncts -------------------------------------------------------------------
+# The meet is the disjunct of the meets of the alternatives, reduced to its
+# canonical form: repeats and absorbed alternatives dropped, the rest in
+# the total order (core/spec/data.tsv pins that form). ONE surviving meet
+# is that value, not a one-alternative disjunct.
+run meetq d( Integer String ) d( Integer String )	Integer tor String	a disjunct with itself is itself — not its first alternative
+run meetq d( 5 6 ) d( 5 6 )	5 tor 6
+run meetq d( String Integer ) d( Integer String )	Integer tor String	the order the alternatives were written in decides nothing
+run meetq d( 5 6 ) d( 6 7 )	6	one surviving meet is that value
+run meetq d( Integer String ) d( 5 6 )	5 tor 6	a type narrows to the values it admits
+run meetq d( Number String ) d( Integer Number )	Number	a meet absorbed by a wider meet is dropped
+run meetq d( d( 5 6 ) String ) d( 5 6 )	5 tor 6	a nested disjunct's meet is flattened into the result
+run meetq d( 5 6 ) d( 7 String )	ERROR:fixture_no_meet
+run meetq d( 5 6 ) Integer	5 tor 6	a TYPE narrows every alternative, not the first
+run meetq Integer d( 5 6 )	5 tor 6
+run meetq d( Integer String ) Scalar	Integer tor String	a wider type keeps the disjunct
+run meetq d( Integer String ) Number	Integer	a type admitting one alternative
+run meetq d( 5 6 ) String	ERROR:fixture_no_meet
+run meetq d( [q 5 ] [q 6 ] ) [q Integer ]	[5] tor [6]	a list holding a type is a shape, not a value
+run meetq d( [q 5 ] [q 'a' ] ) [: Integer ]	[5]
+run meetq d( Integer String ) 5	5	a VALUE is admitted by the first alternative that takes it
+run meetq d( 5 6 ) 6	6
+run meetq d( [q Integer ] [q String ] ) [q 5 ]	[5]
+run meetq d( 5 6 ) 7	ERROR:fixture_no_meet
+run meetq d( Integer String ) Any	Integer tor String	against Any the disjunct stands whole
+
+# Map alternatives. Two patterns meet as the two merged — the left's keys,
+# then the right's extras, a shared key holding the meet of its two
+# values. A map VALUE is its own answer, extra keys and all. A map SHAPE
+# is narrowed: each key the pattern names takes the meet, the rest stay.
+run meetq d( { a: 1 } ) d( { a: 1 b: 2 } )	{a:1 b:2}
+run meetq d( { a: 1 b: 2 } ) d( { a: 1 } )	{a:1 b:2}
+run meetq d( { a: 1 } ) d( { b: 2 } )	{a:1 b:2}
+run meetq d( { b: 2 } ) d( { a: 1 } )	{b:2 a:1}	the left pattern's keys first
+run meetq d( { a: Integer } ) d( { a: 3 } )	{a:3}	a shared key holds the meet of its two values
+run meetq d( { a: 1 } ) d( { a: 2 } )	ERROR:fixture_no_meet
+run meetq d( { a: 1 } { b: 2 } ) d( { c: 3 } )	{a:1 c:3} tor {b:2 c:3}	every pair that merges is an alternative of the meet
+run meetq d( { a: 1 } { a: 2 } ) { a: 1 b: 2 }	{a:1 b:2}	a value: the answer is the value
+run meetq d( { a: 1 } { a: 2 } ) { a: Integer }	{a:1} tor {a:2}	a shape: every alternative that fits narrows it
+run meetq d( { a: 1 } ) { a: Integer b: String }	{a:1 b:String}	and the shape keeps its other keys
+run meetq d( { a: [q 1 ] } ) { a: [q Integer ] }	{a:[1]}
+run meetq d( { a: 1 } ) { b: Integer }	ERROR:fixture_no_meet
+
+# The empty disjunct is `Never`, and so is its meet with itself.
+run meetq d( ) d( )	Never
+run meetq d( ) Never	Never
+run meetq Never d( )	Never
+run meetq d( ) Any	ERROR:fixture_no_meet
+run meetq d( ) 5	ERROR:fixture_no_meet

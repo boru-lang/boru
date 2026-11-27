@@ -6,18 +6,22 @@
 // run arm 2 only. Do NOT re-implement either arm inline — that is how
 // the Go per-site cascades drifted apart (NUR059).
 
-import { canonValue } from "./canon.ts";
+import {
+  disjunctAltsCanonical,
+  simplifyDisjunctAlts,
+  valuesEqual,
+} from "./compare.ts";
 import type { Registry } from "./registry.ts";
-import { TDisjunct, TList, TMap, typeNameTable } from "./type.ts";
+import { resolveBuiltinTypeName, TDisjunct, TList, TMap } from "./type.ts";
 import {
   ChildType,
+  type DisjunctInfo,
   OrderedMap,
   Value,
   newAtom,
   newBoolean,
   newList,
   newMap,
-  newNone,
   newTypeLiteral,
   newTypedList,
   newTypedMap,
@@ -33,12 +37,13 @@ export function resolveWordValue(v: Value, registry?: Registry): Value {
   const name = v.asWord().name;
   if (name === "true") return newBoolean(true);
   if (name === "false") return newBoolean(false);
-  if (name === "none") return newNone();
   if (registry) {
     const top = registry.topOfDefStack(name);
     if (top !== undefined) return top;
   }
-  const t = typeNameTable().get(name);
+  // The builtin arm of the cascade: the leaf-name table, then the slash
+  // path (`Scalar/String`) — one resolver, the one stepWord consults.
+  const t = resolveBuiltinTypeName(name);
   if (t !== undefined) return newTypeLiteral(t);
   return newAtom(name);
 }
@@ -81,51 +86,45 @@ export function resolveWordsDeep(v: Value, registry?: Registry): Value {
     }
     return newMap(out);
   }
-  if (
-    v.vType.matches(TDisjunct) &&
-    v.data !== null &&
-    typeof v.data === "object" &&
-    "alternatives" in (v.data as object)
-  ) {
-    const d = v.data as { alternatives: Value[] };
-    const alts = d.alternatives.map((a) => resolveWordsDeep(a, registry));
-    return new Value(v.vType, { alternatives: simplifyDisjunctAlts(alts) });
+  if (v.isDisjunct()) {
+    const before = v.asDisjunct().alternatives;
+    const alts = before.map((a) => resolveWordsDeep(a, registry));
+    // A plain disjunct is a SET: it is reduced whenever it is not already
+    // in canonical form, not only when resolution happened to rebuild an
+    // alternative. An Enum keeps the order it was declared in, so it is
+    // re-simplified only when an alternative changed. Go's rule exactly
+    // (core/go/resolve.go, NUR385).
+    const changed = alts.some((a, i) => !sameAlternative(before[i]!, a));
+    if (
+      !changed &&
+      (!v.vType.equal(TDisjunct) || disjunctAltsCanonical(before))
+    ) {
+      return v;
+    }
+    // Only the payload moves: the type (an Enum stays an Enum), the name a
+    // `def` gave it and its flags are the value's own.
+    const out = new Value(
+      v.vType,
+      { alternatives: simplifyDisjunctAlts(alts) } satisfies DisjunctInfo,
+      { quoted: v.quoted, carrier: v.carrier, dynamic: v.dynamic },
+    );
+    out.pos = v.pos;
+    out.typeName = v.typeName;
+    return out;
   }
   return v;
 }
 
 /**
- * Flatten nested disjuncts and deduplicate alternatives after
- * resolution — the Go SimplifyDisjunctAlts mirror. An alternative that
- * RESOLVED to a named disjunct (`{x?:Maybe}` where Maybe is
- * `Integer tor String`) must contribute its members, not ride as one
- * opaque value that membership then compares by equality (rejecting
- * every valid member). Order is insertion order; canonical re-ordering
- * stays with the `tor` builder, which is where rendered unions form.
+ * Did resolution leave this alternative as it was? Go asks ExactEqual
+ * (core/go/compare.go): a scalar or a type is itself by VALUE, a list or a
+ * map only by IDENTITY — and resolution always rebuilds a container, so a
+ * list or map alternative always counts as changed.
  */
-function simplifyDisjunctAlts(alts: Value[]): Value[] {
-  const flat: Value[] = [];
-  const push = (a: Value): void => {
-    if (
-      a.vType.matches(TDisjunct) &&
-      a.data !== null &&
-      typeof a.data === "object" &&
-      "alternatives" in (a.data as object)
-    ) {
-      for (const inner of (a.data as { alternatives: Value[] }).alternatives)
-        push(inner);
-      return;
-    }
-    flat.push(a);
-  };
-  for (const a of alts) push(a);
-  const seen = new Set<string>();
-  const out: Value[] = [];
-  for (const a of flat) {
-    const k = canonValue(a);
-    if (seen.has(k)) continue;
-    seen.add(k);
-    out.push(a);
+function sameAlternative(before: Value, after: Value): boolean {
+  if (before === after) return true;
+  if (after.data instanceof OrderedMap || Array.isArray(after.data)) {
+    return false;
   }
-  return out;
+  return before.vType.equal(after.vType) && valuesEqual(before, after);
 }
