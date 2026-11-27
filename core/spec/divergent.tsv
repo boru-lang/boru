@@ -37,28 +37,6 @@ run Word/__ED	__ED		DATA: TS now RESOLVES the path, but canons the End type LITE
 run [ Module ]	[Module]	ERROR:undefined_word	DATA: core/ts type-name table is narrower; `Word` escapes the error taxonomy entirely.
 
 
-# --- canon of a bare paren marker: ADJUDICATED, and TS is right -------------
-# Go renders an OpenParen as the EMPTY string, so a list holding one renders
-# with a gap and the token vanishes; core/ts renders `(`.
-#
-# The `go` column is NOT the reference here, and Go's own source says so.
-# core/go/canon.go:104 fixed exactly this defect for the CLOSE paren — "Canon
-# had no arm, so the payload-less fallthrough rendered it as the empty string
-# and `1 )` canon'd to `1 `, dropping the token silently" — and the same
-# commit fixed it for the End marker. The OPEN paren was left because, as the
-# comment says, "an unmatched OPENING paren never reaches here, because that
-# is a parse error rather than a value". The corpus notation can construct one
-# where the parser cannot, and the fallthrough is still there.
-#
-# So these rows stay pinned with core/ts UNCHANGED. Making TS reproduce Go's
-# fallthrough would be applying a known defect to the port. The ledger header
-# warns that the go column is the reference "by convention, not by proof";
-# this is the third time on this programme that the warning has paid.
-
-run ( boomq	ERROR:signature_error	ERROR:syntax_error	CODE: an unmatched `(` at the TOP of the stream. preEvalParens already applies Go’s rule INSIDE a forward window; only the run loop’s arm differs. NOT changed because eng/ts pins the refusal in "a programmatic unmatched open paren refuses in the scanner" — which behaviour is right is a question for that test and its Go twin.
-
-
-
 # --- the UNIFIER's type-constructor surface ---------------------------------
 # Opened on 2026-08-09 by `unifyq` plus the d( ) / [: ] / {: } notation
 # (core/spec/unify.tsv explains both). Until then no corpus row reached
@@ -144,7 +122,6 @@ run d( [q 1 2 ] [q 1 2 ] 5 )	5 tor [1 2]	[1 2] tor [1 2] tor 5	DATA: core/ts nev
 run negq/v 5	fn [[a:Integer][Integer][]] 5	fn [[a:Scalar/Number/Integer][Scalar/Number/Integer][]] 5	RENDER: core/ts answers as Go does but for the fn-type render — it writes a function's parameter and return types as full lattice paths where Go writes the leaf name. Closes with the RENDER rows above; the row then moves to the spec file its rule is pinned in.
 run 5 negq/v	5 fn [[a:Integer][Integer][]]	5 fn [[a:Scalar/Number/Integer][Scalar/Number/Integer][]]	RENDER: core/ts answers as Go does but for the fn-type render — it writes a function's parameter and return types as full lattice paths where Go writes the leaf name. Closes with the RENDER rows above; the row then moves to the spec file its rule is pinned in.
 run [ negq/v 5 ]	[fn [[a:Integer][Integer][]] 5]	[fn [[a:Scalar/Number/Integer][Scalar/Number/Integer][]] 5]	RENDER: core/ts answers as Go does but for the fn-type render — it writes a function's parameter and return types as full lattice paths where Go writes the leaf name. Closes with the RENDER rows above; the row then moves to the spec file its rule is pinned in.
-run [ [ boomq 1 ] ( ]	ERROR:fixture_boom	ERROR:syntax_error	CODE: core/ts evaluates a container's elements in a sub-run with no sealing paren and reports the unmatched `(` its own way; Go now treats it as a scan boundary inside a literal exactly as at the top level (NUR387's fix).
 run d( 5 5 Integer )	Integer tor 5	5 tor 5 tor Integer	DATA: core/ts never reduces a disjunct at resolution; Go reduces every plain disjunct to its canonical alternatives (NUR385's fix).
 run d( 5 Integer )	Integer tor 5	5 tor Integer	DATA: core/ts never reduces a disjunct at resolution; Go reduces every plain disjunct to its canonical alternatives (NUR385's fix).
 run d( [q ] [q ] 1 1 )	1 tor []	[] tor [] tor 1 tor 1	DATA: core/ts never reduces a disjunct at resolution; Go reduces every plain disjunct to its canonical alternatives (NUR385's fix).

@@ -153,6 +153,30 @@ function moreSpecificFirst(
 }
 
 /**
+ * What a run IS, which decides how it ends. core/go steps every one of
+ * these on the caller's tape, between markers that say what the stretch
+ * is; here each is an engine of its own, and this is what that engine
+ * knows about where it stands.
+ *
+ *   program  the whole program. Collections still parked are refused, an
+ *            unmatched `(` is a syntax error, and then the pending
+ *            container literals left on the stack are evaluated.
+ *   region   a SEALED REGION: a container literal's elements, a map
+ *            member (core/go/sealed.go). The same three steps in another
+ *            order — the pending containers in the residual are evaluated
+ *            FIRST, so a fault inside one surfaces before the region is
+ *            refused for an unmatched `(`.
+ *   group    a paren group's contents. A group only produces values: the
+ *            pending containers among them are left for whoever takes
+ *            them, or for the run the group stands in.
+ *   frame    a call frame's body. Its pending containers are evaluated
+ *            while the parameters are still bound; an unmatched `(` is
+ *            the caller's to settle against the declared returns
+ *            (callFnSig).
+ */
+type RunKind = "program" | "region" | "group" | "frame";
+
+/**
  * Is the named word a BINDER, whose operand is a word's binding rather
  * than its expansion: `def y xs`, with `xs` bound to a splice, rebinds the
  * marker itself, so the new name aliases the splice. The one deliberate
@@ -184,13 +208,8 @@ export class Engine {
    * voidGroups tracking.
    */
   private lastPreEvalHadVoid = false;
-  /**
-   * This run is the BODY of a call frame. In Go the body stands on the
-   * caller's tape between the frame's open and its cleanup marker; here
-   * it runs in an engine of its own, and this is what that engine knows
-   * about where it stands — that tokens of the frame follow its last one.
-   */
-  private frameBody = false;
+  /** What this run is — see RunKind. */
+  private kind: RunKind = "program";
 
   constructor(registry: Registry) {
     this.registry = registry;
@@ -268,18 +287,16 @@ export class Engine {
         continue;
       }
       if (isOpenParen(val)) {
-        // KNOWN DIVERGENCE, one row: an unmatched `(` at the TOP of the
-        // stream throws syntax_error here where Go walks past it and lets
-        // the pending dispatch fail — `( boomq` is a signature_error
-        // there. preEvalParens already applies Go's rule INSIDE a forward
-        // window (an unmatched `(` is a scan boundary), so only this arm
-        // differs.
-        //
-        // Not changed, because eng/ts has a test that explicitly pins the
-        // refusal ("a programmatic unmatched open paren refuses in the
-        // scanner"). Which behaviour is right is a question for that test
-        // and its Go twin, not a one-line change here. Pinned in
-        // core/spec/divergent.tsv.
+        // An UNMATCHED `(` is a scan boundary, not an error where it
+        // stands: the pointer walks past it, and it then bounds what the
+        // tokens after it can see — exactly as it bounds a forward window
+        // (preEvalParens). `( boomq` is boomq failing for want of an
+        // argument, and `( boomq 1` is boomq running. The open paren is
+        // refused when the run ENDS with it still unmatched.
+        if (this.findMatchingClose(this.pointer) < 0) {
+          this.pointer++;
+          continue;
+        }
         const produced = this.evalParenAt(this.pointer);
         // THE PAREN RE-STEP RULE. A group's results are re-stepped where
         // the group stood — except that a group which collapses to ONE
@@ -358,12 +375,41 @@ export class Engine {
       }
     }
 
-    // End-of-run drain: any residual eval-list on the stack runs its
-    // contents and is replaced by the residual sub-stack as a list.
-    this.autoEvalStack();
-
+    // THE END OF THE RUN, by what the run is (RunKind). A collection
+    // still parked is a failed dispatch everywhere, and is refused first.
     this.refuseUnfilledForward();
+    switch (this.kind) {
+      case "group":
+        break;
+      case "frame":
+        this.autoEvalStack();
+        break;
+      case "region":
+        this.autoEvalStack();
+        this.refuseUnmatchedOpen();
+        break;
+      default:
+        this.refuseUnmatchedOpen();
+        this.autoEvalStack();
+    }
     return this.stack;
+  }
+
+  /** Run `input` as a run of the given kind, in an engine of its own. */
+  private subRun(kind: RunKind, input: Value[]): Value[] {
+    const sub = new Engine(this.registry);
+    sub.kind = kind;
+    return sub.run(input);
+  }
+
+  /**
+   * An open paren still on the stack when the run ends was never matched:
+   * the pointer walked past it as a boundary, and no close came.
+   */
+  private refuseUnmatchedOpen(): void {
+    if (this.stack.some(isOpenParen)) {
+      throw new BoruError("syntax_error", `unmatched '('`, "(");
+    }
   }
 
   /**
@@ -906,13 +952,12 @@ export class Engine {
    * outer interpreter can pick it up on the next iteration.
    */
   private evalParenAt(idx: number): number {
+    // Both callers have found the group's close before asking for the
+    // group: an unmatched `(` is a boundary they walk past or stop at,
+    // never a group to evaluate.
     const closeIdx = this.findMatchingClose(idx);
-    if (closeIdx < 0) {
-      throw new BoruError("syntax_error", `unmatched '('`, "(");
-    }
     const inner = this.stack.slice(idx + 1, closeIdx);
-    const sub = new Engine(this.registry);
-    const results = sub.run(inner);
+    const results = this.subRun("group", inner);
     this.stack.splice(idx, closeIdx - idx + 1, ...results);
     // Don't advance the pointer; the next iteration will process the
     // first spliced result. The COUNT is returned because the caller
@@ -1426,16 +1471,26 @@ export class Engine {
 
     let bodyResult: Value[];
     try {
-      const sub = new Engine(this.registry);
-      sub.frameBody = true;
-      bodyResult = sub.run([...chosen.body]);
+      bodyResult = this.subRun("frame", [...chosen.body]);
     } finally {
       this.registry.popArgs();
       for (let i = total - 1; i >= 0; i--) {
         this.registry.popDef(chosen.params[i]!.name);
       }
     }
-    this.checkFrameReturns(name, chosen, bodyResult);
+    // An unmatched `(` in the body takes the frame's own close for its
+    // match: on core/go's tape the group it opens then holds the frame's
+    // cleanup marker and return check, so the check reads only what
+    // stands AFTER that paren — and the frame's open, left without a
+    // close, is the syntax error. `[ n ( ]` under one declared return is
+    // a type_error (nothing after the paren); `[ ( n ]` passes the check
+    // and is refused as unmatched.
+    let open = -1;
+    for (let i = 0; i < bodyResult.length; i++) {
+      if (isOpenParen(bodyResult[i]!)) open = i;
+    }
+    this.checkFrameReturns(name, chosen, bodyResult.slice(open + 1));
+    if (open >= 0) throw new BoruError("syntax_error", `unmatched '('`, "(");
 
     // Splice the result over the consumed range (prefix + word +
     // forward args), exactly like a native handler.
@@ -1851,7 +1906,7 @@ export class Engine {
       // (That reads as an accident of the walk rather than a rule — the
       // marker is no argument — and is reported as such; it is what
       // core/go and the Lean model both answer.)
-      if (this.frameBody && !bounded) candidates++;
+      if ("frame" === this.kind && !bounded) candidates++;
       if (candidates > 0) {
         throw new BoruError(
           "uncalled_function",
@@ -2203,8 +2258,7 @@ export class Engine {
     for (const k of src.keys()) {
       const v = src.get(k)!;
       if (v.vType.equal(TParenExpr) && !v.quoted && Array.isArray(v.data)) {
-        const sub = new Engine(this.registry);
-        const res = sub.run([...(v.data as Value[])]);
+        const res = this.subRun("region", [...(v.data as Value[])]);
         out.set(k, res.length === 1 ? res[0]! : v);
         continue;
       }
@@ -2249,7 +2303,7 @@ export class Engine {
       // `{a: nosuchword}` degraded an undefined name to an Atom and fired
       // the consuming word where Go reports the name, and `{a: [q x]}`
       // rewrote a data list's words — `[word(x)]` on Go, `[5]` here.
-      const sub = new Engine(this.registry).run([v]);
+      const sub = this.subRun("region", [v]);
       if (1 === sub.length) {
         out.set(k, sub[0]!);
         continue;
@@ -2275,8 +2329,7 @@ export class Engine {
     // otherwise the evaluated list is an opaque value the recorder refuses.
     if (this.registry.check.emit !== undefined) return this.deepEvalData(list);
     const elems = list.asList();
-    const sub = new Engine(this.registry);
-    const result = sub.run([...elems]);
+    const result = this.subRun("region", [...elems]);
     return new Value(list.vType, result, { eval: false, quoted: false });
   }
 
@@ -2511,9 +2564,9 @@ export class Engine {
       v.eval &&
       !v.quoted
     ) {
-      const sub = new Engine(this.registry)
-        .run([...v.asList()])
-        .map((e) => this.deepEvalData(e));
+      const sub = this.subRun("region", [...v.asList()]).map((e) =>
+        this.deepEvalData(e),
+      );
       return this.buildList(sub);
     }
     return v;
@@ -2624,9 +2677,9 @@ export class Engine {
       v.eval &&
       !v.quoted
     ) {
-      const sub = new Engine(this.registry)
-        .run([...v.asList()])
-        .map((e) => this.deepEvalData(e));
+      const sub = this.subRun("region", [...v.asList()]).map((e) =>
+        this.deepEvalData(e),
+      );
       return this.buildList(sub);
     }
     let program: Value[] | null = null;
@@ -2639,9 +2692,9 @@ export class Engine {
     else if (v.isWord() || isEnd(v) || isOpenParen(v) || isCloseParen(v))
       program = [v];
     if (program === null) return v;
-    const sub = new Engine(this.registry)
-      .run([...program])
-      .map((e) => this.deepEvalData(e));
+    const sub = this.subRun("region", [...program]).map((e) =>
+      this.deepEvalData(e),
+    );
     if (sub.length === 1) return sub[0]!;
     // ZERO residuals DROPS the key. Go's AutoEvalMap sets the key only in
     // its `len == 1` and `len > 1` arms, so `{a: ()}` yields `{}` there;

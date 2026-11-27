@@ -256,6 +256,64 @@ run addq ( negq 3	ERROR:signature_error
 run boomq (	ERROR:signature_error
 run negq (	ERROR:signature_error
 
+# The same is true where the POINTER meets one. An unmatched `(` is walked
+# past and then bounds what the tokens after it can see — the stack
+# beneath it is out of reach — so the words after it run, or fail, on
+# their own terms. What is refused is the open paren still standing when
+# the run ENDS: that is the syntax_error, and it is the last thing checked
+# before the pending container literals are evaluated.
+run ( boomq	ERROR:signature_error	the word after it fails for want of an argument, not for the paren
+run ( boomq 1	ERROR:fixture_boom	and with its argument it runs
+run 1 ( negq	ERROR:signature_error	the 1 beneath the paren is out of negq's reach
+run 1 ( negq 5	ERROR:syntax_error	but a run that ends with the paren unmatched is a syntax error
+run ( 1	ERROR:syntax_error	with nothing else wrong, that is the error
+run (	ERROR:syntax_error	alone
+run 1 (	ERROR:syntax_error	last
+run ( ( 1 )	ERROR:syntax_error	the INNER pair matches; the outer open is the unmatched one
+run ( 1 ) (	ERROR:syntax_error	a matched group before it changes nothing
+run ( addq 1 2	ERROR:syntax_error	a call that succeeded after it does not rescue it
+run ( ;	ERROR:syntax_error	nor does an `end`
+run [ boomq 1 ] (	ERROR:syntax_error	the paren is refused BEFORE the pending literals are evaluated: no fixture_boom
+run ( [ boomq 1 ] ) (	ERROR:syntax_error	and a group does not evaluate the literal it hands back
+run bothq __pa true (	ERROR:signature_error	a collection still parked is refused before the paren is
+
+# A CONTAINER LITERAL's elements run in a sealed region, and an unmatched
+# `(` is a scan boundary there exactly as at the top level. The region
+# ends in the other order: the pending containers its residual holds are
+# evaluated FIRST — a fault inside one surfaces — and only then is the
+# region refused for the paren.
+run [ ( ]	ERROR:syntax_error	a list whose elements end with the paren unmatched
+run [ ( 1 ]	ERROR:syntax_error	whatever follows it
+run [ 1 ( ]	ERROR:syntax_error	or precedes it
+run [ ( boomq ]	ERROR:signature_error	a word after it fails on its own terms
+run [ ( boomq 1 ]	ERROR:fixture_boom	or runs
+run [ [ boomq 1 ] ( ]	ERROR:fixture_boom	a pending list in the residual is evaluated before the region is refused
+run [ ( [ boomq 1 ] ]	ERROR:fixture_boom	on either side of the paren
+run [ ( ] [ boomq 1 ]	ERROR:syntax_error	but the FIRST literal's refusal comes before the second literal is reached
+run [ [ ( ] ]	ERROR:syntax_error	at any depth
+run { a: ( }	ERROR:syntax_error	a map member is a region too
+run { a: [ ( ] }	ERROR:syntax_error	and so is a list inside one
+run { a: [ [ boomq 1 ] ( ] }	ERROR:fixture_boom	with the same order of ending
+run boomq [ ( ]	ERROR:syntax_error	an argument's program is refused before the word that wanted it runs
+run boomq [ [ boomq 1 ] ( ]	ERROR:fixture_boom	after its own pending literals
+run ( [ ( ] )	ERROR:syntax_error	inside a paren group
+
+# In a call FRAME's body the unmatched `(` takes the frame's own close for
+# its match. The return check then reads only what stands after the paren,
+# and the frame is refused as unmatched if the check passes.
+run def inc fn( n Integer Any [ ( boomq ] ) ; inc 1	ERROR:signature_error	a word after it fails on its own terms
+run def inc fn( n Integer Any [ ( boomq n ] ) ; inc 1	ERROR:fixture_boom	or runs
+run def inc fn( n Integer Any [ ( ] ) ; inc 1	ERROR:type_error	nothing after the paren under one declared return: the count fails
+run def inc fn( n Integer Any [ n ( ] ) ; inc 1	ERROR:type_error	what stands BEFORE the paren does not count
+run def inc fn( n Integer Any [ ( n ] ) ; inc 1	ERROR:syntax_error	with the count met, the unmatched paren is what is left to refuse
+
+# A paren GROUP only produces values: a pending container among them is
+# left pending, for the word that takes it or the run the group stands in.
+run boomq ( {q } { a: addq b: 1 } )	ERROR:fixture_boom	boomq takes the first value; the map behind it is never evaluated
+run dupq ( [ addq 1 2 ] )	[3] [3]	a pending list handed to a word is evaluated as that word's argument
+run ( [ addq 1 2 ] 5 )	[3] 5	and one left on the stack is evaluated when the program ends
+run ( [ boomq 1 ] )	ERROR:fixture_boom	where its fault surfaces
+
 # --- a concrete-scalar PATTERN narrows the overload ----------------------
 # patq's only slot is typed Integer AND patterned on the value 7, so it
 # matches 7 and refuses 8 — the pattern is part of the match, not a
