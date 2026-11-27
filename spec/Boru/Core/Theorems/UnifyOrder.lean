@@ -158,6 +158,25 @@ theorem map_alternatives_meet_as_patterns :
       && meet (m [("a", .int 1)]) (m [("a", .int 2)]) == none) = true := by
   native_decide
 
+/-- A FUNCTION IS EQUAL TO ITSELF AND TO NOTHING ELSE. Two functions with
+    the same text are two values: they render alike and do not unify, and
+    a disjunct keeps both. One function unifies with itself, is one
+    alternative however often it is listed, and is a `Function`, a `Type`
+    and an `Any` like every other. -/
+theorem function_identity :
+    let f (ident : Nat) : Value :=
+      .fn "f" [.mk [.mk "n" TInteger none false false] [TInteger] 1 (.boru [.word { name := "n" }]) false] ident
+    (unifies (f 1) (f 1) && !unifies (f 1) (f 2)
+      && canon (f 1) == canon (f 2)
+      && (simplifyDisjunctAlts [f 1, f 1]).length == 1
+      && (simplifyDisjunctAlts [f 1, f 2]).length == 2
+      && unifies (.list [f 1] false) (.list [f 1] false)
+      && !unifies (.list [f 1] false) (.list [f 2] false)
+      && unifies (f 1) (.typeLit "Type/Function")
+      && unifies (f 1) (.typeLit "Type")
+      && unifies (f 1) (.typeLit "Any")) = true := by
+  native_decide
+
 /-! ## `Type` -/
 
 /-- EVERY TYPE IS A `Type`. `Type` is the one builtin node whose
@@ -167,7 +186,7 @@ theorem map_alternatives_meet_as_patterns :
 theorem every_type_is_a_Type :
     (([Value.typeLit TInteger, .typeLit "Any", .typeLit "None", .typeLit TList, .typeLit "Word",
         .typedList (.typeLit TInteger) [], .typedMap (.typeLit TString) [],
-        .disjunct [.typeLit TInteger, .typeLit TString], .fn "f" []].all (·.is TType))
+        .disjunct [.typeLit TInteger, .typeLit TString], .fn "f" [] 0].all (·.is TType))
       && ([Value.int 1, .str "a", .bool true, .none, .atom "x", .list [] false, .map [] false].all
             (fun v => !v.is TType))) = true := by
   native_decide

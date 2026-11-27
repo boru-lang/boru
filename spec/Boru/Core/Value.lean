@@ -108,6 +108,10 @@ inductive Value where
   /-- `Type/Function` — a function value: its overloads, most specific
       first. One Function type (ADR-011). -/
   | fn (name : String) (sigs : List Sig)
+       /- the function's IDENTITY: two function values are the same value
+          exactly when they are the same function — one written or bound
+          once — whatever their text (core/go/compare.go `sameFnIdentity`) -/
+       (ident : Nat)
   /-- `Word/__IN/__DC` — a call frame's cleanup marker: the parameter
       names to unbind when the frame closes. -/
   | defCleanup (names : List String)
@@ -202,7 +206,7 @@ def isForward : Value → Bool | forward _ _ => true | _ => false
 def isOpenParen : Value → Bool | openParen | frameOpen => true | _ => false
 def isCloseParen : Value → Bool | closeParen => true | _ => false
 def isEnd : Value → Bool | endMark => true | _ => false
-def isFn : Value → Bool | fn _ _ => true | _ => false
+def isFn : Value → Bool | fn _ _ _ => true | _ => false
 def isQuoted : Value → Bool | quoted _ => true | _ => false
 
 /-- The lattice node a value sits at — its `Parent` in the kernel. A bare
@@ -230,7 +234,7 @@ def typeOf : Value → TypeId
   | endMark => "Word/__ED"
   | dispatchMod _ => "Word/__DM"
   | forward _ _ => "Word/__FW"
-  | fn _ _ => "Type/Function"
+  | fn _ _ _ => "Type/Function"
   | defCleanup _ => "Word/__IN/__DC"
   | returnCheck _ => "Word/__RC"
   | quoted v => typeOf v

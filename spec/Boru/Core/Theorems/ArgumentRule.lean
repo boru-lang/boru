@@ -21,7 +21,7 @@ open Boru.Core
     `barrier`; it returns its argument vector as a list. -/
 def probe (name : String) (n barrier : Nat) : String × List Value :=
   (name, [.fn name [.mk ((List.range n).map fun i => .mk s!"a{i}" TAny none false false)
-    [TAny] barrier (.native "vec") false]])
+    [TAny] barrier (.native "vec") false] 0])
 
 def defs : Defs :=
   [probe "f1" 1 1, probe "f2" 2 2, probe "f3" 3 3, probe "f4" 4 4,

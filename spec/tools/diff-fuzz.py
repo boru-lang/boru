@@ -84,8 +84,12 @@ def gen_value(rng, depth):
         for k in rng.sample(["a", "b", "c"], n):
             out += [k + ":"] + gen_value(rng, depth - 1)
         return out + ["}"]
-    if r < 0.7:
+    if r < 0.66:
         return [rng.choice(LITS[:8])]
+    if r < 0.70:
+        # a function is a value too — and one with an IDENTITY: the same
+        # text written twice is two functions
+        return ["fn(", "n", "Integer", "Integer", "[", "n", "]", ")"]
     return [rng.choice(TYPES[:7])]
 
 
