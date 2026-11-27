@@ -381,18 +381,6 @@ func (c *dispatchCacheState) put(name string, gen int64, fn *FnDefInfo) {
 	c.mu.Unlock()
 }
 
-// reset drops every entry while keeping the holder (and its mutex) in
-// place, so a registry shared across goroutines never has its cache
-// pointer swapped out from under a concurrent reader.
-func (c *dispatchCacheState) reset() {
-	if c == nil {
-		return
-	}
-	c.mu.Lock()
-	c.m = make(map[string]dispatchCacheEntry)
-	c.mu.Unlock()
-}
-
 // Engine-pool bounds. An engine whose tape grew past pooledTapeMaxEntries
 // is dropped rather than pooled so a one-off giant body does not pin its
 // buffer for the rest of the run; the pool itself is capped so pathological
@@ -2272,29 +2260,6 @@ func (r *Registry) runPredicateBody(fnDef FnDefInfo, predSig *FnSig, candidate V
 	}
 	return out, true, nil
 }
-
-// enforceCallBoruReturns applies a fn's declared return contract to the
-// results of a CallBoru dispatch (NUR069). Nil when the sig declares no
-// returns — an undeclared return keeps the historical flow-through, the
-// residual IS the return, matching the frame path, which emits no
-// ReturnCheck in that case.
-//
-// The count is NOT enforced, only the types of the positions present.
-// Enforcing arity here would break the two shapes this path exists to
-// serve, and that the old trim-only comment named: a guard predicate
-// signals failure with a None residual, and a lambda auto-declares
-// `[Any]` over a side-effect body. Both are legitimate callers whose
-// residual count does not match the declaration, and neither is a TYPE
-// violation — which is what this record is about. The compiled side
-// already declines to raise on a count mismatch (checkReturnContract's
-// RetReplay arm defers to the interpreter), so leaving count alone here
-// keeps the two paths agreeing rather than trading one asymmetry for
-// another.
-// InPredicateCall reports whether a predicate body is executing (the
-// predicate-call bracket around RunPredicate): the CallBoru return
-// discipline skips its type check there, and the VM's mirror of that
-// discipline (eng checkCallBoruContract) asks the same question.
-func (r *Registry) InPredicateCall() bool { return r.predicateCalls > 0 }
 
 func (r *Registry) enforceCallBoruReturns(sig *FnSig, name string, result []Value) error {
 	if len(sig.Returns) == 0 || r.predicateCalls > 0 {

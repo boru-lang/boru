@@ -24,16 +24,15 @@ func TestSweepCapNilCapabilityRegistry(t *testing.T) {
 
 // --- coverage.go -----------------------------------------------------------
 
-func TestSweepCoverageArmedAndVMEmit(t *testing.T) {
+func TestSweepCoverageArmedAndEmit(t *testing.T) {
 	r := newTestRegistry(t)
 	if r.CoverageArmed() {
 		t.Error("a fresh registry must report the hook unarmed")
 	}
-	// Untagged registry: NoteVMCoverage short-circuits.
-	r.NoteVMCoverage([]SrcPos{{}}, 0)
-	// Tagged: the emit path runs (the unarmed hook drops the event).
+	// Unarmed: the emit drops the event, tagged or not.
+	r.noteCoverage(SrcPos{Row: 3})
 	r.SetCoverID("sweep-unit")
-	r.NoteVMCoverage([]SrcPos{{}}, 0)
+	r.noteCoverage(SrcPos{Row: 3})
 	// Armed and tagged: the observation arrives.
 	var rows int
 	disarm := r.ArmCoverageHook(func(string, int) { rows++ })
@@ -41,9 +40,16 @@ func TestSweepCoverageArmedAndVMEmit(t *testing.T) {
 	if !r.CoverageArmed() {
 		t.Error("armed registry must report armed")
 	}
-	r.NoteVMCoverage([]SrcPos{{Row: 3}}, 0)
+	r.noteCoverage(SrcPos{Row: 3})
 	if rows != 1 {
-		t.Errorf("armed VM emit count = %d, want 1", rows)
+		t.Errorf("armed emit count = %d, want 1", rows)
+	}
+	// A position with no row, and an untagged registry, are not counted.
+	r.noteCoverage(SrcPos{})
+	r.SetCoverID("")
+	r.noteCoverage(SrcPos{Row: 4})
+	if rows != 1 {
+		t.Errorf("a rowless position or an untagged registry must not count: %d", rows)
 	}
 }
 

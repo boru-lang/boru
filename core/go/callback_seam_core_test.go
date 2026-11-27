@@ -5,22 +5,8 @@ import "testing"
 // callback_seam_core_test.go pins, in core's OWN suite, the three seams the
 // fifth increment added for the VM and the language layer to use (the
 // standalone cover-gate-core profiles core by its own tests alone):
-// InvokeCallbackBody's RetTrim stamp, Registry.InPredicateCall, and the
-// one-shot Engine.InertPrefix seat at Run.
-
-// TestInPredicateCall pins the read-side helper over the predicate-call
-// counter.
-func TestInPredicateCall(t *testing.T) {
-	r := covRegistry(t, nil)
-	if r.InPredicateCall() {
-		t.Error("no predicate body is running")
-	}
-	r.predicateCalls++
-	if !r.InPredicateCall() {
-		t.Error("inside a predicate body")
-	}
-	r.predicateCalls--
-}
+// the callback seam's return trim and the one-shot Engine.InertPrefix seat
+// at Run.
 
 // TestRunSeatsInertPrefix pins the one-shot seat: a caller-declared
 // InertPrefix wider than the run's own start offset becomes the run's

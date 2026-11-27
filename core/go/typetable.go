@@ -599,40 +599,6 @@ func (tt *TypeTable) Retire(def *Type) {
 	delete(tt.byID, IDOf(def))
 }
 
-// idSnapshot returns a copy of the canonical-ID index. It is the TYPE half of
-// the narrow binding sandbox (binding_sandbox.go): enough to tell which IDs
-// existed at capture time, and nothing else — the Type pointers are shared
-// because a def is immutable once minted.
-func (tt *TypeTable) idSnapshot() map[string]*Type {
-	if tt == nil {
-		return nil
-	}
-	out := make(map[string]*Type, len(tt.byID))
-	for id, def := range tt.byID {
-		out[id] = def
-	}
-	return out
-}
-
-// readmitRetired re-admits every ID in snap that tt has since lost — undoing
-// RETIREMENTS while leaving MINTS in place, which is the partition the bind
-// twins need (binding_sandbox.go states why each half goes the way it does).
-// The result is the union of the two id sets. Returns how many were re-admitted
-// so a caller can assert the partition rather than trust it.
-func (tt *TypeTable) readmitRetired(snap map[string]*Type) int {
-	if tt == nil {
-		return 0
-	}
-	n := 0
-	for id, def := range snap {
-		if _, live := tt.byID[id]; !live {
-			tt.byID[id] = def
-			n++
-		}
-	}
-	return n
-}
-
 // Clone returns a deep copy of tt — used for snapshot/restore around
 // predicate sandbox boundaries. Type pointers are shared (defs are
 // immutable once minted); only the stacks themselves are duplicated.

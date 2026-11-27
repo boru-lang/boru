@@ -381,7 +381,6 @@ var (
 	IsModuleFamilyValue      = core.IsModuleFamilyValue
 	IsSteplessWindow         = core.IsSteplessWindow
 	IsFnValueResidual        = core.IsFnValueResidual
-	IsGenMemoName            = core.IsGenMemoName
 	IsRecordShape            = core.IsRecordShape
 	JoinCarrierStacks        = core.JoinCarrierStacks
 	JoinCarriers             = core.JoinCarriers

@@ -62,10 +62,8 @@ type Engine struct {
 	sawFnFrame bool
 	stepLimit  int // hard cap on the Run loop; always positive, set by the New/NewTop constructors below
 	// stepsTaken counts every Run-loop step this engine has taken, across
-	// runs (StepsTaken); limitReport, when positive, is the bound an
-	// exhausted run REPORTS in place of stepLimit (StepBudget).
-	stepsTaken  int
-	limitReport int
+	// runs.
+	stepsTaken int
 	// budgetBase is the stepsTaken count the live budget scope began at:
 	// the run's entry, or — inside a driven loop's iteration — that
 	// iteration's entry (beginLoopIteration), so the iteration runs on a
@@ -338,22 +336,12 @@ func StepLimitFor(r *Registry, def int) int {
 }
 
 // StepBudget caps the engine's Run loop at limit steps (at least one) for
-// every run until the returned restore is called, and makes an exhausted run
-// report report as the limit it hit. The VM's hosted splice uses it to run
-// its island on what REMAINS of the program's step budget while the error
-// names the budget the host configured — the interpreter meters the same
-// tokens against that one bound (Codex P2 on PR #512).
-func (e *Engine) StepBudget(limit, report int) (restore func()) {
-	prevLimit, prevReport := e.stepLimit, e.limitReport
+// every run until the returned restore is called.
+func (e *Engine) StepBudget(limit int) (restore func()) {
+	prevLimit := e.stepLimit
 	e.stepLimit = max(limit, 1)
-	e.limitReport = report
-	return func() { e.stepLimit, e.limitReport = prevLimit, prevReport }
+	return func() { e.stepLimit = prevLimit }
 }
-
-// StepsTaken is the number of Run-loop steps this engine has taken, across
-// every run on it: a caller reads it before and after a run to charge that
-// run's work to its own budget.
-func (e *Engine) StepsTaken() int { return e.stepsTaken }
 
 // New creates an Engine with the given function registry.
 // The returned engine uses the sub-engine step limit.
@@ -1108,9 +1096,6 @@ func (e *Engine) runtimeError(code, detail, word, hint string) *BoruError {
 // (non-terminating or pathologically deep) program, replacing the
 // phantom "unmatched opening parenthesis" the old silent break produced.
 func (e *Engine) evalLimitError(limit int) *BoruError {
-	if e.limitReport > 0 {
-		limit = e.limitReport
-	}
 	return e.runtimeError("evaluation_limit",
 		fmt.Sprintf("evaluation exceeded the step limit of %d — the program ran too long (an infinite loop or unbounded recursion?)", limit),
 		"",
@@ -3036,37 +3021,6 @@ func ForwardLiteralOperand(t Value) bool {
 		return false
 	}
 	return t.Parent().ConformsTo(TScalar) || t.Parent().ConformsTo(TAtom)
-}
-
-// ForwardOperandValue is the one value a forward-collecting word takes for
-// the token t right after it: a literal ForwardLiteralOperand admits is
-// itself, and a plain WORD bound to such a literal — or the reserved literal
-// word `true` or `false`, which the engine resolves as it steps it
-// (ForwardClaimProbeOn reads them the same way) — is that value:
-// the forward phase collects a value-bound word as its value (`def k 1 end
-// mk mk add k` is `add` over the 1 and the top), where a function word
-// stops it and a modified word (`/v`, `/s`, `/f`, `/u`) is not a lone value.
-// ok is false for anything else. The drift guards read it (NUR287).
-func (e *Engine) ForwardOperandValue(t Value) (Value, bool) {
-	if ForwardLiteralOperand(t) {
-		return t, true
-	}
-	w, err := AsWord(&t)
-	if err != nil || w.ForceVal || w.ForceStack || w.ForceForward || w.ForceUsurp {
-		return Value{}, false
-	}
-	var top Value
-	p, ok := e.DefTop(w.Name)
-	if ok {
-		top = *p
-	}
-	if !ok && (w.Name == "true" || w.Name == "false") {
-		top, ok = NewBoolean(w.Name == "true"), true
-	}
-	if !ok || !ForwardLiteralOperand(top) {
-		return Value{}, false
-	}
-	return WithPos(top, t), true
 }
 
 // dynShuffleConsumerAt reports whether the tape token at idx is a PLAIN

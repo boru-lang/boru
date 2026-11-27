@@ -393,7 +393,7 @@ func TestDrivenLoopIterationBudget(t *testing.T) {
 	// well within it each; the run's own tail still fits after the loop.
 	prog := append(tlCall("tl", body, data), NewInteger(1), NewWord("cdub"), NewWord("cdub"), NewWord("cdub"))
 	e := NewTop(r)
-	defer e.StepBudget(24, 0)()
+	defer e.StepBudget(24)()
 	out, err := e.Run(prog)
 	if err != nil || renderAll(out) != "[8 16 24 32 40 48 56 64] | 8" {
 		t.Fatalf("budgeted loop = %s / %v", renderAll(out), err)
@@ -404,7 +404,7 @@ func TestDrivenLoopIterationBudget(t *testing.T) {
 		long[i] = "cdub"
 	}
 	e2 := NewTop(r)
-	defer e2.StepBudget(24, 0)()
+	defer e2.StepBudget(24)()
 	_, err = e2.Run(tlCall("tl", words(long...), ints(1)))
 	if err == nil || !strings.HasPrefix(err.Error(), "tl: element 0: ") || !strings.Contains(err.Error(), "evaluation_limit") {
 		t.Fatalf("runaway body: %v", err)
@@ -415,7 +415,7 @@ func TestDrivenLoopIterationBudget(t *testing.T) {
 	group = append(group, tlCall("tl", body, data)...)
 	group = append(group, NewCloseParen())
 	e4 := NewTop(r)
-	defer e4.StepBudget(24, 0)()
+	defer e4.StepBudget(24)()
 	out, err = e4.Run(group)
 	if err != nil || renderAll(out) != "[16 32 48 64 80 96 112 128]" {
 		t.Fatalf("budgeted loop in a group = %s / %v", renderAll(out), err)
@@ -427,7 +427,7 @@ func TestDrivenLoopIterationBudget(t *testing.T) {
 		tail = append(tail, NewWord("cdub"))
 	}
 	e3 := NewTop(r)
-	defer e3.StepBudget(24, 0)()
+	defer e3.StepBudget(24)()
 	_, err = e3.Run(append(append(tlCall("tl", body, ints(1)), NewInteger(1)), tail...))
 	if err == nil || !strings.Contains(err.Error(), "evaluation_limit") || strings.Contains(err.Error(), "tl: element") {
 		t.Fatalf("runaway tail: %v", err)

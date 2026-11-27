@@ -385,7 +385,6 @@ func TestLaneRemovalNilReceivers(t *testing.T) {
 		t.Fatalf("nil get = (%v, %v), want (nil, false)", fn, ok)
 	}
 	c.put("x", 0, nil)
-	c.reset()
 	zero := &Registry{Check: &CheckState{StepBudget: -1}}
 	if zero.Lookup("anything") != nil {
 		t.Fatal("zero-registry Lookup = non-nil")

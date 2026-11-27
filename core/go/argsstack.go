@@ -77,27 +77,12 @@ func (as *ArgsStack) Pop() (bool, error) {
 	return true, nil
 }
 
-// Depth returns the current stack depth. A nil receiver reports 0 (the
-// callers pair it with Truncate, which no-ops on nil).
+// Depth returns the current stack depth. A nil receiver reports 0.
 func (as *ArgsStack) Depth() int {
 	if as == nil {
 		return 0
 	}
 	return len(as.stack)
-}
-
-// Truncate drops entries above depth n — the frame-exit / error-unwind
-// rebalance for the compiled args bracket (Program.DynEnv): every VM frame
-// records its entry depth and truncates back, mirroring the interpreter's
-// per-call push/pop discipline without threading pops through every exit
-// path. A no-op when n is at or above the current depth, or on nil.
-func (as *ArgsStack) Truncate(n int) {
-	if as == nil || n < 0 || n >= len(as.stack) {
-		return
-	}
-	as.stack = as.stack[:n]
-	clear(as.lazy[n:])
-	as.lazy = as.lazy[:n]
 }
 
 // Top returns the current top args entry. Returns (value, true, nil)

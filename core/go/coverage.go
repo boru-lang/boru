@@ -123,18 +123,6 @@ func (r *Registry) CoverID() string {
 	return r.coverID
 }
 
-// noteVMCoverage is the compiled (VM) step-site coverage emit: it records
-// debug[pc]'s row when this registry is a coverage target. The coverID field
-// compare short-circuits an untagged unit BEFORE noteCoverage's atomic load, so
-// an ordinary compiled run pays one branch per instruction. Kept tiny (the Go
-// inliner folds it into the VM run loop) so vm.go's hot loop is unchanged.
-func (r *Registry) NoteVMCoverage(debug []SrcPos, pc int) {
-	if r == nil || r.coverID == "" {
-		return
-	}
-	r.noteCoverage(debug[pc])
-}
-
 // noteCoverage emits one line-coverage observation when the hook is armed AND
 // this registry is a tagged coverage target. Nil-safe on both the registry and
 // the holder; a check-mode step is never counted (static analysis re-runs the

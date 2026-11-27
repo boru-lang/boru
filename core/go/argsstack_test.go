@@ -7,7 +7,7 @@ import (
 
 // TestArgsStackLazy pins PushLazy (NUR350): the entry reads as the list of
 // its values, built once on the first Top (every read answers the one
-// value), and Pop / Truncate drop lazy entries with the rest; a nil
+// value), and Pop drops lazy entries with the rest; a nil
 // receiver errors as Push does.
 func TestArgsStackLazy(t *testing.T) {
 	var none *ArgsStack
@@ -29,11 +29,11 @@ func TestArgsStackLazy(t *testing.T) {
 	if IDOf(&again) != IDOf(&first) || again.String() != first.String() {
 		t.Errorf("a second read = %v (%s), want the first read's value %v (%s)", again, IDOf(&again), first, IDOf(&first))
 	}
-	// Truncate over a lazy entry, then Pop past a lazy one never read.
+	// Pop a lazy entry never read, then push and pop past another.
+	before := as.Depth()
 	_ = as.PushLazy([]Value{NewInteger(9)})
-	as.Truncate(2)
-	if as.Depth() != 2 {
-		t.Fatalf("Depth after Truncate = %d, want 2", as.Depth())
+	if ok, err := as.Pop(); !ok || err != nil || as.Depth() != before {
+		t.Fatalf("Pop of an unread lazy entry = %v / %v, depth %d, want %d", ok, err, as.Depth(), before)
 	}
 	_ = as.PushLazy(nil)
 	if empty, _, _ := as.Top(); !IsConcrete(&empty) || empty.String() != NewList(nil).String() {
