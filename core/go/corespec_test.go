@@ -777,7 +777,6 @@ func TestCoreSpecDivergent(t *testing.T) {
 		t.Log("divergent.tsv: empty — core/go and core/ts agree on every corpus expression")
 		return
 	}
-	r := coreSpecRegistry(t)
 	for _, row := range rows {
 		// parseCoreSpec puts column 2 in expected and column 3 in note; for
 		// this file those are the go and ts columns.
@@ -787,7 +786,11 @@ func TestCoreSpecDivergent(t *testing.T) {
 				row.file, row.line, row.expr)
 			continue
 		}
-		if got := evalCoreSpec(t, r, row.expr); got != wantGo {
+		// A registry of its own per row, as TestCoreSpec gives each: one
+		// shared across the file let a row's `def` clauses stack onto the
+		// next row's, so a name defined in two rows had two definitions in
+		// the second.
+		if got := evalCoreSpec(t, coreSpecRegistry(t), row.expr); got != wantGo {
 			t.Errorf("%s:%d: %q (go column)\n  want: %s\n  got : %s",
 				row.file, row.line, row.expr, wantGo, got)
 		}

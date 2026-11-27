@@ -46,7 +46,9 @@ def pop (d : Defs) (name : String) : Defs :=
 /-- The identity a REFERENCE to the name carries (core/go/registry.go
     `aggregateIdent`): the one function bound to it. A name with several
     function bindings has no identity of its own — a reference to it is
-    built from all of them, and is a new function each time it is read. -/
+    built from all of them, and is a new function each time it is read,
+    so such a word is not equal to itself: as the kernel has it, not as it
+    should be (NUR391). -/
 def soleIdent? (d : Defs) (name : String) : Option Nat :=
   match (d.stack name).filterMap (fun v => match v with | .fn _ _ i => some i | _ => none) with
   | [i] => some i

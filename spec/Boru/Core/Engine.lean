@@ -291,7 +291,9 @@ def stepWord (nat : Natives) : Nat → Engine → WordInfo → Except BoruError 
           let wrapper := usurpOver w.name ((e.defs.lookup? w.name).getD []) origIdent ident
           let e := { e with defs := defs }
           if w.forceVal then
-            -- `/uv`: the wrapper as a value, placed and stepped over
+            -- `/uv`: the wrapper as a value, placed and stepped over. It
+            -- is NOT delivered to a word that is collecting, as a `/v`
+            -- value is — as the kernel has it, not as it should be (NUR390)
             pure { e with tape := setAt e.tape e.ptr wrapper, ptr := e.ptr + 1 }
           else
             -- `/u` alone is a call: a statement boundary, as a bare
