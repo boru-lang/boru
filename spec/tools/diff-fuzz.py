@@ -55,7 +55,11 @@ def gen_item(rng, depth):
             out += [k + ":"] + gen_item(rng, depth - 1)
         return out + ["}"]
     if r < 0.50:
-        return [rng.choice(WORDS)]
+        w = rng.choice(WORDS)
+        # call-site modifiers: /s stack only, /f forward only, /N arity
+        if rng.random() < 0.15:
+            w += "/" + rng.choice(["s", "f", "1", "2", "0", "1s", "2f", "1f", "2s"])
+        return [w]
     if r < 0.78:
         return [rng.choice(LITS)]
     if r < 0.86:

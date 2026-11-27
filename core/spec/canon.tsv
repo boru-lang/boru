@@ -97,3 +97,10 @@ float -0.25	-0.25	negative fractional
 float 0	0.0	zero keeps the point
 float 100	100.0	and so does a whole value
 float 1e10	10000000000.0	exponents expand; canon is never scientific
+
+# --- words keep their call-site modifiers -----------------------------------
+# A modified word renders as it was written — arity digits, then the one
+# of `f` / `s` — so data holding a word reads back as the same call. A
+# slash whose suffix is not a modifier is part of the name.
+list addq/2s negq/f sumq/3 Scalar/String	[addq/2s negq/f sumq/3 Scalar/String]	modifiers survive canon; a type path is not one
+list p( 1 ; 2 )	[(1 ; 2)]	inside a paren expression the barrier is written `;`

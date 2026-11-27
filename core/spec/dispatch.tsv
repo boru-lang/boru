@@ -406,3 +406,27 @@ run def inc fn( n Any Any [ n ] ) ; inc 5	5	an Any parameter takes an Integer
 run def inc fn( n Any Any [ n ] ) ; inc 'x'	'x'	and a String
 run def inc fn( n Integer Any [ 'a' ] ) ; inc 2	'a'	an Any return admits whatever the body leaves
 run def inc fn( n Any Any [ n ] ) ; inc [q 1 2 ]	(quote [1 2])	a list bound to a named parameter is bound QUOTED, so the body reads it as data
+
+# --- call-site MODIFIERS ---------------------------------------------------
+# `name/s` reads the value stack only, `name/f` the forward stack only,
+# `name/N` dispatches only an overload of exactly N arguments; they
+# combine as `name/Ns`, `name/Nf`. A modifier overrides the signature's own
+# barrier for that one call — it does not reorder anything: the arguments
+# still bind in signature order from wherever the call is allowed to look.
+run 1 2 addq/s	3	/s: a forward word made to read the stack
+run addq/s 1 2	ERROR:signature_error	/s: the following literals are no longer its arguments
+run 1 addq/s 2	ERROR:signature_error	/s: nor is one of them
+run 5 negq/s	-5	/s at arity one
+run negq/s 5	ERROR:signature_error	and its refusal
+run [ addq/s 1 2 ]	ERROR:signature_error	/s inside a container literal: the literal seals the stack beneath
+run sumq/f 1 2	3	/f: a stack word made to read forward
+run 1 2 sumq/f	ERROR:signature_error	/f: the stack is no longer where it looks
+run addq/f 1 2	3	/f on a word that already collects forward changes nothing
+run 1 addq/f 2	ERROR:signature_error	/f: EVERY argument comes from the forward stack — the infix split is refused
+run 1 2 addq/f	ERROR:signature_error	and so is the all-stack one
+run addq/2 1 2	3	/N naming the arity the word has
+run addq/1 1 2	ERROR:signature_error	/N naming one it has not selects no overload
+run addq/0 1 2	ERROR:signature_error	including zero
+run dupq/1 5	5 5	/N on a multi-return word counts ARGUMENTS, not results
+run 1 2 addq/2s	3	arity and stack form together
+run addq/2f 1 2	3	arity and forward form together

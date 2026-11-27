@@ -46,7 +46,9 @@ import {
   TNone,
   TString,
   type BoruType,
-  type Value,
+  TWord,
+  Value,
+  type WordInfo,
 } from "../core/ts/src/index.ts";
 
 const TYPE_LITS: Record<string, BoruType> = {
@@ -72,6 +74,16 @@ function token(tok: string): Value {
   // (REFERENCE.md:415); the corpus uses the punctuation so a row can still
   // name a WORD called end.
   if (";" === tok) return newEnd();
+  // `name/N`, `name/s`, `name/f`, `name/Ns`, `name/Nf` — a modified word
+  // (the same reading as core/ts/src/corespec.test.ts's token()).
+  const mod = /^(.+)\/(\d*)([sf]?)$/.exec(tok);
+  if (mod !== null && (mod[2] !== "" || mod[3] !== "")) {
+    const info: WordInfo = { name: mod[1]! };
+    if (mod[2] !== "") info.argCount = BigInt(mod[2]!);
+    if (mod[3] === "s") info.forceStack = true;
+    if (mod[3] === "f") info.forceForward = true;
+    return new Value(TWord, info);
+  }
   return newWord(tok);
 }
 

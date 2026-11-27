@@ -25,6 +25,7 @@ theorem, or by the differential search.
 | The binding store: per-name stacks, lookup across a name's function bindings | `deftable.go`, `registry.go` | `Match.lean` | corpus |
 | Slot admission, type-literal rejection, patterns | `signature.go`, `match.go` | `Match.lean` | `dispatch.tsv`; search |
 | The per-candidate scan and the plan (`/q` preference, inside-a-collection rule, zero-argument fallback) | `collect_kernel.go`, `collect_plan.go` | `Match.lean` | `dispatch.tsv`; search; `Theorems/ArgumentRule.lean` |
+| The call-site modifiers `/s`, `/f`, `/N` | `collect_plan.go`, `engine.go` `effectiveForwardLimit` | `Match.lean` | `dispatch.tsv`; search |
 | The stack-form probe | `signature.go` `MatchSignature` | `Match.lean` | search |
 | The step loop: literals and arrival, word resolution, word literals, undefined words | `engine.go` | `Engine.lean` | corpus; search |
 | Parking and collecting a forward; completion and the stack-only re-dispatch | `engine.go` | `Engine.lean` | corpus; search; theorems |
@@ -47,8 +48,8 @@ no expression in the `core/spec` notation, so specifying them means
 extending the notation and its fixture in all three runners first.
 
 **The step loop**
-- the dynamic rules of the word modifiers `/v`, `/u`, `/N`, `/s`, `/f`
-  (matching honours the last three; nothing exercises them);
+- the word modifiers `/v` (the bound value, never a call) and `/u`
+  (usurp): both deliver a function VALUE, which is the next item;
 - a function VALUE stepped as a literal, value-called functions, closures
   and capture, unnamed parameters and the frame argument span, the args
   stack and function baselines, tail-call frame elision, return patterns;
