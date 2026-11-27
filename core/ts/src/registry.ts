@@ -14,6 +14,7 @@ import {
   type FnDefInfo,
   type FnSig,
   newFnDef,
+  newParenExpr,
   type Value,
 } from "./value.ts";
 
@@ -236,6 +237,58 @@ export class Registry {
   }
 
   /**
+   * What `name/u` denotes: the bound FUNCTION with its argument order
+   * reversed, so that `f/u a b c` is `f c b a`. Mirrors Go's ResolveUsurp
+   * and usurpOver (core/go/core_ref.go) and the Lean model's usurpOver.
+   *
+   * The wrapper is a function of its own. Every signature is one of the
+   * original's with its parameters REVERSED and all of them collectable
+   * forward, whatever the original's barrier. A parameter keeps its type,
+   * its pattern and its /q; a type-arg slot and a no-eval slot are the
+   * original's to enforce, on the re-dispatch. Its handler re-dispatches
+   * the ORIGINAL — the function as it is bound, identity and all — in a
+   * paren group of its own, with what it collected reversed and laid out
+   * for the original's barrier: what the original takes from the stack
+   * before it, what it takes forward after.
+   *
+   * A wrapper is a NEW function every time one is made: two `name/uv`
+   * are not the same function.
+   *
+   * Only a function has an argument order to reverse: `"illegal_ref"` for
+   * a name bound to anything else, `undefined` for a name nothing binds.
+   */
+  resolveUsurp(name: string): Value | "illegal_ref" | undefined {
+    const top = this.topOfDefStack(name);
+    if (top !== undefined && !top.isFnDef()) return "illegal_ref";
+    const orig = this.resolveRef(name);
+    if (orig === undefined) return undefined;
+    const info = orig.asFnDef();
+    // The original's signatures, each with the barrier it was bound with.
+    // A boru-bodied signature collects every parameter forward.
+    const sources: Signature[] =
+      info.native !== undefined
+        ? info.native.declOrder
+        : info.sigs.map((fs) => ({
+            args: fs.params.map((p) => p.type),
+            argNames: fs.params.map((p) => p.name),
+            returns: fs.returns,
+            barrierPos: fs.params.length,
+            handler: () => [],
+          }));
+    const wrapped = sources.map((src) => usurpSig(src, orig));
+    const entry: FunctionEntry = {
+      name,
+      signatures: [...wrapped],
+      declOrder: wrapped,
+      forwardPrecedence: true,
+      maxForwardArgs: 0,
+    };
+    sortSignatures(entry.signatures);
+    entry.maxForwardArgs = computeMaxForward(entry);
+    return newFnDef({ sigs: wrapped.map(authoredSig), native: entry }, name);
+  }
+
+  /**
    * The function a def-bound name DISPATCHES as: every function bound
    * under the name, newest first — a name defined twice has the overloads
    * of both definitions (Go's lookupUncached / aggregateDispatch).
@@ -348,6 +401,39 @@ function authoredSig(sig: Signature): FnSig {
     })),
     returns: sig.returns ?? [],
     body: [],
+  };
+}
+
+/**
+ * One signature of a usurp wrapper: `src` with its parameters reversed and
+ * every one of them collectable forward, re-dispatching `orig`.
+ */
+function usurpSig(src: Signature, orig: Value): Signature {
+  const n = src.args.length;
+  const flip = (i: number): number => n - 1 - i;
+  // How many of the original's parameters come off the STACK: those from
+  // its barrier on. They are the first the wrapper collected.
+  const stackSide = n - Math.min(Math.max(src.barrierPos ?? 0, 0), n);
+  return {
+    args: [...src.args].reverse(),
+    argNames: src.args.map((_, i) => src.argNames?.[flip(i)] ?? ""),
+    returns: src.returns,
+    barrierPos: n,
+    patterns:
+      src.patterns === undefined
+        ? undefined
+        : new Map([...src.patterns].map(([i, p]) => [flip(i), p])),
+    quoteArgs:
+      src.quoteArgs === undefined
+        ? undefined
+        : new Set([...src.quoteArgs].map(flip)),
+    handler: (args: Value[]): Value[] => [
+      newParenExpr([
+        ...args.slice(0, stackSide),
+        orig,
+        ...args.slice(stackSide).reverse(),
+      ]),
+    ],
   };
 }
 

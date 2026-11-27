@@ -13,7 +13,12 @@ import type { RecorderOperand } from "./emit-recorder.ts";
 import { coerceBoolean } from "./coretype.ts";
 import { BoruError } from "./error.ts";
 import { valToString } from "./canon.ts";
-import { isRefWord, matchEntry, sigTypeMatches } from "./match.ts";
+import {
+  isRefWord,
+  isUsurpWord,
+  matchEntry,
+  sigTypeMatches,
+} from "./match.ts";
 import type { Registry } from "./registry.ts";
 import { resolveWordsDeep } from "./resolve.ts";
 import { sugarExpansion } from "./sugar.ts";
@@ -324,6 +329,12 @@ export class Engine {
         // bound value whatever slot is waiting, so a `/q` name slot is
         // handed that value and not the word — Go's stepWord takes its
         // ForceVal arm ahead of hasPendingForwardQuoteArg.
+        // `/u` before `/v`: `name/uv` is the reversed function as a
+        // value, not a plain reference.
+        if (isUsurpWord(val)) {
+          this.stepWordUsurp(val.asWord());
+          continue;
+        }
         if (isRefWord(val)) {
           this.stepWordVal(val.asWord().name);
           continue;
@@ -472,6 +483,52 @@ export class Engine {
   }
 
   /**
+   * Step a `name/u` word: the bound FUNCTION with its argument order
+   * reversed (Registry.resolveUsurp). Mirrors Go's stepWordUsurp and the
+   * `/u` arm of the Lean model's stepWord. The arity and the s/f
+   * modifiers written beside `u` are not read.
+   *
+   * `/u` alone is a CALL: a statement boundary, as a bare function word
+   * is, and then the wrapper dispatched where it stands as any function
+   * value is — so what it cannot be called on is `uncalled_function`.
+   *
+   * `/uv` is the wrapper as a VALUE: placed, and stepped over. It is NOT
+   * delivered to a word that is collecting, as a `/v` value is — the
+   * collection is left stranded. That is the kernel as it is (NUR390), not
+   * as it should be, and it is ported as it is.
+   */
+  private stepWordUsurp(w: WordInfo): void {
+    const name = w.name;
+    const v = this.registry.resolveUsurp(name);
+    if (v === undefined) {
+      if (this.registry.check.isActive()) {
+        this.undefinedWordPlaceholder(name);
+        return;
+      }
+      throw new BoruError("undefined_word", `undefined word: ${name}`, name);
+    }
+    if ("illegal_ref" === v) {
+      const detail = `/u requires a function word: ${name} is bound to a value`;
+      if (this.registry.check.isActive()) {
+        // Lenient, as an unbound name is: the diagnostic, then a
+        // placeholder so analysis continues.
+        this.checkPlaceholder("illegal_ref", detail, name);
+        return;
+      }
+      throw new BoruError("illegal_ref", detail, name);
+    }
+    if (true === w.forceVal) {
+      this.stack[this.pointer] = v;
+      this.pointer++;
+      return;
+    }
+    const stranded = this.strandedForwardError(name);
+    if (stranded !== undefined) throw stranded;
+    this.stack[this.pointer] = v;
+    this.stepLiteral();
+  }
+
+  /**
    * Check mode's stand-in for a name nothing binds: the diagnostic, and an
    * Any carrier in the word's cell so analysis continues past it. The
    * pointer is left on the placeholder — it must go through the literal
@@ -484,11 +541,12 @@ export class Engine {
    * `forward(idq,0/1)` on the stack under a lenient pass.
    */
   private undefinedWordPlaceholder(name: string): void {
-    this.registry.check.addDiagnostic({
-      code: "undefined_word",
-      detail: `undefined word: ${name}`,
-      word: name,
-    });
+    this.checkPlaceholder("undefined_word", `undefined word: ${name}`, name);
+  }
+
+  /** A check-mode diagnostic, and an Any carrier where the word stood. */
+  private checkPlaceholder(code: string, detail: string, name: string): void {
+    this.registry.check.addDiagnostic({ code, detail, word: name });
     const placeholder = newCarrier(TAny);
     placeholder.undefined = true;
     this.stack[this.pointer] = placeholder;
@@ -1355,21 +1413,26 @@ export class Engine {
     for (let i = 0; i < result.forwardCount && at < 0; i++) {
       const arg = result.args[i]!;
       if (!arg.isWord() || arg !== this.stack[this.pointer + 1 + i]) continue;
-      const stepped = isRefWord(arg) ? undefined : this.wordValue(arg);
+      const stepped =
+        isRefWord(arg) || isUsurpWord(arg) ? undefined : this.wordValue(arg);
       if (stepped !== undefined) result.args[i] = stepped;
       else at = i;
     }
     if (at < 0) return m;
     const word = result.args[at]!;
     const wname = word.asWord().name;
+    // A `/u` word is a function word whatever follows the `u`: `/uv` is
+    // placed without arriving, so the call waiting on it is stranded as
+    // surely as by a call (NUR390).
     const isFunction =
-      !isRefWord(word) &&
-      (this.registry.topOfDefStack(wname) !== undefined ||
-        this.registry.lookup(wname) !== undefined);
+      isUsurpWord(word) ||
+      (!isRefWord(word) &&
+        (this.registry.topOfDefStack(wname) !== undefined ||
+          this.registry.lookup(wname) !== undefined));
     if (!isFunction) {
       throw new BoruError("undefined_word", `undefined word: ${wname}`, wname);
     }
-    if (wname.startsWith("__")) {
+    if (wname.startsWith("__") && !isUsurpWord(word)) {
       // The frame-tail word runs on its own; the call is matched as if
       // the window ended there.
       const view = [...this.stack];
@@ -1945,11 +2008,20 @@ export class Engine {
     // Collect: remove value from current position, append to marker.
     this.stack.splice(this.pointer, 1);
     m.collected.push(val);
-    // pointer stays — it now points at what came after the value.
 
     if (m.collected.length === m.expectedForward) {
       this.completeForward(fwdIdx);
+      return;
     }
+    // Still collecting: the pointer returns to just after the marker, as
+    // core/go's does. Ordinarily that is where it already is — every
+    // value met since the marker was collected. The exception is a value
+    // PLACED there without arriving, which only `name/uv` does (NUR390):
+    // it is stepped again now, and this time it arrives. So
+    // `bothq negq/uv 1` collects the 1 and then the wrapper it had passed
+    // over, where `bothq 1 negq/uv` — nothing collected after the wrapper
+    // was placed — is left stranded. The kernel as it is.
+    this.pointer = fwdIdx + 1;
   }
 
   /**

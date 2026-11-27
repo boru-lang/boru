@@ -189,6 +189,11 @@ function resolveForwardToken(
   registry: Registry | undefined,
 ): Value {
   if (!tok.isWord()) return tok;
+  // `name/u` is a CALL of the reversed function, and `name/uv` a wrapper
+  // that is placed without arriving anywhere (NUR390, as the kernel has
+  // it): neither is a value the scan can read in advance. The word stays
+  // a word and is stepped.
+  if (isUsurpWord(tok)) return tok;
   // `name/v` is the bound VALUE, whatever the slot: the reference is read
   // before any capture or cascade, as the word step reads it. An unbound
   // name stays the word, so the dispatch defers and stepping it reports
@@ -216,6 +221,11 @@ function resolveForwardToken(
   const t = typeNameTable().get(name);
   if (t !== undefined) return newTypeLiteral(t);
   return tok;
+}
+
+/** A word written `name/u` or `name/uv`: the bound function, reversed. */
+export function isUsurpWord(v: Value): boolean {
+  return v.isWord() && true === v.asWord().forceUsurp;
 }
 
 /** A word written `name/v`: a reference to the bound value, never a call. */
@@ -267,7 +277,12 @@ function tryMatch(
     //
     // A `name/v` word is not a capture site at all: the reference is
     // read first, so the slot is offered the bound value.
-    if (sig.quoteArgs?.has(fwd) && rawTok.isWord() && !isRefWord(rawTok)) {
+    if (
+      sig.quoteArgs?.has(fwd) &&
+      rawTok.isWord() &&
+      !isRefWord(rawTok) &&
+      !isUsurpWord(rawTok)
+    ) {
       const expected = sig.args[fwd]!;
       if (!TAtom.matches(expected)) break;
       args[fwd] =

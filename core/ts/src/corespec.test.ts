@@ -130,15 +130,17 @@ function token(tok: string): Value {
   // suffix is not a modifier (`Scalar/String`) leaves the token a plain
   // word. Written independently of the Go runner's copy.
   // The modifiers come in ONE written order — a forced arity N, then at
-  // most one of `s` or `f`, then `v` (the bound VALUE, never a call) —
-  // each optional and at least one present.
-  const mod = /^(.+)\/(\d*)([sf]?)(v?)$/.exec(tok);
-  if (mod !== null && (mod[2] !== "" || mod[3] !== "" || mod[4] !== "")) {
+  // most one of `s` or `f`, then `u` (the bound function with its argument
+  // order reversed), then `v` (the bound VALUE, never a call) — each
+  // optional and at least one present.
+  const mod = /^(.+)\/(\d*)([sf]?)(u?)(v?)$/.exec(tok);
+  if (mod !== null && mod.slice(2).some((m) => m !== "")) {
     const info: WordInfo = { name: mod[1]! };
     if (mod[2] !== "") info.argCount = BigInt(mod[2]!);
     if (mod[3] === "s") info.forceStack = true;
     if (mod[3] === "f") info.forceForward = true;
-    if (mod[4] === "v") info.forceVal = true;
+    if (mod[4] === "u") info.forceUsurp = true;
+    if (mod[5] === "v") info.forceVal = true;
     return new Value(TWord, info);
   }
   return newWord(tok);

@@ -197,3 +197,7 @@ run unifyq negq/v 5	false	but it is not an Integer
 # identity of its own — a reference to it is built from both, and is a new
 # function at every read, so it does not unify with itself.
 run def f fn( n Integer Integer [ n ] ) ; def f fn( n String String [ n ] ) ; unifyq f/v f/v	false	as the kernel has it: a twice-defined name is not equal to itself
+
+# A usurp wrapper (`name/uv`) is a NEW function every time one is made.
+run unifyq [ negq/uv ] [ negq/uv ]	false	two wrappers of one word are two functions
+run unifyq negq/uv negq/uv	ERROR:signature_error	the wrapper is placed without arriving, so unifyq is stranded

@@ -814,6 +814,81 @@ run def f fn( n Integer Integer [ 1 ] ) ; def f fn( n Integer Integer [ 2 ] ) ; 
 run def f fn( n Integer Integer [ n ] ) ; def f 7 ; f	7	a VALUE bound over a function simply shadows it
 run def f fn( n Integer Integer [ n ] ) ; def f 7 ; f/v	7	for the reference too
 
+# --- `/u`: the bound function with its argument order reversed ---------------
+# `f/u a b c` is `f c b a`. The word resolves to its function and is wrapped:
+# every signature's parameters reversed and all of them collectable forward,
+# whatever the original's barrier; the wrapper re-dispatches the original, in
+# a group of its own, with what it collected reversed. `bothq` answers its
+# SECOND argument, so `bothq 1 'a'` is 'a' and `bothq/u 1 'a'` is 1. The
+# wrapper is an ordinary all-forward function: its operands split by the one
+# rule like any other's. A parameter keeps its type, its pattern and its /q;
+# a type-arg slot is the original's to enforce, on the re-dispatch — which is
+# a function VALUE's dispatch, so a refusal there is uncalled_function.
+run negq/u 5	-5
+run 5 negq/u	-5
+run bothq/u 1 'a'	1
+run bothq/u 'a' 1	'a'
+run 1 bothq/u 'a'	'a'
+run 1 'a' bothq/u	'a'
+run sumq/u 1 2	3
+run pairq/u 1 2	1 1 2
+run ( bothq/u 1 'a' )	1
+run [ bothq/u 1 'a' ]	[1]
+run bothq/u ( 1 ) 'a'	1
+run bothq/u [q a b ] 'x'	[a b]
+run def f fn( n Integer Integer [ addq n 1 ] ) ; f/u 5	6
+run def f fn( n Integer Integer [ addq n 1 ] ) ; 5 f/u	6
+run patq/u 7	1
+run patq/u 2	ERROR:uncalled_function
+run qanyq/u [ addq 1 2 ]	[3]
+run tyq/u Integer	Integer
+run tyq/u 5	ERROR:uncalled_function
+run boomq/u 1	ERROR:fixture_boom
+run depthq/u	0
+run addq/u 1	ERROR:uncalled_function
+run 1 addq/u	ERROR:uncalled_function
+run bothq/u 1 ; 2	ERROR:uncalled_function
+run bothq/u ; 1 2	fn [[b:Any a:Any][Any][]] 1 2
+
+# `/uv` is that wrapper as a VALUE: placed, not called. The arity and the
+# s/f modifiers written beside `u` or `v` are not read.
+run addq/2u 1 2	3
+run addq/su 1 2	3
+run 1 2 addq/fu	3
+
+# Only a FUNCTION has an argument order to reverse: `/u` on a name bound to
+# anything else is illegal_ref — a root type included (`def x None ; x/u`
+# dereferenced nil building that error, and surfaced as internal_error).
+run def x 5 ; x/u	ERROR:illegal_ref
+run def x 5 ; x/uv	ERROR:illegal_ref
+run def x None ; x/u	ERROR:illegal_ref
+run def x Any ; x/u	ERROR:illegal_ref
+run def x Integer ; x/u	ERROR:illegal_ref
+
+# NUR390, pinned as the kernel has it: a `/v` value ARRIVES at a word that is
+# collecting, a `/uv` value does not — it is left behind the pointer, so the
+# collection is stranded, or (the last row) silently takes it from the stack
+# in the other slot.
+run bothq 1 negq/uv	ERROR:signature_error
+run boomq negq/uv	ERROR:signature_error
+
+# The wrapper is a function VALUE like any other once it exists: placed by
+# `/uv`, called where something re-steps it, and collected by a waiting
+# word only by the route NUR390 leaves it.
+run ( bothq/uv 1 'a' )	1	a group re-steps the placed wrapper, which is then called: reversed, it answers the first
+run ( 1 'a' bothq/uv )	'a'	with both operands beneath it
+run tyq bothq/uv	ERROR:signature_error	the wrapper is a function, so it fills a type-arg slot — but it never arrives: tyq is stranded
+run bothq/u ( bothq/u 1 2 ) 3	1	a reversed call nests through a group
+run bothq/u bothq/u 1 2	ERROR:signature_error	and not by adjacency: `/u` alone is a function word, and a barrier
+run boomq bothq/u 1 2	ERROR:signature_error	for a waiting word as much as for itself
+run nosuchword/u	ERROR:undefined_word	an unbound name is undefined, as for `/v`
+run nosuchword/uv	ERROR:undefined_word	in either form
+run true/u	ERROR:undefined_word	a keyword is not a binding
+run Integer/u	ERROR:undefined_word	nor is a builtin type name
+run def inc fn( n Any Any [ n ] ) ; inc/u 5	5	a boru-bodied function of one parameter reverses to itself
+run def inc fn( n Any Any [ n ] ) ; ( inc/uv 5 )	5	and its wrapper is called like any function value
+run def inc fn( n Any Any [ n ] ) ; inc/u 'x' 5	'x' 5	with what it has no room for left alone
+
 # --- a refused collection never re-plans itself (NUR388) --------------------
 # A function VALUE whose first forward argument is refused at arrival is
 # sealed to the stack for its re-step, as a word is rewritten to /s; and a
