@@ -522,6 +522,82 @@ run ( 1 ( fn( n Any Any [ n ] ) ) )	1	whichever side the operand is on
 run bothq 1 ( fn( n Any Any [ n ] ) )	fn [[n:Any][Any][n]]	a group in a forward window hands the function to the waiting word
 run p( fn( n Any Any [ n ] ) ) 5	fn [[n:Any][Any][n]] 5	a paren-expression value places it the same way
 
+# --- the call FRAME ------------------------------------------------------
+# A boru-bodied call runs in a frame: on the tape, the paren group
+# `(frame-open) body __DC [__RC] )`. Two things happen at its edges.
+#
+# ON THE WAY IN, a pending container argument is a PROGRAM and runs before
+# it is bound — in the caller's scope, as a native word's argument does —
+# and a list is then bound quoted, so the body reads it as data.
+run def inc fn( n Any Any [ n ] ) ; inc [ addq 1 2 ]	(quote [3])	an argument list is evaluated, THEN bound quoted
+run def inc fn( n Any Any [ n ] ) ; [ addq 1 2 ] inc	(quote [3])	from the stack as well
+run def inc fn( n Any Any [ n ] ) ; inc [ [ addq 1 2 ] ]	(quote [[3]])	at any depth
+run def inc fn( n Any Any [ n ] ) ; inc [ ]	(quote [])	an empty list is its own evaluation
+run def inc fn( n Any Any [ n ] ) ; inc { a: [ addq 1 2 ] }	{a:[3]}	a map argument's members run the same way
+run def inc fn( n Any Any [ n ] ) ; inc [ boomq 1 ]	ERROR:fixture_boom	so a fault in the argument surfaces before the body runs
+run def inc fn( n Any Any [ n ] ) ; inc [ zzz ]	ERROR:undefined_word	an unbound name in it included
+run def inc fn( n Any Any [ n ] ) ; def n 9 ; inc [ n ]	(quote [9])	in the CALLER's scope: the `n` it reads is the caller's, not the parameter
+run def inc fn( n Any Any [ n ] ) ; inc [ n ]	ERROR:undefined_word	and with no such binding the name is simply unbound
+run def inc fn( n Integer Integer [ n ] ) ; inc [ addq 1 2 ]	ERROR:signature_error	the list is still a List: it does not fit an Integer parameter
+run fn( n Any Any [ n ] ) [ addq 1 2 ]	(quote [3])	a function VALUE's call binds the same way
+run [ addq 1 2 ] fn( n Any Any [ n ] )	(quote [3])	from the stack
+run fn( n Any Any [ n ] ) [ boomq 1 ]	ERROR:fixture_boom	and faults the same way
+run def inc fn( n Integer Any [ depthq ] ) ; 5 6 inc 1	5 6 0	the frame seals the stack beneath: the body sees none of the caller's values
+
+# ON THE WAY OUT, the RETURN CHECK. A signature that declares returns is a
+# contract on what its body leaves: exactly that many values, each a
+# member of its declared type — the question the parameter boundary asks,
+# asked again at the other end. Anything else is a `type_error` raised as
+# the frame closes.
+run def inc fn( n Any Integer [ n ] ) ; inc 'x'	ERROR:type_error	a String under a declared Integer return
+run def inc fn( n Any Integer [ n ] ) ; inc 5	5	a member passes
+run def inc fn( n Any Integer [ n ] ) ; 'x' inc	ERROR:type_error	the stack call form
+run def inc fn( n Any Integer [ n ] ) ; ( inc 'x' )	ERROR:type_error	in a paren group
+run def inc fn( n Any Integer [ n ] ) ; [ inc 'x' ]	ERROR:type_error	in a list literal
+run def inc fn( n Any Integer [ n ] ) ; { a: p( inc 'x' ) }	ERROR:type_error	in a map member
+run def inc fn( n Any Integer [ n ] ) ; boomq ( inc 'x' )	ERROR:type_error	before the word waiting on its result runs
+run def inc fn( n Any Integer [ n ] ) ; inc ( inc 'x' )	ERROR:type_error	and before an outer call of the same function
+run def inc fn( n Any Integer [ n ] ) ; inc Integer	Integer	the type literal is a member of its own type
+run def inc fn( n Any Integer [ n ] ) ; inc String	ERROR:type_error	another type's literal is not
+run def inc fn( n Any Integer [ n ] ) ; inc none	ERROR:type_error	nor is the absent value
+run def inc fn( n Any String [ n ] ) ; inc 'x'	'x'	each declared type admits its own
+run def inc fn( n Any String [ n ] ) ; inc 5	ERROR:type_error	and refuses the rest
+run def inc fn( n Any Boolean [ n ] ) ; inc 1	ERROR:type_error	an Integer is not a Boolean
+run def inc fn( n Any List [ n ] ) ; inc [ 1 2 ]	(quote [1 2])	a list passes a List return, still quoted
+run def inc fn( n Any List [ n ] ) ; inc { a: 1 }	ERROR:type_error	a map does not
+run def inc fn( n Any Map [ n ] ) ; inc { a: 1 }	{a:1}	and passes a Map one
+run def inc fn( n Any None [ n ] ) ; inc none	none	`none` is the member of None
+run def inc fn( n Any None [ n ] ) ; inc 5	ERROR:type_error	and nothing else is
+run def inc fn( n Any Any [ n ] ) ; inc none	none	an Any return admits whatever ONE value the body leaves
+run fn( n Any Integer [ n ] ) 'x'	ERROR:type_error	a function VALUE's call runs in the same frame
+run 'x' fn( n Any Integer [ n ] )	ERROR:type_error	from the stack
+run [ fn( n Any Integer [ n ] ) 'x' ]	ERROR:type_error	and in a list literal
+
+# The COUNT is checked first, and a declared return is never satisfied by
+# a different number of values — `Any` included.
+run def inc fn( n Any Any [ ] ) ; inc 5	ERROR:type_error	a body that leaves nothing under one declared return
+run def inc fn( n Any Any [ n n ] ) ; inc 5	ERROR:type_error	or two
+run def inc fn( n Any Any [ dupq n ] ) ; inc 5	ERROR:type_error	however they came to be there
+run def inc fn( n Any Any [ ( n n ) ] ) ; inc 5	ERROR:type_error	a group's two results are two values
+run def inc fn( n Any Any [ ( ) ] ) ; inc 5	ERROR:type_error	and an empty group's none
+run def inc fn( n Any Any [ ; ] ) ; inc 5	ERROR:type_error	`end` is not a value
+run def inc fn( n Any Any [ n ; ] ) ; inc 5	5	nor does it count against one that is there
+run def inc fn( n Any Any [ [ n n ] ] ) ; inc 5	[5 5]	a LIST of two is one value
+run def inc fn( n Any Integer [ pairq n ] ) ; inc 5	ERROR:type_error	two Integers are not an Integer
+run fn( n Any Any [ ] ) 5	ERROR:type_error	a function value's call is held to the count too
+run fn( n Any Integer [ n n ] ) 5	ERROR:type_error	in both directions
+
+# What is checked is the frame's RESIDUAL — after the pending containers
+# the body left have been evaluated, with the parameters still bound.
+run def inc fn( n Any List [ [ n ] ] ) ; inc 5	[5]	the list the body leaves is evaluated in the frame, then checked
+run def inc fn( n Any Integer [ [ n ] ] ) ; inc 5	ERROR:type_error	so a list is a List there, not the Integer inside it
+run def inc fn( n Any Map [ { a: n } ] ) ; inc 5	{a:5}	a map likewise
+run def inc fn( n Any Integer [ addq n 1 ] ) ; inc 5	6	a computed result is checked as computed
+run def inc fn( n Any Integer [ addq n 1 ] ) ; inc 'x'	ERROR:signature_error	and a fault in the body is the body's, not the check's
+run def inc fn( n Any Integer [ boomq n ] ) ; inc 5	ERROR:fixture_boom	whatever the fault
+run def inc fn( n Any Integer [ zzz ] ) ; inc 5	ERROR:undefined_word	an unbound name in the body is reported as that
+run def f fn( n Integer Integer [ addq n 1 ] ) ; def g fn( n Integer Integer [ f n ] ) ; g 5	6	a call inside a body runs in a frame of its own, checked on its own
+
 # An Integer is a signed 64-bit integer (REFERENCE.md:84), so the fixture
 # arithmetic WRAPS. The TypeScript fixture computed in bigint and handed
 # back an Integer outside the type's range; all three runners wrap now.

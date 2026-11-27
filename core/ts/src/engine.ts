@@ -1124,7 +1124,7 @@ export class Engine {
         name,
       );
     }
-    this.callFnSig(m);
+    this.callFnSig(name, m);
   }
 
   /**
@@ -1291,11 +1291,26 @@ export class Engine {
   }
 
   /**
-   * Run a matched boru-bodied signature: bind its parameters, run the
-   * body, and splice the body's residual where the call stood.
+   * Run a matched boru-bodied signature in a CALL FRAME: evaluate its
+   * pending container arguments, bind its parameters, run the body, hold
+   * the body's residual to the declared returns, and splice it where the
+   * call stood.
+   *
+   * In Go the frame is a paren group on the caller's tape —
+   * `(frame-open) body __DC [__RC] )` — whose cleanup marker unbinds the
+   * parameters and whose return check reads the group's residual
+   * (core/go/fn_frame.go AppendFrameTail; the Lean model's closeFrame).
+   * Here the body runs in an engine of its own and the same two steps
+   * bracket that run.
    */
-  private callFnSig(m: FnMatch): void {
+  private callFnSig(name: string, m: FnMatch): void {
     const { result, sig: chosen, usedK } = m;
+    // A pending container argument is a PROGRAM, and it runs before the
+    // frame binds it — in the caller's scope, as a native word's argument
+    // does. Binding first quoted the list as it was written, so
+    // `inc [ addq 1 2 ]` handed the body `[addq 1 2]` where Go hands it
+    // `[3]`.
+    this.autoEvalArgs(result.args, result.sig);
     const total = chosen.params.length;
     // Bind each param on the def stack so the body can reference it.
     // Provided args bind directly; omitted optional params default to
@@ -1321,6 +1336,7 @@ export class Engine {
         this.registry.popDef(chosen.params[i]!.name);
       }
     }
+    this.checkFrameReturns(name, chosen, bodyResult);
 
     // Splice the result over the consumed range (prefix + word +
     // forward args), exactly like a native handler.
@@ -1328,6 +1344,44 @@ export class Engine {
     const replaceCount = result.prefixCount + 1 + result.forwardCount;
     this.stack.splice(replaceFrom, replaceCount, ...bodyResult);
     this.pointer = replaceFrom + bodyResult.length;
+  }
+
+  /**
+   * THE FRAME'S RETURN CHECK. A signature that declares returns is a
+   * contract on what its body leaves: exactly that many values, each one
+   * a member of its declared type. A body that leaves anything else is a
+   * `type_error` raised as the frame closes — the count first, then each
+   * value in order. A signature that declares no returns makes no
+   * promise and is not checked.
+   *
+   * Membership is the question the parameter boundary asks, so a value
+   * is held to the same rule on the way out as on the way in
+   * (core/go/engine.go validateReturnTypes, `v.Is(exp)`).
+   */
+  private checkFrameReturns(
+    name: string,
+    sig: import("./value.ts").FnSig,
+    results: readonly Value[],
+  ): void {
+    const returns = sig.returns;
+    if (0 === returns.length) return;
+    if (results.length !== returns.length) {
+      throw new BoruError(
+        "type_error",
+        `${name}: expected ${returns.length} return value(s), got ${results.length}`,
+        name,
+      );
+    }
+    for (let i = 0; i < returns.length; i++) {
+      const want = returns[i]!;
+      const got = results[i]!;
+      if (got.vType.matches(want)) continue;
+      throw new BoruError(
+        "type_error",
+        `${name}: return value ${i + 1}: expected ${want.toString()}, got ${got.toString()}`,
+        name,
+      );
+    }
   }
 
   /**
@@ -1646,7 +1700,7 @@ export class Engine {
       return;
     }
     if (this.registry.check.isActive()) this.analyseFnMatch(name, m);
-    else this.callFnSig(m);
+    else this.callFnSig(name, m);
   }
 
   /**
