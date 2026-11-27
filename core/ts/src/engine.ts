@@ -111,7 +111,7 @@ function baseValue(t: BoruType): Value {
   return newNone();
 }
 import type { FunctionEntry } from "./registry.ts";
-import type { Signature } from "./signature.ts";
+import { moreSpecificFirst, type Signature } from "./signature.ts";
 
 /** A boru-bodied signature matched against the arguments at the pointer. */
 interface FnMatch {
@@ -132,29 +132,6 @@ interface FnMatch {
  */
 function callsAtPointer(v: Value): boolean {
   return v.vType.equal(TFunction) && v.isFnDef() && !v.quoted;
-}
-
-/**
- * The order a function's overloads are tried in: the longer arity first,
- * then — position by position — the more specific parameter type first.
- * Stable, so overloads that compare equal keep the order they were bound
- * in, newest definition first. Mirrors Go's SortSignatures
- * (core/go/signature.go), which is what makes `def f fn [[n:Any] …]`
- * stacked over `def f fn [[n:Integer] …]` still answer an Integer with
- * the Integer overload.
- */
-function moreSpecificFirst(
-  a: import("./value.ts").FnSig,
-  b: import("./value.ts").FnSig,
-): number {
-  if (a.params.length !== b.params.length) {
-    return b.params.length - a.params.length;
-  }
-  for (let i = 0; i < a.params.length; i++) {
-    const d = b.params[i]!.type.specificity() - a.params[i]!.type.specificity();
-    if (0 !== d) return d;
-  }
-  return 0;
 }
 
 /**

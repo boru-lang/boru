@@ -45,6 +45,8 @@ import {
   TList,
   TMap,
   TNone,
+  TNumber,
+  TScalar,
   TString,
   type BoruType,
   TWord,
@@ -60,6 +62,13 @@ const TYPE_LITS: Record<string, BoruType> = {
   Map: TMap,
   Any: TAny,
   None: TNone,
+};
+
+/** The two nodes between Any and Integer, which a `fn(` parameter may
+ *  also declare, so a row can state a chain of three. */
+const FN_TYPES: Record<string, BoruType> = {
+  Number: TNumber,
+  Scalar: TScalar,
 };
 
 function token(tok: string): Value {
@@ -104,17 +113,27 @@ function item(toks: string[], st: { i: number }): Value {
     return newList(elems, { eval: "[" === tok });
   }
   if ("fn(" === tok) {
-    // fn( NAME PTYPE RTYPE [ body ] ) — one param, one return, a boru
-    // body: the smallest shape that DISPATCHES. Written independently of
-    // the Go runner's copy, per the two-runner rule.
+    // fn( NAME PTYPE … RTYPE [ body ] ) — the parameters in signature
+    // order, one return, a boru body. Written independently of the Go
+    // runner's copy, per the two-runner rule.
     st.i++;
-    const pname = toks[st.i]!;
-    const ptype = TYPE_LITS[toks[st.i + 1]!];
-    const rtype = TYPE_LITS[toks[st.i + 2]!];
-    if (undefined === ptype || undefined === rtype) {
-      throw new Error(`fn( ${pname}: not corpus-known type names`);
+    const spec: string[] = [];
+    while (st.i < toks.length && "[" !== toks[st.i] && "[q" !== toks[st.i]) {
+      spec.push(toks[st.i++]!);
     }
-    st.i += 3;
+    if (spec.length < 3 || 0 === spec.length % 2) {
+      throw new Error(`fn( wants NAME PTYPE … RTYPE before its body: ${spec.join(" ")}`);
+    }
+    const fnType = (name: string): BoruType => {
+      const t = FN_TYPES[name] ?? TYPE_LITS[name];
+      if (undefined === t) throw new Error(`fn( ${name}: not a corpus-known type name`);
+      return t;
+    };
+    const params: { name: string; type: BoruType }[] = [];
+    for (let i = 0; i + 1 < spec.length; i += 2) {
+      params.push({ name: spec[i]!, type: fnType(spec[i + 1]!) });
+    }
+    const rtype = fnType(spec[spec.length - 1]!);
     const body = item(toks, st);
     st.i++; // past the ')'
     // NAMED, as the runner's copy is: the Go form installs the function
@@ -124,7 +143,7 @@ function item(toks: string[], st: { i: number }): Value {
       {
         sigs: [
           {
-            params: [{ name: pname, type: ptype }],
+            params,
             returns: [rtype],
             body: body.asList(),
           },

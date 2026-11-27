@@ -32,6 +32,8 @@ theorem, or by the differential search.
 | An ANONYMOUS function at the pointer: called when something it can take stands beside it, otherwise a value — never `uncalled_function` | `engine.go` `execFnDefLiteral` | `Engine.lean` `dispatchFnValue` | `divergent.tsv` (Go column); search |
 | Driven loops: a looping word hands the engine a driver; each iteration is a sealed region of its own — the driver's inputs, inert, then the body — whose residual goes to the driver and is never stepped again; the driver's results stand in the loop's place | `loop.go` `LoopDriver`, `StartLoop`, `stepMoveDriven`, `spliceDrivenIteration` | `Engine.lean` `Driver`, `driveLoop`, `runRegion` | `Theorems/Loop.lean`; `divergent.tsv` (Go column); search |
 | Function identity: a function is equal only to itself — in unification and in a disjunct's reduction — a reference carries the identity of the one function bound to its name, and a wrapper is a new function | `compare.go` `sameFnIdentity`, `registry.go` `aggregateIdent`, `value.go` `NewFunction` | `Value.lean` (`fn … ident`), `Compare.lean` `sameValue`, `Match.lean` `Defs.refIdent` | `Theorems/UnifyOrder.lean` (`function_identity`); `unify.tsv`; `dispatch.tsv`; search |
+| The dispatch order: which of a name's several definitions a call takes — more arguments first, then the greater expectation at the first position that differs (a pattern before its family's bare type, a type before every type above it, a branch root before `Any`), then a piped barrier, then the newest definition; one order however the definitions were made, and the order a reference lists them in | `signature.go` `CompareSignatures`, `SortSignatures`, `registry.go` `aggregateDispatch` | `Match.lean` `Sig.order`, `Defs.insertSig`, `Defs.lookup?` | `Theorems/Overload.lean`; `dispatch.tsv`; search |
+| A failed plan: retried with every argument from the stack — for a native word, a function literal and a forced arity, and NOT for a word defined in boru, whose synthetic fallback answers it (NUR398, as the kernel has it) | `engine.go` `matchForDispatch`, `registry.go` `fnFallbackSig` | `Engine.lean` `answersItself`, `dispatchWord` | `dispatch.tsv`; `divergent.tsv` (Go column); search |
 | The stack-form probe | `signature.go` `MatchSignature` | `Match.lean` | search |
 | The step loop: literals and arrival, word resolution, word literals, undefined words | `engine.go` | `Engine.lean` | corpus; search |
 | Parking and collecting a forward; completion and the stack-only re-dispatch | `engine.go` | `Engine.lean` | corpus; search; theorems |
@@ -59,7 +61,9 @@ extending the notation and its fixture in all three runners first.
   value call, unnamed parameters and the frame argument span, the args
   stack, the truncation of a frame's body-local definitions, tail-call
   frame elision, return patterns;
-- overload order by slot specificity (`CompareSignatures` beyond arity),
+- the dispatch order's two inputs the fixture cannot reach: a pattern
+  against a bare type across two overloads of one word, and `CoreDefault`
+  (every fixture word has one signature, and `fn(` declares types only);
   and `Extends`;
 - the counted and conditional loops (`for`, `while`: a mark, a body, a
   move, with no sealing paren), call regions, and flow control — break

@@ -130,7 +130,24 @@ def gen_program(rng, max_len):
                  rng.choice(["Integer", "Any"])] + body.split() + [")", ";"]
         if rng.random() < 0.8:
             toks += ["inc"]
+    # a word with SEVERAL definitions, of one or two parameters: which one
+    # a call takes is the dispatch order — more arguments first, then the
+    # more specific type at the first position that differs, then the
+    # newest definition
+    overloaded = rng.random() < 0.15
+    if overloaded:
+        ptypes = ["Integer", "Any", "Scalar", "Number", "String", "Boolean", "List", "None"]
+        for tag in range(1, rng.randint(2, 4) + 1):
+            params = []
+            for name in ["a", "b"][:rng.randint(1, 2)]:
+                params += [name, rng.choice(ptypes)]
+            body = rng.choice([[str(tag)], [str(tag)], ["a"], ["addq", "a", str(tag)]])
+            toks += ["def", "ov", "fn("] + params + ["Any", "["] + body + ["]", ")", ";"]
     items = [gen_item(rng, 2) for _ in range(rng.randint(1, max_len))]
+    if overloaded:
+        for _ in range(rng.randint(1, 2)):
+            items.insert(rng.randint(0, len(items)),
+                         [rng.choice(["ov", "ov", "ov", "ov/s", "ov/u", "ov/v", "ov/1", "ov/2"])])
     # a function VALUE standing in the program: it dispatches where it stands
     if rng.random() < 0.08:
         body = rng.choice(["[ addq n 1 ]", "[ n ]", "[ negq n ]", "[ n n ]", "[ ]", "[ dupq n ]"])

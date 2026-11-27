@@ -203,3 +203,29 @@ run undef negq ; negq 2	ERROR:undefined_word	-2	DATA: a native word is a binding
 # sit on NUR390's accident and will move when it is ruled on.
 run def f fn( n Any Any [ n ] ) ; f f/uv 5	5	ERROR:signature_error	CODE: core/ts strands a boru-bodied call that meets a `/uv` word in its forward window; Go places the wrapper and lets the call collect what follows (NUR390).
 run def f fn( n Any Any [ n ] ) ; f negq/uv 5	-5	ERROR:signature_error	CODE: core/ts strands a boru-bodied call that meets a `/uv` word in its forward window; Go places the wrapper and lets the call collect what follows (NUR390).
+#
+# --- a failed plan retried from the stack (NUR398's other half) ----------------
+# The forward 5 fits the first slot and the list on the stack is no Scalar, so
+# the plan fails; taking both arguments from the stack matches. core/go
+# retries that way for a function LITERAL at the pointer, for a word under a
+# forced arity, and for a word whose body has no tokens — and not for an
+# ordinary boru-defined word, which `dispatch.tsv` pins. core/ts retries for
+# none of them. These rows sit on NUR398 and move with its ruling.
+run null [q ] fn( a Any b Scalar Any [ 1 ] ) 5	1 5	ERROR:uncalled_function	a function literal is retried stack-only
+run def ov fn( a Any b Scalar Any [ 1 ] ) ; null [q ] ov/2 5	1 5	ERROR:signature_error	a forced arity rules the fallback out, and the retry back in
+run def ov fn( a Any b Scalar Any [ ] ) ; null [q ] ov 5	ERROR:type_error	ERROR:signature_error	a body of no tokens has no fallback: retried, matched, and then refused by its return check
+#
+# --- a driven loop inside a group a waiting word evaluates ----------------------
+# A region's inputs are INERT wherever the loop runs. core/go stepped them
+# when the loop ran inside a group a waiting word evaluates — a function
+# element was called on what the body wrote after it, a `/v` word resolved
+# (NUR397, fixed) — so each row here is the same loop out of a group and in
+# one. core/ts has no driven loops.
+run eachq [q fn( n Integer Integer [ addq n 1 ] ) ] [q 5 ]	[fn [[n:Integer][Integer][addq n 1]] 5]	ERROR:undefined_word	a function element is data beside the body's 5
+run bothq 1 ( eachq [q fn( n Integer Integer [ addq n 1 ] ) ] [q 5 ] )	[fn [[n:Integer][Integer][addq n 1]] 5]	ERROR:undefined_word	the same, in a group a waiting word evaluates
+run bothq 1 ( eachq [q fn( n Any Any [ 9 ] ) 7 ] [q 'a' ] )	[fn [[n:Any][Any][9]] 'a' 7 'a']	ERROR:undefined_word	every element, not only the first
+run eachq [q negq/v ] [q 4 ]	[negq/v 4]	ERROR:undefined_word	a /v word element is the word it was written as
+run bothq 1 ( eachq [q negq/v ] [q 4 ] )	[negq/v 4]	ERROR:undefined_word	the same, in a group
+run negq ( eachq [q fn( n Integer Integer [ n ] ) ] [q addq 1 ] )	ERROR:signature_error	ERROR:undefined_word	the body's own failure, not a refusal of the function input
+run bothq 1 ( eachq [q 5 ] [q fn( n Integer Integer [ addq n 1 ] ) ] )	[6]	ERROR:undefined_word	a function in the BODY is the one that dispatches
+run def f fn( n Any Any [ 2 ] ) ; def f fn( n Integer Any [ 1 ] ) ; eachq [q 1 'a' true ] [q f ]	[1 2 2]	ERROR:undefined_word	the dispatch order holds inside a region

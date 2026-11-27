@@ -13,3 +13,4 @@ import Boru.Core.Theorems.ArgumentRule
 import Boru.Core.Theorems.UnifyOrder
 import Boru.Core.Theorems.Closure
 import Boru.Core.Theorems.Loop
+import Boru.Core.Theorems.Overload

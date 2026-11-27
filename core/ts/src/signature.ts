@@ -4,8 +4,8 @@
 // type-check propagation.
 
 import type { BoruType } from "./type.ts";
-import { TAny } from "./type.ts";
-import { newCarrier, type Value } from "./value.ts";
+import { compareTypes, TAny } from "./type.ts";
+import { newCarrier, type FnSig, type Value } from "./value.ts";
 
 /** A handler receives matched args and the registry, returns the values to push. */
 export type Handler = (
@@ -189,6 +189,29 @@ export function signatureScore(sig: Signature): number {
  */
 export function sortSignatures(sigs: Signature[]): void {
   sigs.sort((a, b) => signatureScore(b) - signatureScore(a));
+}
+
+/**
+ * The order a boru-bodied function's overloads are tried in — and listed
+ * in, wherever the function is a value: the longer arity first, then — at
+ * the first position whose declared types differ — the type that sorts
+ * GREATER in the lattice order first: rank, then depth, then name
+ * (`compareTypes`), which puts a type before every type above it and a
+ * branch root before `Any`. Stable, so overloads that compare equal keep
+ * the order they were bound in, newest definition first. Mirrors Go's
+ * CompareSignatures (core/go/signature.go), which is what makes
+ * `def f fn [[n:Any] …]` stacked over `def f fn [[n:Integer] …]` still
+ * answer an Integer with the Integer overload.
+ */
+export function moreSpecificFirst(a: FnSig, b: FnSig): number {
+  if (a.params.length !== b.params.length) {
+    return b.params.length - a.params.length;
+  }
+  for (let i = 0; i < a.params.length; i++) {
+    const d = compareTypes(b.params[i]!.type, a.params[i]!.type);
+    if (0 !== d) return d;
+  }
+  return 0;
 }
 
 // Forward-declared type — the actual class lives in registry.ts.

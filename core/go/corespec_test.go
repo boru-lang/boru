@@ -91,6 +91,22 @@ func coreSpecTypeLit(name string) (Value, bool) {
 	return Value{}, false
 }
 
+// coreSpecFnType names a type a `fn(` parameter or return declares: the
+// seven the notation spells as literals, and the two nodes between Any and
+// Integer, so a row can declare a chain of three.
+func coreSpecFnType(name string) (*Type, bool) {
+	switch name {
+	case "Number":
+		return TNumber, true
+	case "Scalar":
+		return TScalar, true
+	}
+	if lit, ok := coreSpecTypeLit(name); ok {
+		return TypeNodeOf(lit), true
+	}
+	return nil, false
+}
+
 // coreSpecToken builds one `run` token: a decimal is an Integer, '…' is a
 // String, a known builtin type name is that type's literal, anything else is
 // a Word.
@@ -253,23 +269,37 @@ func coreSpecItem(t *testing.T, r *Registry, toks []string, pos int) (Value, int
 		}
 		return NewList(elems), pos
 	case "fn(":
-		// fn( NAME PTYPE RTYPE [ body ] ) — one param, one return, a boru
-		// body: the smallest shape that DISPATCHES. INSTALLED through
+		// fn( NAME PTYPE … RTYPE [ body ] ) — the parameters in signature
+		// order, one return, a boru body. INSTALLED through
 		// InstallFnDef, never assembled by hand — only installation builds
 		// each Signature's body-splicing Handler (buildFnBodyHandler), and
 		// the engine calls that handler unconditionally, so a hand-built
 		// FnDefInfo panics into internal_error.
 		pos++
-		pname := toks[pos]
-		ptype, ok := coreSpecTypeLit(toks[pos+1])
+		head := pos
+		for pos < len(toks) && toks[pos] != "[" && toks[pos] != "[q" {
+			pos++
+		}
+		spec := toks[head:pos]
+		if len(spec) < 3 || len(spec)%2 == 0 {
+			t.Fatalf("fn( wants NAME PTYPE … RTYPE before its body, got %q", spec)
+		}
+		// The NAMED type itself, as core/ts's runner declares it. A type
+		// literal IS its lattice node, so Parent() here would be the node's
+		// PARENT — Number for Integer, and nil for Any, which no slot
+		// matches (found by spec/tools/diff-fuzz.py).
+		params := make([]FnParam, 0, len(spec)/2)
+		for i := 0; i+1 < len(spec); i += 2 {
+			pt, ok := coreSpecFnType(spec[i+1])
+			if !ok {
+				t.Fatalf("fn( %s: %q is not a corpus-known type name", spec[i], spec[i+1])
+			}
+			params = append(params, FnParam{Name: spec[i], Type: pt})
+		}
+		rtype, ok := coreSpecFnType(spec[len(spec)-1])
 		if !ok {
-			t.Fatalf("fn( %s: %q is not a corpus-known type name", pname, toks[pos+1])
+			t.Fatalf("fn( return: %q is not a corpus-known type name", spec[len(spec)-1])
 		}
-		rtype, ok2 := coreSpecTypeLit(toks[pos+2])
-		if !ok2 {
-			t.Fatalf("fn( %s: %q is not a corpus-known type name", pname, toks[pos+2])
-		}
-		pos += 3
 		var body Value
 		body, pos = coreSpecItem(t, r, toks, pos)
 		if pos >= len(toks) || toks[pos] != ")" {
@@ -284,14 +314,10 @@ func coreSpecItem(t *testing.T, r *Registry, toks []string, pos int) (Value, int
 		// caller's `def` clause then rebinds; the VALUE is what the clause
 		// wants, so read it back off the def stack.
 		InstallFnDef(r, coreSpecFnScratch, FnDefInfo{Signatures: []Signature{{
-			// The NAMED type itself, as core/ts's runner declares it. A
-			// type literal IS its lattice node, so Parent() here would be
-			// the node's PARENT — Number for Integer, and nil for Any,
-			// which no slot matches (found by spec/tools/diff-fuzz.py).
-			Params:     []FnParam{{Name: pname, Type: TypeNodeOf(ptype)}},
-			Returns:    []*Type{TypeNodeOf(rtype)},
+			Params:     params,
+			Returns:    []*Type{rtype},
 			Impl:       Boru(bl.Slice()),
-			BarrierPos: 1,
+			BarrierPos: len(params),
 		}}})
 		fnVal, _ := r.Defs.Top(coreSpecFnScratch)
 		return fnVal, pos

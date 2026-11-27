@@ -77,6 +77,47 @@ def refIdent (d : Defs) (name : String) : Nat × Defs :=
 /-- How many bindings a name holds. -/
 def depth (d : Defs) (name : String) : Nat := (d.stack name).length
 
+end Defs
+
+/-! ## Dispatch order -/
+
+namespace Sig
+
+/-- What a signature EXPECTS at a position, as a value of the one order:
+    the structural pattern it declares there, or the bare type (core/go
+    `sigSlotValue`). -/
+def slotValue (s : Sig) (i : Nat) : Value :=
+  match s.params[i]? with
+  | some (.mk _ type pattern _ _) => pattern.getD (.typeLit type)
+  | none => .typeLit TAny
+
+/-- A PIPED barrier: some positions forward and some from the stack.
+    All-stack and all-forward are the two default shapes. -/
+def hasPipedBarrier (s : Sig) : Bool := 0 < s.barrier && s.barrier < s.arity
+
+/-- THE DISPATCH ORDER (core/go/signature.go `CompareSignatures`): `.lt`
+    when `a` is tried before `b`. More arguments first; at equal arity the
+    first position whose expectations differ decides, the GREATER one in
+    the total order of values first — a pattern before the bare type of
+    its family, a type before the types above it; then a piped barrier
+    before none. -/
+def order (a b : Sig) : Ordering :=
+  match compare b.arity a.arity with
+  | .eq =>
+    let slot := (List.range a.arity).findSome? fun i =>
+      match cmp (a.slotValue i) (b.slotValue i) with
+      | .eq => none
+      | o => some o.swap
+    match slot with
+    | some o => o
+    | none =>
+      compare (if b.hasPipedBarrier then 1 else 0) (if a.hasPipedBarrier then 1 else 0)
+  | o => o
+
+end Sig
+
+namespace Defs
+
 /-- THE FRAME BASELINES ride in the binding table too (core/go
     `Registry.FnBaselines`): one entry per open call frame, pushed as the
     frame is entered and before it binds anything. A frame whose body can
@@ -97,12 +138,16 @@ def topBaseline? (d : Defs) : Option (List (String × Value)) :=
   | some (.map entries _) => some entries
   | _ => none
 
-/-- Insert a signature keeping the dispatch order: more arguments first,
-    equal arity in definition order (core/go/signature.go
-    `CompareSignatures`; the slot-specificity tie-break is not modelled). -/
-def insertSig (s : Sig) : List Sig → List Sig
-  | [] => [s]
-  | t :: ts => if s.arity > t.arity then s :: t :: ts else t :: insertSig s ts
+/-- Insert a signature into a list already in DISPATCH ORDER (core/go
+    `SortSignatures`: a stable sort by `Sig.order`). The new signature
+    walks back from the end past every one it sorts strictly before, so
+    signatures the order holds equal stay as they were defined. -/
+def insertSig (s : Sig) (sorted : List Sig) : List Sig :=
+  (back sorted.reverse).reverse
+where
+  back : List Sig → List Sig
+    | [] => [s]
+    | t :: rest => if Sig.order s t == .lt then t :: back rest else s :: t :: rest
 
 /-- The function a name dispatches to: the overloads of every function
     value on the name's stack, newest binding first, in dispatch order. -/
