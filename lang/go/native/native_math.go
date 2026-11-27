@@ -633,19 +633,20 @@ func clockDurModHandler(tt TemporalModuleTypes) Handler {
 // TemporalArithmeticExtensions builds the add / sub WORD-EXTENSION
 // clones boru:time-util exports (design/OPEN-WORDS.0.md §2.4 / §6
 // migration 1): the temporal overloads that historically sat on the
-// core words, now anchored to the module's per-import duration mints —
-// which is exactly what satisfies the module-scope user-type rule at
-// transplant. The handlers stay here beside the other math handlers;
+// core words, now anchored to types boru:time-util owns — which is
+// exactly what the ownership-anchor rule (requireOwnedAnchor,
+// design/OPEN-WORDS.1.md R1) verifies at transplant against the clone's
+// declared owner. The handlers stay here beside the other math handlers;
 // only the signature tuples reference the minted types. BuildTimeModule
 // places each clone in the export map under its base name, so importing
 // the module transplants the overloads onto the importer's bare
 // add / sub (and TimeUtil.add / TimeUtil.sub work namespaced).
 func TemporalArithmeticExtensions(tt TemporalModuleTypes) []FnDefInfo {
-	// Anchored (first-party waiver): the affine POINT − POINT overloads
-	// (Date − Date, DateTime − DateTime, Instant − Instant) are all-builtin
-	// tuples the module-scope user-type rule would otherwise decline.
-	// boru:time-util ships with the kernel, so the waiver applies — the same
-	// escape hatch boru:io uses for its Pathon-anchored list/remove.
+	// Every tuple anchors on a type this module owns: the per-import
+	// duration / time-of-day mints, or — for the affine POINT − POINT
+	// overloads (Date − Date, DateTime − DateTime, Instant − Instant) —
+	// the globally registered Date / DateTime / Instant, whose owner is
+	// boru:time-util too (basic's RegisterTemporalType).
 	return []FnDefInfo{
 		NewWordExtension("boru:time-util", "add", []Signature{
 			{Args: []*Type{TDate, tt.CalendarDuration}, Impl: Go(dateCalArith(false)), Returns: []*Type{TDate}, BarrierPos: -1},

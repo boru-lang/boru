@@ -117,6 +117,7 @@ list only by becoming **Resolved** (the record is then deleted) or
 | [NUR382](#nur382) | A FILE-module fn whose `each` callback forward-applies its `Function` param to another param raises `signature_error` compiled; the interpreter answers (loud) | downstream: the voxgig-boru interpreter-entry pass (found 2026-10-02, recorded 2026-10-05) |
 | [NUR383](#nur383) | A module-made closure bound by a program-level `def` and read by `/v` in a property body fails the property compiled (`undefined word: q`); the interpreter passes it (loud) | downstream: voxgig-boru/sort (found 2026-10-02, recorded 2026-10-05) |
 | [NUR384](#nur384) | A name a fn-body `unpack` binds for the FIRST time stays bound past the call interpreted and is undefined compiled (loud on the VM's side; a rebound outer name agrees on both lanes) | the interpreter fn-kind inlining pass (2026-10-08) |
+| [NUR389](#nur389) | A source module's owner token is unique only among its importer's modules: a module body's `def` on a core word over a type of a module it imports is admitted — and replaces that module's own tuple — when the two hold the same import ordinal, and is `extend_owner` otherwise (always, for a program) | the `Registry.ModuleScope` removal: checking what enforces the rule the flag was for (2026-11-27) |
 
 Pending records normally use a compact form (rule / divergence /
 evidence / documentation status, plus a proposed verdict where one is
@@ -1514,5 +1515,86 @@ the call.
 **Proposed verdict:** the pinned discipline is the whole unpack set binding
 past the call, so resolve by fix on the VM's side — or narrow the discipline
 on both lanes together.
+
+---
+
+## NUR389 — a source module's owner token is unique only among its importer's modules {#nur389}
+
+**Status:** Pending · **Recorded:** 2026-11-27 · measured on d1db0f8 plus the `Registry.ModuleScope` removal, through `boru run -no-check` · **silent** on the admitted side
+
+**Rule:** a signature merged onto a core word is anchored by a nominal type
+its author owns, and replaces no tuple its author does not own
+(design/OPEN-WORDS.1.md R1, R2). At the def the check is strict — "the
+author must own the anchor where the signature is WRITTEN"
+(`requireOwnedAnchor`, core/go/word_extend.go) — and it is a property of
+the def: a module body answers the same wherever it is imported.
+
+**Divergence:** ownership is a string compare of owner tokens
+(`sigHasOwnedAnchor`), and a source module's token is `"module#"` plus
+`parent.Modules.NextID()` (`runModuleBodyCover`,
+lang/go/native/native_module_module.go): a counter of the IMPORTING
+registry (`ModuleRegistry.seq`, core/go/modules.go), which starts at zero
+in every module body's own sub-registry. The Nth module a registry imports
+and the Nth module that module's body imports both carry `module#mod_N`,
+so the outer one passes for the owner of the inner one's types. Its def is
+admitted, and a def of the same tuple replaces the inner module's
+transplanted signature. A program's token is `program` and never collides,
+so the program is always refused.
+
+```
+# m.boru
+def T (refine Integer)
+def add fn [[a:T b:T] [Integer] [1]]
+def mk fn [[n:Integer] [T] [def v:T n v]]
+export "M" {add: add/v mk: mk/v T: T}
+
+# o.boru
+import "./m.boru"
+def add fn [[a:(M.T) b:(M.T)] [Integer] [2]]
+def ask fn [[] [Integer] [add (M.mk 0) (M.mk 0)]]
+export "O" {ask: ask/v}
+
+# z.boru
+export "Z" {x: 1}
+
+# each line: boru run -no-check -e '<line>', in the files' directory
+import "./m.boru"  def add fn [[a:(M.T) b:(M.T)] [Integer] [2]]
+  error: [boru/extend_owner]: def add: a core word can be extended only with at least one NOMINAL argument type the extending scope owns per signature — [T T] has none
+import "./o.boru"  print (O.ask)
+  2
+import "./z.boru"  import "./o.boru"  print (O.ask)
+  error: import: ./o.boru: [boru/extend_owner]: def add: a core word can be extended only with at least one NOMINAL argument type the extending scope owns per signature — [T T] has none
+import "boru:math-util"  import "./o.boru"  print (O.ask)
+  error: import: ./o.boru: [boru/extend_owner]: def add: a core word can be extended only with at least one NOMINAL argument type the extending scope owns per signature — [T T] has none
+```
+
+The first line is the program writing o.boru's def, and is refused. In the
+second o.boru is the program's 1st module and m.boru is o.boru's 1st: the
+def is admitted, and `2` is its body — m.boru's own tuple, which answers
+`1` when o.boru has no line 2, was replaced. In the third o.boru is the
+2nd module. A native module draws from the same counter, so in the fourth
+an unrelated `boru:` import flips the answer. With `import "./z.boru"`
+also first in o.boru the two ordinals meet again and the third answers
+`2`. Inline modules (`import module […]`) answer the same way. The default
+pre-flight agrees on the first two and, a failed file import being opaque
+to check, reports the other two as `undefined word: O`.
+
+The program's refusal is pinned (lang/spec/open-words.tsv §2, "a program
+def cannot re-anchor on ANOTHER module's type"); nothing pins a module
+body over an imported module's type either way, and OPEN-WORDS.1 §4 gives
+a mint's owner as "the minting scope's module id" without saying where the
+id is unique. The same class as NUR377, for owner tokens instead of type
+IDs.
+
+**Proposed verdict:** resolve by fix — draw a module's id from the
+importing tree's sequence, as its minted type IDs already are
+(`Types.AdoptSeqFrom`), so that the token names one module and the verdict
+stops depending on import position. What the verdict then IS for a module
+over a type of a module it imports is the maintainer's call: refused like
+the program's (R1 as written), or admitted as the transplant's re-export
+carveout admits a module-minted anchor (`sigHasModuleAnchor`). The second
+needs a check of its own for R2: today only R1 stands between a def and
+another module's transplanted tuple (`mergeExtensionSigs` lets a direct
+def replace any unlocked one).
 
 ---

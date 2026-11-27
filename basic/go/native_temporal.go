@@ -24,8 +24,9 @@ import (
 //     doesn't see the types at all. They are reachable as
 //     `TimeUtil.CalendarDuration` etc. The temporal add/sub overloads ride
 //     the module's word-extension exports (TemporalArithmeticExtensions,
-//     native_math.go), and the minted types are what satisfy the
-//     module-scope user-type rule for those extensions.
+//     native_math.go), and the minted types are what anchor those
+//     extensions under the ownership-anchor rule
+//     (design/OPEN-WORDS.1.md R1).
 //
 // Registration uses var-initialiser form so any other var that
 // references the core types — notably signatures built at
