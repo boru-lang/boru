@@ -308,6 +308,56 @@ def resolveInert : Value → Value
 def popNames (defs : Defs) (names : List String) : Defs :=
   (names.reverse.foldl Defs.pop defs).popBaseline
 
+/-- Close the call frames a discarded stretch of tape leaves open: each
+    frame's cleanup marker still ahead in it unbinds what the frame bound,
+    innermost first, as its own tail would have (core/go/fn_frame.go
+    `unwindLiveFrames`). -/
+def unwindFrames (defs : Defs) (ahead : List Value) : Defs :=
+  ahead.foldl (fun d v => match v with | .defCleanup names => popNames d names | _ => d) defs
+
+/-- RESOLVE A FLOW SIGNAL ON THIS TAPE (core/go/engine.go
+    `handleLoopBreak`, `handleLoopContinue`). The loop that takes it is
+    the NEAREST counted or conditional loop whose move stands ahead of the
+    pointer, before `limit`, with its mark still on the tape. Whatever
+    stands between — the rest of the round, a group, a call frame — is
+    discarded, and the frames in it are closed.
+
+    BREAK ends the loop: the values its COMPLETED rounds left stand where
+    it stood, and the index is unbound. The round in progress leaves
+    nothing — not even what it took from the stack beneath the loop.
+
+    CONTINUE ends the round: what it left is dropped, and the pointer
+    stands on the move, which starts the next round, or ends the loop, as
+    it would have.
+
+    `none` when no loop on this tape takes the signal: it stays raised
+    for the run that holds this one. -/
+def handleFlow (e : Engine) (limit : Nat) : Option Engine :=
+  match e.defs.flow? with
+  | none => none
+  | some isBreak =>
+    let markOf (to : Nat) (upto : Nat) : Option Nat :=
+      (List.range upto).find? fun j => match e.tape[j]? with | some (.mark id) => id == to | _ => false
+    let taker := (List.range (min limit e.tape.length)).find? fun i =>
+      i ≥ e.ptr && (match e.tape[i]? with | some (.move to _) => (markOf to i).isSome | _ => false)
+    match taker with
+    | none => none
+    | some moveIdx =>
+      match e.tape[moveIdx]? with
+      | some (.move to loop) =>
+        let markIdx := (markOf to moveIdx).getD 0
+        let defs := (unwindFrames e.defs ((e.tape.drop e.ptr).take (moveIdx - e.ptr))).takeFlow
+        if isBreak then
+          let (defs, results) := match loop with
+            | .counted index _ _ _ _ results depth => (defs.popTo index (depth - 1), results)
+            | .cond _ _ results _ => (defs, results)
+          some { e with tape := splice e.tape markIdx (moveIdx - markIdx + 1) results,
+                        ptr := markIdx, defs := defs }
+        else
+          some { e with tape := splice e.tape (markIdx + 1) (moveIdx - markIdx - 1) [],
+                        ptr := markIdx + 1, defs := defs }
+      | _ => none
+
 /-! ## Closures
 
 A function BUILT while a call frame is open captures the bindings that
@@ -392,7 +442,14 @@ def steps (nat : Natives) : Nat → Engine → Except BoruError Engine
     if e.ptr ≥ e.tape.length then pure e
     else do
       let e ← stepToken nat fuel e
-      steps nat fuel e
+      -- a flow signal raised during the step: the nearest loop ahead on
+      -- this tape takes it; with none, the run ends here with the signal
+      -- still raised, for the run that holds this one
+      if e.defs.flowing then
+        match handleFlow e e.tape.length with
+        | some e' => steps nat fuel e'
+        | none => pure e
+      else steps nat fuel e
 
 /-- Step the token at the pointer. -/
 def stepToken (nat : Natives) : Nat → Engine → Except BoruError Engine
@@ -413,7 +470,10 @@ def stepToken (nat : Natives) : Nat → Engine → Except BoruError Engine
       -- leaves the tape, so the frame's close finds nothing to run again
       -- (run twice, it unbound an outer binding a parameter had shadowed)
       let e ← evalFrameResidual nat fuel e e.ptr
-      pure { e with defs := popNames e.defs names, tape := removeAt e.tape e.ptr }
+      -- a signal a residual literal let out: the frame is still open, and
+      -- the resolution closes it — the marker is left unspent for that
+      if e.defs.flowing then pure e
+      else pure { e with defs := popNames e.defs names, tape := removeAt e.tape e.ptr }
     | some _ => stepLiteral nat fuel e
 
 /-- Step a word: a bound value substitutes; a function word dispatches. -/
@@ -505,6 +565,8 @@ def dispatchWord (nat : Natives) : Nat → Engine → WordInfo → Except BoruEr
             if (hasForwardSigs sigs && !w.forceStack) || w.forceForward then
               collectForward nat fuel e sigs w
             else pure e
+          -- a signal a group let out: the word is abandoned where it stands
+          if e.defs.flowing then pure e else
           let resolved := effectiveResolved e.tape e.ptr
           let inside := (pendingForwardIdx e.tape e.ptr).isSome
           let plan :=
@@ -573,6 +635,7 @@ def collectWalk (nat : Natives) :
             if !consumes then pure e
             else do
               let e ← evalParenGroupAt nat fuel e scanIdx
+              if e.defs.flowing then pure e else
               let viable := match e.tok? scanIdx with
                 | some res => (match res with
                     | .word tw => (match e.defs.top? tw.name with
@@ -628,15 +691,37 @@ def groupLoop (nat : Natives) : Nat → Engine → Nat → Nat → Except BoruEr
         if e.sealed && e.ptr + 1 == e.tape.length then pure e
         else do
           let e ← stepCloseParen nat fuel e
-          groupLoop nat fuel e scanIdx (depth - 1)
+          groupFlow nat fuel e scanIdx (depth - 1)
       | some (.defCleanup _) =>
         if (frameOpenBefore e.tape e.ptr).any (· < scanIdx) then pure e
         else do
           let e ← stepToken nat fuel e
-          groupLoop nat fuel e scanIdx depth
+          groupFlow nat fuel e scanIdx depth
       | some _ => do
         let e ← stepToken nat fuel e
-        groupLoop nat fuel e scanIdx depth
+        groupFlow nat fuel e scanIdx depth
+
+/-- After a step inside the group: carry on — unless the step raised a
+    FLOW SIGNAL. A loop the group itself holds is the nearest one and takes
+    it, and the group goes on from where that leaves the tape. Otherwise a
+    paren is no loop boundary: the group is abandoned WHOLE — the frames
+    its run opened are closed, its tokens leave the tape — and the signal
+    stays raised for the run that holds the word collecting it. -/
+def groupFlow (nat : Natives) : Nat → Engine → Nat → Nat → Except BoruError Engine
+  | 0, _, _, _ => Engine.outOfFuel
+  | fuel + 1, e, scanIdx, depth =>
+    if !e.defs.flowing then groupLoop nat fuel e scanIdx depth
+    else
+      let groupEnd := (findCloseAfter e.tape scanIdx).getD e.tape.length
+      match handleFlow e groupEnd with
+      | some e' =>
+        -- the resolution rewrote the group's tokens: read the depth back
+        let inside := (e'.tape.drop scanIdx).take (e'.ptr - scanIdx)
+        let depth := (inside.filter Value.isOpenParen).length - (inside.filter Value.isCloseParen).length
+        groupLoop nat fuel e' scanIdx depth
+      | none =>
+        let defs := unwindFrames e.defs ((e.tape.drop e.ptr).take (groupEnd - e.ptr))
+        pure { e with tape := splice e.tape scanIdx (groupEnd + 1 - scanIdx) [], defs := defs }
 
 /-- Step a value that is not a word: it is collected by the nearest
     parked forward if it fits that forward's next slot, and closes the
@@ -730,6 +815,7 @@ def dispatchFnValue (nat : Natives) : Nat → Engine → String → List Sig →
     let w : WordInfo := { name := name, forceStack := sealed }
     let e ←
       if hasForwardSigs sigs && !w.forceStack then collectForward nat fuel e sigs w else pure e
+    if e.defs.flowing then pure e else
     let resolved := effectiveResolved e.tape e.ptr
     let inside := (pendingForwardIdx e.tape e.ptr).isSome
     let plan :=
@@ -803,6 +889,10 @@ def stepMove (nat : Natives) : Nat → Engine → Nat → Loop → Except BoruEr
       match loop with
       | .counted index current stop step body results depth => do
         let (region, defs) ← collectRegion nat fuel e.defs between
+        -- a signal a literal in the round let out is THIS loop's: the
+        -- collection is undone and the pointer stays on the move, where
+        -- the run finds the loop and breaks or continues it
+        if defs.flowing then pure { e with defs := defs } else
         let results := results ++ region
         -- the index is an Integer: an advance past the range WRAPS, and
         -- the wrapped index is short of the bound again (NUR402, as the
@@ -817,6 +907,7 @@ def stepMove (nat : Natives) : Nat → Engine → Nat → Loop → Except BoruEr
           pure (finish (defs.popTo index (depth - 1)) results)
       | .cond test body results true => do
         let (region, defs) ← collectRegion nat fuel e.defs between
+        if defs.flowing then pure { e with defs := defs } else
         pure (replay defs test (.cond test body (results ++ region) false))
       | .cond test body results false =>
         match between.getLast? with
@@ -835,6 +926,7 @@ def collectRegion (nat : Natives) :
   | _ + 1, defs, [] => pure ([], defs)
   | fuel + 1, defs, v :: vs => do
     let (v', defs) ← if v.isPendingContainer then autoEval nat fuel defs v else pure (v, defs)
+    if defs.flowing then pure ([], defs) else do
     let (vs', defs) ← collectRegion nat fuel defs vs
     pure (v' :: vs', defs)
 
@@ -871,6 +963,7 @@ def stepCloseParen (nat : Natives) : Nat → Engine → Except BoruError Engine
       -- parked are resolved, the pair is removed, and the residual is NOT
       -- re-stepped.
       let e ← regionForwards nat fuel e
+      if e.defs.flowing then pure e else
       let tape := removeAt (removeAt e.tape (e.tape.length - 1)) 0
       pure { e with tape := tape, ptr := tape.length, sealed := false }
     else
@@ -878,6 +971,7 @@ def stepCloseParen (nat : Natives) : Nat → Engine → Except BoruError Engine
     | none => Engine.err "syntax_error" "unmatched closing parenthesis"
     | some openIdx => do
       let e ← closeForwards nat fuel e openIdx
+      if e.defs.flowing then pure e else
       match findCloseAfter e.tape openIdx with
       | none => Engine.err "syntax_error" "unmatched closing parenthesis"
       | some closeIdx =>
@@ -898,6 +992,7 @@ def stepCloseParen (nat : Natives) : Nat → Engine → Except BoruError Engine
             { e with voidGroups := e.voidGroups ++ names }
           else e
         let e ← closeFrame nat fuel e openIdx closeIdx
+        if e.defs.flowing then pure e else
         match findCloseAfter e.tape openIdx with
         | none => Engine.err "syntax_error" "unmatched closing parenthesis"
         | some closeIdx =>
@@ -926,7 +1021,7 @@ def regionForwards (nat : Natives) : Nat → Engine → Except BoruError Engine
         let funcIdx := if i < f.funcIndex then f.funcIndex - 1 else f.funcIndex
         let e := curryOrStack { e with tape := tape } funcIdx f.collected f.stackArgs
         let e ← regionSteps nat fuel e
-        regionForwards nat fuel e
+        if e.defs.flowing then pure e else regionForwards nat fuel e
       | _ => pure e
 
 /-- Step until the pointer reaches the region's close (the last token). -/
@@ -938,7 +1033,7 @@ def regionSteps (nat : Natives) : Nat → Engine → Except BoruError Engine
       | some .openParen | some .frameOpen => regionSteps nat fuel { e with ptr := e.ptr + 1 }
       | _ => do
         let e ← stepToken nat fuel e
-        regionSteps nat fuel e
+        if e.defs.flowing then pure e else regionSteps nat fuel e
 
 /-- Resolve every collection still parked inside the group at `openIdx`,
     stepping what each resolution leaves before the close. -/
@@ -958,7 +1053,7 @@ def closeForwards (nat : Natives) : Nat → Engine → Nat → Except BoruError 
           let funcIdx := if i < f.funcIndex then f.funcIndex - 1 else f.funcIndex
           let e := curryOrStack { e with tape := tape } funcIdx f.collected f.stackArgs
           let e ← stepsToClose nat fuel e openIdx
-          closeForwards nat fuel e openIdx
+          if e.defs.flowing then pure e else closeForwards nat fuel e openIdx
         | _ => pure e
 
 /-- Step until the pointer reaches the group's close paren. -/
@@ -973,7 +1068,7 @@ def stepsToClose (nat : Natives) : Nat → Engine → Nat → Except BoruError E
         | some .openParen | some .frameOpen => stepsToClose nat fuel { e with ptr := e.ptr + 1 } openIdx
         | _ => do
           let e ← stepToken nat fuel e
-          stepsToClose nat fuel e openIdx
+          if e.defs.flowing then pure e else stepsToClose nat fuel e openIdx
 
 /-- A call frame closing: run its cleanup marker, then its return check
     over the group's residual. -/
@@ -987,6 +1082,7 @@ def closeFrame (nat : Natives) : Nat → Engine → Nat → Nat → Except BoruE
       match e.tok? i with
       | some (.defCleanup names) => do
         let e ← evalFrameResidual nat fuel e i
+        if e.defs.flowing then pure e else
         closeFrame nat fuel { e with defs := popNames e.defs names, tape := removeAt e.tape i } openIdx (closeIdx - 1)
       | _ => pure e
     | none =>
@@ -1023,6 +1119,9 @@ def sweepRange (nat : Natives) : Nat → Engine → Nat → Nat → Except BoruE
       | some v =>
         if v.isPendingContainer then do
           let (v', defs) ← autoEval nat fuel e.defs v
+          -- a signal the literal let out: it has no value, and the sweep
+          -- stops for the run to resolve it
+          if defs.flowing then pure { e with defs := defs } else
           sweepRange nat fuel { e with tape := setAt e.tape i v', defs := defs } (i + 1) hi
         else sweepRange nat fuel { e with tape := setAt e.tape i (resolveInert v) } (i + 1) hi
       | none => pure e
@@ -1041,6 +1140,8 @@ def execMatch (nat : Natives) :
     -- a pending container argument is a program: run it first
     let (args, defs) ← evalArgs nat fuel e.defs rawArgs
     let e := { e with defs := defs }
+    -- a signal an argument literal let out: the call is abandoned
+    if e.defs.flowing then pure e else
     if s.fullStack then
       let base := scopeStart e.tape e.ptr
       let stack := (List.range e.ptr).filterMap fun i =>
@@ -1093,6 +1194,12 @@ def execMatch (nat : Natives) :
             :: (if s.returns.isEmpty then [] else [.returnCheck s.returns])
           pure (.frameOpen :: body ++ tail ++ [.closeParen], defs)
       let e := { e with defs := defs }
+      -- a driven loop a signal passed THROUGH is abandoned where its word
+      -- stands: the loop that takes the signal discards the stretch
+      let driven := match s.impl with
+        | .native key => (match nat.lookup key with | some (.driven _) => true | _ => false)
+        | _ => false
+      if driven && e.defs.flowing then pure e else
       if indices.length == n && n > 0 then
         let first := indices.foldl min e.ptr
         let kept := (List.range (e.ptr + 1 - first)).filterMap fun k =>
@@ -1111,6 +1218,7 @@ def evalArgs (nat : Natives) :
   | _ + 1, defs, [] => pure ([], defs)
   | fuel + 1, defs, v :: vs => do
     let (v', defs) ← if v.isPendingContainer then autoEval nat fuel defs v else pure (v, defs)
+    if defs.flowing then pure ([], defs) else do
     let (vs', defs) ← evalArgs nat fuel defs vs
     pure (resolveInert v' :: vs', defs)
 
@@ -1143,6 +1251,8 @@ def autoEvalEntries (nat : Natives) :
       | .parenExpr items => .openParen :: items ++ [.closeParen]
       | v => [v]
     let (res, defs) ← runSealed nat fuel defs program
+    -- a signal a member let out: the literal has no value
+    if defs.flowing then pure ([], defs) else do
     let (rest', defs) ← autoEvalEntries nat fuel defs rest
     match res with
     | [] => pure (rest', defs)
@@ -1165,8 +1275,13 @@ def runSealed (nat : Natives) : Nat → Defs → List Value → Except BoruError
     -- the region's move collects what is there — evaluating a pending
     -- container left in it, whose own error surfaces first — and only then
     -- is a region that never closed refused
+    -- a signal no loop in the region took: a literal is not a loop. The
+    -- region is abandoned whole — the frames open in it are closed — and
+    -- has no value; the run that holds it resolves the signal
+    if e.defs.flowing then pure ([], unwindFrames e.defs (e.tape.drop e.ptr)) else
     let unclosed := e.sealed
     let e ← sweepRange nat fuel e 0 e.tape.length
+    if e.defs.flowing then pure ([], e.defs) else
     if unclosed || e.tape.any Value.isOpenParen then
       Engine.err "syntax_error" "unmatched opening parenthesis"
     else pure (e.tape, e.defs)
@@ -1188,6 +1303,9 @@ def driveLoop (nat : Natives) :
       pure (results, defs)
     | some (inputs, body) =>
       let (residual, defs) ← runRegion nat fuel defs inputs body
+      -- a signal passes THROUGH a driven loop to the counted or
+      -- conditional loop around it: the driven loop is abandoned
+      if defs.flowing then pure ([], defs) else
       let acc ← d.collect args it acc residual
       driveLoop nat fuel defs d args (it + 1) acc
 
@@ -1204,6 +1322,7 @@ def runRegion (nat : Natives) :
     let e ← steps nat fuel
       { tape := .openParen :: inputs ++ body ++ [.closeParen], ptr := 1 + inputs.length,
         defs := defs, sealed := true }
+    if e.defs.flowing then pure ([], unwindFrames e.defs (e.tape.drop e.ptr)) else
     let e ← sweepRange nat fuel e 0 e.tape.length
     pure (e.tape, e.defs)
 
@@ -1214,12 +1333,19 @@ def runProgram (nat : Natives) : Nat → Defs → List Value → Except BoruErro
   | 0, _, _ => Engine.outOfFuel
   | fuel + 1, defs, input => do
     let e ← steps nat fuel { tape := input, ptr := 0, defs := defs }
+    -- a signal no loop took, wherever it was raised: there is no run
+    -- left to hand it to
+    let outsideLoop (d : Defs) : Except BoruError (List Value × Defs) :=
+      Engine.err "flow_error" ((if d.flow? == some true then "break" else "continue") ++ " outside loop")
+    if e.defs.flowing then outsideLoop e.defs else do
     let e ← resolveOrphans nat fuel e
-    if e.tape.any Value.isOpenParen then Engine.err "syntax_error" "unmatched opening parenthesis"
+    if e.defs.flowing then outsideLoop e.defs
+    else if e.tape.any Value.isOpenParen then Engine.err "syntax_error" "unmatched opening parenthesis"
     else do
       -- a mark or a move still on the tape belongs to no loop any more
       let e := { e with tape := e.tape.filter (!·.isLoopToken) }
       let e ← sweepRange nat fuel e 0 e.tape.length
+      if e.defs.flowing then outsideLoop e.defs else
       pure (e.tape, e.defs)
 
 /-- The end of the program closes every collection still parked. -/
@@ -1235,7 +1361,7 @@ def resolveOrphans (nat : Natives) : Nat → Engine → Except BoruError Engine
         let funcIdx := if i < f.funcIndex then f.funcIndex - 1 else f.funcIndex
         let e := curryOrStack { e with tape := tape } funcIdx f.collected f.stackArgs
         let e ← orphanSteps nat fuel e
-        resolveOrphans nat fuel e
+        if e.defs.flowing then pure e else resolveOrphans nat fuel e
       | _ => pure e
 
 def orphanSteps (nat : Natives) : Nat → Engine → Except BoruError Engine
@@ -1246,7 +1372,7 @@ def orphanSteps (nat : Natives) : Nat → Engine → Except BoruError Engine
       | some .openParen | some .frameOpen => orphanSteps nat fuel { e with ptr := e.ptr + 1 }
       | _ => do
         let e ← stepToken nat fuel e
-        orphanSteps nat fuel e
+        if e.defs.flowing then pure e else orphanSteps nat fuel e
 
 end
 

@@ -57,6 +57,9 @@ def fixtureDefs : Defs :=
     word "forq" [p "n" TInteger, p "body" TList] [] 2,
     word "rangeq" [p "start" TInteger, p "end" TInteger, p "step" TInteger, p "body" TList] [] 4,
     word "whileq" [p "cond" TList, p "body" TList] [] 2,
+    -- the FLOW SIGNALS: break and continue
+    word "breakq" [] [] 0,
+    word "contq" [] [] 0,
     -- the CLOSURE fixture: build an anonymous one-parameter function at
     -- run time, where the capture analysis runs
     word "afn" [p "param" TAtom (quote := true), p "body" TList] ["Type/Function"] 2,
@@ -136,6 +139,8 @@ def fixtureNatives : Natives :=
       let body ← elemsOf "whileq" (a.getD 1 .none)
       let (id, d) := d.freshMark
       pure (.mark id :: test ++ [.move id (.cond test body [] false)], d)),
+    ("breakq", .plain fun _ d => pure ([], d.raiseFlow true)),
+    ("contq", .plain fun _ d => pure ([], d.raiseFlow false)),
     ("afn", .plain fun a d =>
       match a.getD 0 .none with
       | .atom name => do
