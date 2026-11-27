@@ -23,7 +23,7 @@ REPO = os.path.dirname(SPEC)
 
 WORDS = ["addq", "negq", "pairq", "sumq", "boomq", "patq", "dupq", "__pa", "undef",
          "qanyq", "bothq", "tyq", "tpatq", "unifyq", "meetq", "meetq", "depthq", "afn", "eachq",
-         "forq", "forq", "rangeq", "whileq", "breakq", "contq"]
+         "forq", "forq", "rangeq", "whileq", "breakq", "contq", "ifq", "ifq", "replayq"]
 LITS = ["0", "1", "2", "5", "7", "-3", "'a'", "'x'", "true", "false", "none", "null"]
 TYPES = ["Integer", "String", "Any", "None", "List", "Map", "Boolean", "Word", "Scalar/String"]
 NAMES = ["x", "y", "n", "nosuchword"]
@@ -93,7 +93,11 @@ def gen_item(rng, depth):
                                "depthq breakq", "i breakq/s", "1 breakq/v", "i ; contq", "( breakq",
                                "afn n [q n breakq ]", "bothq 0 ( afn n [q n breakq ] ) i 7",
                                "whileq [q true ] [q i breakq ] 7", "whileq [q c ] [q undef c contq ] i",
-                               "x breakq", "undef i contq", "i breakq contq", "ov i breakq", "ov i 1 contq"])
+                               "x breakq", "undef i contq", "i breakq contq", "ov i breakq", "ov i 1 contq",
+                               "ifq [q i ] [q i ] [q 'z' ]", "ifq [q i ] [q breakq ] [q i ]",
+                               "ifq [q i ] [q contq ] [q i ] 7", "ifq [q i breakq ] [q 1 ] [q 2 ]",
+                               "i ifq [q contq ] [q 1 ] [q 2 ]", "replayq [q i ]", "replayq [q i breakq ]",
+                               "ifq [q c ] [q undef c ] [q breakq ]", "ifq [q depthq ] [q 1 ] [q 2 ]"])
             if w == "forq":
                 head = ["forq", rng.choice(["0", "1", "2", "2", "3", "-1", "'a'", "x"])]
             else:
@@ -106,6 +110,25 @@ def gen_item(rng, depth):
                         ["rangeq", "9223372036854775806", "9223372036854775807", "2"],
                         ["rangeq", "-9223372036854775807", "-9223372036854775808", "-2"]])
             return head + ["[q"] + body.split() + ["]"]
+        if w == "ifq" and depth == 2 and rng.random() < 0.85:
+            # the `if` continuation: a condition region whose LAST value picks
+            # the branch — a paren group — that takes the region's place
+            cond = rng.choice(["true", "false", "c", "c", "x", "0", "1", "''", "none", "", "5 false",
+                               "false 5", "None", "Any", "Integer", "[q ]", "[ 0 ]", "nosuchword",
+                               "boomq", "negq/s", "sumq", "depthq", "dupq/s", "(", "1 ;", "bothq 1",
+                               "breakq", "contq", "i", "n", "( c )", "inc", "ifq [q c ] [q true ] [q false ]"])
+            arms = ["1", "2", "", "1 2 3", "negq/s", "addq 1", "boomq", "x", "c undef c", "breakq", "contq",
+                    "fn( n Integer Integer [ addq n 1 ] )", "negq/v", "[ addq 1 2 ]", "(", ")", "i", "n",
+                    "ifq [q c ] [q 2 ] [q 3 ]", "forq 2 [q i ]", "eachq [q 1 2 ] [q negq ]", "inc", "depthq"]
+            return (["ifq", "[q"] + cond.split() + ["]", "[q"] + rng.choice(arms).split() + ["]",
+                    "[q"] + rng.choice(arms).split() + ["]"])
+        if w == "replayq" and depth == 2 and rng.random() < 0.85:
+            # the plain mark and move: the body runs, and then runs again in
+            # the place of everything its first run left
+            body = rng.choice(["1 2", "", "c undef c", "negq/s", "addq 1 2", "boomq", "replayq [q 7 ]", "i",
+                               "breakq", "depthq", "fn( n Integer Integer [ addq n 1 ] )", "(", "[ addq 1 2 ]",
+                               "x", "inc", "ifq [q c ] [q 1 ] [q 2 ]", "forq 2 [q i ]", "contq", "n"])
+            return ["replayq", "[q"] + body.split() + ["]"]
         if w == "whileq" and depth == 2 and rng.random() < 0.85:
             # a conditional loop: the condition region's LAST value decides.
             # `c` is a stack of bindings a body pops, so the loop can end
@@ -184,7 +207,8 @@ def gen_program(rng, max_len):
             toks += rng.choice([["bothq", "1", "(", "outer", "10", ")"], ["outer", "10"], ["(", "outer", "10", ")"]])
     if rng.random() < 0.10:
         body = rng.choice(["[ addq n 1 ]", "[ n ]", "[ negq n ]", "[ n n ]", "[ ]", "[ 'a' ]", "[ dupq n ]",
-                           "[ n breakq ]", "[ n contq ]", "[ forq 2 [q i breakq ] n ]", "[ [ n breakq ] ]"])
+                           "[ n breakq ]", "[ n contq ]", "[ forq 2 [q i breakq ] n ]", "[ [ n breakq ] ]",
+                           "[ ifq [q n ] [q 1 ] [q 2 ] ]", "[ ifq [q n ] [q n ] [q breakq ] ]", "[ replayq [q n ] ]"])
         toks += ["def", "inc", "fn(", "n", rng.choice(["Integer", "Any"]),
                  rng.choice(["Integer", "Any"])] + body.split() + [")", ";"]
         if rng.random() < 0.8:

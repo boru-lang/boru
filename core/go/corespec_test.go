@@ -700,6 +700,52 @@ func coreSpecRegistry(t *testing.T) *Registry {
 		}),
 		BarrierPos: 2,
 	})
+	// ifq and replayq are the doors onto the two OTHER things a move does.
+	//
+	// ifq [q cond ] [q then ] [q else ] is the `if` continuation (IfCont): a
+	// condition region, whose last value picks the branch that takes the
+	// region's place. The branches are laid out as basic's `if` lays them
+	// out — each a paren group of its own.
+	//
+	// replayq [q body ] is the plain mark and move, with no continuation at
+	// all: the mark carries the body, the body runs once between the two,
+	// and the move puts the mark's body where the region stood — to run
+	// again. No shipped word builds one; the step loop still steps it.
+	r.Register("ifq", Signature{
+		Params: []FnParam{{Name: "cond", Type: TList}, {Name: "then", Type: TList}, {Name: "else", Type: TList}},
+		Impl: Go(func(a []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Value, error) {
+			parts := make([][]Value, 3)
+			for i := range parts {
+				l, err := AsList(a[i])
+				if err != nil {
+					return nil, coreSpecNotAList("ifq", a[i])
+				}
+				parts[i] = l.Slice()
+			}
+			group := func(body []Value) []Value {
+				out := append([]Value{NewOpenParen()}, body...)
+				return append(out, NewCloseParen())
+			}
+			id := NextMarkID()
+			toks := append([]Value{NewMark(id)}, parts[0]...)
+			return append(toks, NewMoveIf(id, "ifq", &IfCont{Then: group(parts[1]), Else: group(parts[2])})), nil
+		}),
+		BarrierPos: 3,
+	})
+	r.Register("replayq", Signature{
+		Params: []FnParam{{Name: "body", Type: TList}},
+		Impl: Go(func(a []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Value, error) {
+			l, err := AsList(a[0])
+			if err != nil {
+				return nil, coreSpecNotAList("replayq", a[0])
+			}
+			body := l.Slice()
+			id := NextMarkID()
+			toks := append([]Value{NewMark(id, body...)}, body...)
+			return append(toks, NewMove(id, "replayq")), nil
+		}),
+		BarrierPos: 1,
+	})
 	// breakq and contq raise the two FLOW SIGNALS (Registry.FlowCtrl): not
 	// errors, a redirection the run resolves after the step — the nearest
 	// counted or conditional loop ahead on the tape ends, or starts its

@@ -420,3 +420,66 @@ run forq 3 [q i bothq 1 breakq ]	ERROR:signature_error	ERROR:undefined_word	both
 # NUR400 again: the full-stack word took the loop's mark, so the break finds no
 # loop to end.
 run forq 2 [q depthq breakq ]	ERROR:flow_error	ERROR:undefined_word	NUR400: no mark, no loop
+#
+# --- the `if` continuation: a condition region, and the branch that takes its place
+# `ifq [q cond ] [q then ] [q else ]` is a mark, the condition, and a move
+# that carries two branches — each a paren group, as basic's `if` lays them
+# out. The condition's LAST value picks the branch by the one truthiness rule;
+# the branch takes the region's place, the condition's values with it, and is
+# stepped where the `if` stood. It is not a loop. core/ts has no move.
+run ifq [q true ] [q 1 ] [q 2 ]	1	ERROR:undefined_word	the first branch
+run ifq [q false ] [q 1 ] [q 2 ]	2	ERROR:undefined_word	the second
+run ifq [q ] [q 1 ] [q 2 ]	ERROR:runtime_error	ERROR:undefined_word	a condition that leaves NO value is an error
+run ifq [q 5 false ] [q 1 ] [q 2 ]	2	ERROR:undefined_word	the condition's LAST value decides, and the 5 before it is gone with the region
+run ifq [q false 5 ] [q 1 ] [q 2 ]	1	ERROR:undefined_word	whichever way round
+run ifq [q 0 ] [q 1 ] [q 2 ]	2	ERROR:undefined_word	truth is presence: zero is false
+run ifq [q 'false' ] [q 1 ] [q 2 ]	1	ERROR:undefined_word	a String is true unless it is empty
+run ifq [q None ] [q 1 ] [q 2 ]	2	ERROR:undefined_word	a root type is a value: None is false (NUR399)
+run ifq [q Any ] [q 1 ] [q 2 ]	1	ERROR:undefined_word	and Any is true
+run ifq [q [ 0 ] ] [q 1 ] [q 2 ]	1	ERROR:undefined_word	a pending list is read as it stands: it has an element, so it is true
+run ifq [q true ] [q ] [q 2 ]		ERROR:undefined_word	a branch may leave nothing
+run ifq [q true ] [q 1 2 3 ] [q 9 ]	1 2 3	ERROR:undefined_word	or several values
+run ifq [q false ] [q boomq 1 ] [q 9 ]	9	ERROR:undefined_word	ONLY the chosen branch runs
+run ifq [q true ] [q boomq 1 ] [q 9 ]	ERROR:fixture_boom	ERROR:undefined_word	and its error is the if's
+run ifq [q boomq 1 ] [q 1 ] [q 2 ]	ERROR:fixture_boom	ERROR:undefined_word	as the condition's is
+run 7 ifq [q negq/s ] [q 1 ] [q 2 ]	1	ERROR:undefined_word	NO PAREN around the condition: it reads the stack the if stood on
+run 7 ifq [q true ] [q negq/s ] [q 9 ]	ERROR:signature_error	ERROR:undefined_word	a branch IS a group: it does not
+run ifq [q true ] [q 3 ] [q 9 ] negq	-3	ERROR:undefined_word	the branch's values are stepped where the if stood: a word after takes them
+run negq ( ifq [q true ] [q 3 ] [q 9 ] )	-3	ERROR:undefined_word	in a group a waiting word evaluates
+run ifq [q true ] [q fn( n Integer Integer [ addq n 1 ] ) ] [q 9 ] 5	fn [[n:Integer][Integer][addq n 1]] 5	ERROR:undefined_word	a function a branch leaves alone is PLACED, as a group's lone function is
+run ifq [q true ] [q [ addq 1 2 ] ] [q 9 ]	[3]	ERROR:undefined_word	a pending list a branch leaves is evaluated where every residual is
+run ifq [q false ] [q 1 ] [q ifq [q true ] [q 2 ] [q 3 ] ]	2	ERROR:undefined_word	an if as a branch
+run ifq [q ifq [q false ] [q true ] [q false ] ] [q 1 ] [q 2 ]	2	ERROR:undefined_word	an if as a condition
+run def f fn( n Any Any [ ifq [q n ] [q 1 ] [q 2 ] ] ) ; f 0 f 5	2 1	ERROR:undefined_word	in a function's body
+run eachq [q 0 1 ] [q ifq [q dupq/s ] [q 'y' ] [q 'n' ] ]	['n' 'y']	ERROR:undefined_word	in a driven region, whose input the condition reads
+run forq 3 [q ifq [q i ] [q i ] [q 'z' ] ]	'z' 1 2	ERROR:undefined_word	in a loop's round
+run forq 3 [q ifq [q i ] [q breakq ] [q i ] ]	0	ERROR:undefined_word	an if is NO LOOP: a break in its branch is the loop's
+run forq 3 [q ifq [q i ] [q contq ] [q i ] 7 ]	0 7	ERROR:undefined_word	and a continue
+run forq 3 [q ifq [q i breakq ] [q 1 ] [q 2 ] ]		ERROR:undefined_word	a signal in its condition too
+run ifq [q true ] [q breakq ] [q 2 ]	ERROR:flow_error	ERROR:undefined_word	with no loop around it, an error
+run ifq [q ( ] [q 1 ] [q 9 ]	1	ERROR:undefined_word	the last thing the condition left is what is read — here a marker, which is true
+run ifq [q true ] [q ( ] [q 9 ]	ERROR:syntax_error	ERROR:undefined_word	an unmatched ( in a branch
+#
+# NUR400 once more: a full-stack word standing in the CONDITION takes the if's
+# mark with the stack it replaces, the move is dropped, and no branch runs.
+run ifq [q depthq ] [q 1 ] [q 2 ]	0	ERROR:undefined_word	NUR400: neither branch — the condition's value is all that is left
+run 4 ifq [q depthq ] [q 1 ] [q 2 ]	4 1	ERROR:undefined_word	NUR400: with the stack beneath
+#
+# --- the plain mark and move: the body, once more ---------------------------------
+# `replayq [q body ]` is a mark that carries the body, the body, and a move
+# with no continuation: the body runs, and the move puts the mark's body in
+# the place of everything that run left — to run again. No shipped word
+# builds one.
+run replayq [q 1 2 ]	1 2	ERROR:undefined_word	values are left once: the first run's are replaced
+run def c 1 ; def c 2 ; replayq [q c undef c ]	1	ERROR:undefined_word	but the body RAN twice: the answer is the second binding it read
+run 5 6 replayq [q negq/s ]	-5	ERROR:undefined_word	no paren: each run takes from the stack beneath, and only the second run's value is kept
+run 5 replayq [q negq/s ]	ERROR:signature_error	ERROR:undefined_word	and the second run finds nothing
+run replayq [q addq 1 2 ] 9	3 9	ERROR:undefined_word	what follows, follows
+run replayq [q replayq [q 7 ] ]	7	ERROR:undefined_word	replays nest
+run replayq [q fn( n Integer Integer [ addq n 1 ] ) ] 5	6	ERROR:undefined_word	the replayed body is not a group: a function it leaves is called on what follows
+run replayq [q [ addq 1 2 ] ]	[3]	ERROR:undefined_word	a pending list is left for the residual sweep
+run forq 2 [q replayq [q i ] ]	0 1	ERROR:undefined_word	in a loop's round
+run forq 3 [q replayq [q i breakq ] ]		ERROR:undefined_word	a replay is no loop: the signal is the loop's
+run replayq [q breakq ]	ERROR:flow_error	ERROR:undefined_word	and with none, an error
+run replayq [q boomq 1 ]	ERROR:fixture_boom	ERROR:undefined_word	a body's error is the replay's
+run 9 replayq [q depthq ]	9 1	ERROR:undefined_word	NUR400: the full-stack word takes the mark, and the body is not replayed

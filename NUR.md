@@ -119,7 +119,7 @@ list only by becoming **Resolved** (the record is then deleted) or
 | [NUR395](#nur395) | The total order is not transitive between a typed list and plain lists of its size, so a disjunct's canonical form depends on the order its alternatives were written in | the core/ts unifier port, differential against core/go (2026-11-27) |
 | [NUR396](#nur396) | A function a function's body hands back as its only result is refused as an uncalled call: `def pk1 fn [[x:Map][Any][x.f]]` over `{f: add/v}` raises `uncalled_function` where `m.f` at the top level is the function | the core/ts engine port, checked against core/go and the Lean model (2026-11-27) |
 | [NUR398](#nur398) | A word defined in boru is not retried from the stack when its forward plan fails, where the same function written as a literal is, and the same word under a forced arity is: `"k" [] ov 5` is `signature_error`, `"k" [] ov/2 5` is `1 5` | the Lean specification's differential fuzzer over overloaded words, against core/go (2026-11-27) |
-| [NUR400](#nur400) | A full-stack word in a counted loop's body ends the loop: `for 3 [depth]` runs one round and answers `0`, with no error, and leaves the index bound (`for 3 [depth] i` is `0 0`) | the Lean specification of the counted loop, checked against core/go (2026-11-27) |
+| [NUR400](#nur400) | A full-stack word standing directly in a loop's round or an `if`'s condition ends the construct: `for 3 [depth]` runs one round and answers `0`, with no error, and leaves the index bound (`for 3 [depth] i` is `0 0`); `if [depth] ["yes"] ["no"]` takes neither branch and answers `0` | the Lean specification of the counted loop and of the `if` continuation, checked against core/go (2026-11-27) |
 | [NUR401](#nur401) | A function value with a narrower and a wider definition drops the argument it collected when the next value fits one slot of the wider definition but the wider definition does not fill: `m.g 5 6` is `5 106` where the word `f 5 6` is `105 6` | the Lean specification's differential fuzzer over `/u` on overloaded words, against core/go (2026-11-27) |
 | [NUR402](#nur402) | A counted loop's index wraps past the Integer range and the loop runs on: `for [9223372036854775806 9223372036854775807 2] [i]` runs to the step limit, where `9223372036854775807 add 1` is `integer_overflow` | review of the Lean specification of the counted loop, checked against core/go (2026-11-27) |
 
@@ -1524,7 +1524,7 @@ name/literal difference without refusing any program that runs today.
 
 ---
 
-## NUR400 — a full-stack word in a counted loop's body ends the loop {#nur400}
+## NUR400 — a full-stack word in a loop's round or an `if`'s condition ends the construct {#nur400}
 
 **Status:** Pending · **Recorded:** 2026-11-27 · measured on core/go through `boru do` and the core/spec notation · silent
 
@@ -1552,6 +1552,19 @@ for 3 [depth] i        0 0           the index is still bound after the loop
 def i 77
 for 3 [depth]
 i                      0 0           …over the caller's own `i`
+```
+
+Every construct that runs between a mark and a move is affected the same
+way — a conditional loop, in either region, and an `if`, whose condition
+is such a region:
+
+```
+if [0] ["yes"] ["no"]          no
+if [depth] ["yes"] ["no"]      0             neither branch: the condition's value is all that is left
+4 if [depth] ["yes"] ["no"]    4 1
+if [(depth gt 0)] ["yes"] ["no"]   no        in a group, the group is the word's scope: unaffected
+def n 0
+while [depth] [def n (n add 1) (if (n gt 2) [break]) n]      0      the loop never runs
 ```
 
 `depth`, `pick`, `roll` and `stack` are the shipped full-stack words
