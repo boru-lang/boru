@@ -483,3 +483,36 @@ run forq 3 [q replayq [q i breakq ] ]		ERROR:undefined_word	a replay is no loop:
 run replayq [q breakq ]	ERROR:flow_error	ERROR:undefined_word	and with none, an error
 run replayq [q boomq 1 ]	ERROR:fixture_boom	ERROR:undefined_word	a body's error is the replay's
 run 9 replayq [q depthq ]	9 1	ERROR:undefined_word	NUR400: the full-stack word takes the mark, and the body is not replayed
+#
+# --- the call region: a driven loop of one round, whose residual is the word's results
+# `callq x [q body ]` is what a native returns when its last act is running a
+# body (core/go CallRegion). The input enters SEALED and INERT, as any driven
+# region's does, and the body steps where the word stands. What the round
+# leaves is not a driver's to keep: it replaces the region as the word's own
+# results, and is STEPPED AGAIN where the word stood.
+run callq 5 [q ]	5	ERROR:undefined_word	the input the body did not take is the residual
+run callq 5 [q negq ]	-5	ERROR:undefined_word	the body reads its input
+run callq 5 [q 7 ]	5 7	ERROR:undefined_word	the input, then what the body left
+run 9 callq 5 [q depthq ]	9 5 1	ERROR:undefined_word	SEALED: the body's stack is its input — the 9 beneath is out of its sight, and untouched
+run 9 callq 5 [q sumq ]	ERROR:signature_error	ERROR:undefined_word	so a body that needs two finds one
+run callq 5 [q negq/v ]	-5	ERROR:undefined_word	the residual is STEPPED AGAIN: the function the body left is called on the input beside it
+run eachq [q 5 ] [q negq/v ]	[5 fn [[a:Integer][Integer][]]]	ERROR:undefined_word	where a driven loop hands the same residual to its driver, and nothing steps it
+run callq fn( n Integer Integer [ addq n 1 ] ) [q 5 ]	6	ERROR:undefined_word	INERT: the function input is data in the region — and is called when the residual is stepped
+run callq fn( n Integer Integer [ addq n 1 ] ) [q ]	fn [[n:Integer][Integer][addq n 1]]	ERROR:undefined_word	alone in the residual, a function is a value
+run callq 5 [q 6 ] sumq	11	ERROR:undefined_word	the residual is the word's results: a word after takes them
+run negq ( callq 5 [q ] )	-5	ERROR:undefined_word	in a group a waiting word evaluates
+run callq 5 [q [ addq 1 2 ] ]	5 [3]	ERROR:undefined_word	a pending list the body leaves is evaluated when the region is collected
+run callq [ addq 1 2 ] [q ]	[3]	ERROR:undefined_word	a pending list as the INPUT is evaluated as any argument is
+run callq 5 [q boomq ]	ERROR:fixture_boom	ERROR:undefined_word	a body's error is the region's
+run callq 5 [q ) ]	ERROR:syntax_error	ERROR:undefined_word	an unmatched ) in the body meets the region's seal
+run callq 5 [q callq 6 [q ] ]	5 6	ERROR:undefined_word	regions nest: the inner one's residual is stepped in the outer
+run callq 5 [q callq 6 [q sumq ] ]	ERROR:signature_error	ERROR:undefined_word	and the inner body does not see the outer input
+run callq 1 [q eachq [q 5 6 ] [q negq ] ]	1 [-5 -6]	ERROR:undefined_word	a driven loop in a call region
+run forq 2 [q callq i [q 7 ] ]	0 7 1 7	ERROR:undefined_word	in a loop's round
+run forq 3 [q callq i [q breakq ] ]		ERROR:undefined_word	a signal passes THROUGH a call region to the loop around it
+run forq 3 [q i callq 9 [q contq ] 7 ]		ERROR:undefined_word	continue, the same
+run callq 5 [q breakq ]	ERROR:flow_error	ERROR:undefined_word	and with no loop, it is an error
+run callq 5 [q forq 2 [q i breakq ] ]	5	ERROR:undefined_word	a loop inside the region takes its own signal
+run def f fn( n Any Any [ callq n [q negq ] ] ) ; f 5	-5	ERROR:undefined_word	in a function's body
+run callq 5 [q ifq [q dupq/s ] [q 'y' ] [q 'n' ] ]	'y'	ERROR:undefined_word	an if in the region, whose condition reads the input
+run callq 5 [: Integer ]	5 [:Integer]	ERROR:undefined_word	a body that is not a plain list is the one token it is

@@ -122,6 +122,7 @@ list only by becoming **Resolved** (the record is then deleted) or
 | [NUR400](#nur400) | A full-stack word standing directly in a loop's round or an `if`'s condition ends the construct: `for 3 [depth]` runs one round and answers `0`, with no error, and leaves the index bound (`for 3 [depth] i` is `0 0`); `if [depth] ["yes"] ["no"]` takes neither branch and answers `0` | the Lean specification of the counted loop and of the `if` continuation, checked against core/go (2026-11-27) |
 | [NUR401](#nur401) | A function value with a narrower and a wider definition drops the argument it collected when the next value fits one slot of the wider definition but the wider definition does not fill: `m.g 5 6` is `5 106` where the word `f 5 6` is `105 6` | the Lean specification's differential fuzzer over `/u` on overloaded words, against core/go (2026-11-27) |
 | [NUR402](#nur402) | A counted loop's index wraps past the Integer range and the loop runs on: `for [9223372036854775806 9223372036854775807 2] [i]` runs to the step limit, where `9223372036854775807 add 1` is `integer_overflow` | review of the Lean specification of the counted loop, checked against core/go (2026-11-27) |
+| [NUR403](#nur403) | An empty list built over a nil slice is not a list to the kernel's readers: `NewList(nil)` and `NewList([]Value{})` render alike and compare equal, but as a loop's body the first is ONE token (itself) and the second none | the Lean specification's differential fuzzer over call regions, against core/go (2026-11-27) |
 
 Pending records normally use a compact form (rule / divergence /
 evidence / documentation status, plus a proposed verdict where one is
@@ -1674,5 +1675,53 @@ The Lean specification reproduces the kernel (`spec/Boru/Core/Engine.lean`
 range has passed the bound, and the loop ends there, as it does one step
 earlier. No error is owed: the range is exhausted, which is how every loop
 ends.
+
+---
+
+## NUR403 — an empty list built over a nil slice is not a list to the kernel's readers {#nur403}
+
+**Status:** Pending · **Recorded:** 2026-11-27 · measured on core/go directly (no reproduction through the shipped words was found) · silent
+
+**Rule:** a value is what it renders as and compares as; an empty list is
+an empty list. core/go/CLAUDE.md, "No Zero-Value Overload (CRITICAL)": a
+field must not use the Go zero value "to mean both 'the author omitted
+this' AND a valid explicit value".
+
+**Divergence:** `NewList(elems)` stores the slice it is given, and
+`ReadList.IsNil()` — "no backing data" — is `elems == nil`. So the empty
+list a handler builds as `NewList(out)` over a slice nothing was appended
+to is a different thing from `NewList([]Value{})` to every reader that
+tests `!lst.IsNil()` before treating a value as a list: `BodyTokens` and
+`Loop.bodyTokens` (a loop's body), and the same test in `core_flex.go`,
+`core_make.go`, `core_type.go`, `carrier_body.go`, `canon.go` and
+`engine.go`.
+
+```go
+a, b := NewList(nil), NewList([]Value{})
+CanonValue(a), CanonValue(b)     // "[]", "[]"
+CompareValues(a, b)              // 0
+len(BodyTokens(a))               // 1 — the body is the list itself, as a value
+len(BodyTokens(b))               // 0 — the body is no tokens
+```
+
+As a driven loop's body the nil-backed list is therefore PUSHED once a
+round where the other runs nothing. The core/spec fixture met it: its
+`eachq` answered a loop of no rounds with `NewList(d.out)` over a nil
+`out`, and that answer, used as another loop's body, was a value —
+`eachq [q 1 2 ] ( eachq [q ] [q boomq ] )` was `[1 [] 2 []]` where
+`eachq [q 1 2 ] [q ]` is `[1 2]`. The fixture now starts `out` empty; the
+kernel is as it was.
+
+No shipped word was found to hand a nil-backed list to a body position
+(`each (filter [false] [1 2]) [1 2]` and six like it answer as `each []
+[1 2]` does), so this is recorded at the level it was measured: the
+kernel's own API.
+
+The Lean specification does not reproduce it: a list there has no slice to
+be nil.
+
+**Proposed verdict:** resolve by fix — `NewList` (and `NewEvalList`) store
+an empty slice for a nil one, so `IsNil` means only what its callers need
+it to mean, "this is not a plain list's payload".
 
 ---

@@ -23,7 +23,7 @@ REPO = os.path.dirname(SPEC)
 
 WORDS = ["addq", "negq", "pairq", "sumq", "boomq", "patq", "dupq", "__pa", "undef",
          "qanyq", "bothq", "tyq", "tpatq", "unifyq", "meetq", "meetq", "depthq", "afn", "eachq",
-         "forq", "forq", "rangeq", "whileq", "breakq", "contq", "ifq", "ifq", "replayq"]
+         "forq", "forq", "rangeq", "whileq", "breakq", "contq", "ifq", "ifq", "replayq", "callq", "callq"]
 LITS = ["0", "1", "2", "5", "7", "-3", "'a'", "'x'", "true", "false", "none", "null"]
 TYPES = ["Integer", "String", "Any", "None", "List", "Map", "Boolean", "Word", "Scalar/String"]
 NAMES = ["x", "y", "n", "nosuchword"]
@@ -97,7 +97,9 @@ def gen_item(rng, depth):
                                "ifq [q i ] [q i ] [q 'z' ]", "ifq [q i ] [q breakq ] [q i ]",
                                "ifq [q i ] [q contq ] [q i ] 7", "ifq [q i breakq ] [q 1 ] [q 2 ]",
                                "i ifq [q contq ] [q 1 ] [q 2 ]", "replayq [q i ]", "replayq [q i breakq ]",
-                               "ifq [q c ] [q undef c ] [q breakq ]", "ifq [q depthq ] [q 1 ] [q 2 ]"])
+                               "ifq [q c ] [q undef c ] [q breakq ]", "ifq [q depthq ] [q 1 ] [q 2 ]",
+                               "callq i [q 7 ]", "callq i [q breakq ]", "i callq 9 [q contq ] 7",
+                               "callq i [q negq/v ]"])
             if w == "forq":
                 head = ["forq", rng.choice(["0", "1", "2", "2", "3", "-1", "'a'", "x"])]
             else:
@@ -122,6 +124,16 @@ def gen_item(rng, depth):
                     "ifq [q c ] [q 2 ] [q 3 ]", "forq 2 [q i ]", "eachq [q 1 2 ] [q negq ]", "inc", "depthq"]
             return (["ifq", "[q"] + cond.split() + ["]", "[q"] + rng.choice(arms).split() + ["]",
                     "[q"] + rng.choice(arms).split() + ["]"])
+        if w == "callq" and depth == 2 and rng.random() < 0.85:
+            # a call region: a driven loop of one round, whose residual is the
+            # word's results — stepped again where the word stood
+            body = rng.choice(["", "negq", "negq/s", "7", "addq 1", "depthq", "sumq", "negq/v", "boomq",
+                               "fn( n Integer Integer [ addq n 1 ] )", "[ addq 1 2 ]", "(", ")", ";",
+                               "bothq 1", "callq 6 [q sumq ]", "callq 6 [q ]", "breakq", "contq", "x",
+                               "addq x", "afn n [q addq n 1 ]", "ifq [q dupq/s ] [q 'y' ] [q 'n' ]",
+                               "eachq [q 5 6 ] [q negq ]", "forq 2 [q i breakq ]", "inc", "dupq", "undef x",
+                               "i", "c undef c", "pairq", "unifyq Integer", "negq/s negq/s"])
+            return ["callq"] + gen_value(rng, 1) + ["[q"] + body.split() + ["]"]
         if w == "replayq" and depth == 2 and rng.random() < 0.85:
             # the plain mark and move: the body runs, and then runs again in
             # the place of everything its first run left

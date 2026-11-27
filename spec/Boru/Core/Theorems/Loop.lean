@@ -107,4 +107,42 @@ theorem loops_nest :
         == canon (.list [x, .list [y, .int 1] false] false)) = true := by
   native_decide
 
+/-! ## The call region
+
+A native whose last act is running a body returns the run as a CALL REGION
+(core/go `CallRegion`): a driven loop of ONE round. Its inputs are sealed
+and inert like any region's — and its residual is not a driver's to keep
+but the word's own results, stepped again where the word stood. The
+fixture's `callq x body` is one, with `x` its one input. -/
+
+/-- `callq x body`, written forward. -/
+def call (x : Value) (body : List Value) : List Value := [w "callq", x, .list body false]
+
+/-- THE BODY'S STACK IS ITS INPUT, as in any region: values beneath the
+    word are out of its sight, and stand untouched. -/
+theorem a_call_region_is_sealed :
+    (operands.all fun below => operands.all fun x =>
+      out ([below] ++ call x [w "depthq"]) == canonValues [below, x, .int 1]) = true := by
+  native_decide
+
+/-- THE RESIDUAL IS THE WORD'S RESULTS: everything the round left — the
+    input the body did not take, then what the body left — stands where
+    the word stood, and a word written after takes it. -/
+theorem a_call_regions_residual_is_its_results :
+    (operands.all fun x => operands.all fun v =>
+      out (call x [v]) == canonValues [x, v] &&
+      out (call (.int 5) [.int 6] ++ [w "sumq"]) == "11") = true := by
+  native_decide
+
+/-- …AND IT IS STEPPED AGAIN. A function the body leaves is a value in
+    the region and is CALLED when the region's residual is stepped where
+    the word stood — where the driven loop beside it hands the same
+    residual to its driver, and nothing steps it. -/
+theorem a_call_regions_residual_is_stepped :
+    ([5, -2, 0].all fun (n : Int) =>
+      let ref : Value := .word { name := "negq", forceVal := true }
+      out (call (.int n) [ref]) == canonValues [.int (-n)] &&
+      out (each [.int n] [ref]) != canonValues [.int (-n)]) = true := by
+  native_decide
+
 end Boru.Core.Loop

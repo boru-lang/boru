@@ -646,7 +646,12 @@ func coreSpecRegistry(t *testing.T) *Registry {
 			if err != nil {
 				return nil, coreSpecNotAList("eachq", a[0])
 			}
-			return StartLoop(reg, "eachq", &coreSpecEach{elems: xs.Slice(), body: a[1]})
+			// out starts EMPTY, not nil: the list the loop answers is then a
+			// list whatever the rounds left. A list built over a nil slice is
+			// "no backing data" to a dozen kernel readers (ReadList.IsNil) —
+			// as a body it is one token, not none (NUR403) — and the corpus
+			// is about lists, not about Go slices.
+			return StartLoop(reg, "eachq", &coreSpecEach{elems: xs.Slice(), body: a[1], out: []Value{}})
 		}),
 		BarrierPos: 2,
 	})
@@ -765,6 +770,19 @@ func coreSpecRegistry(t *testing.T) *Registry {
 			return nil, nil
 		}),
 		BarrierPos: 0,
+	})
+	// callq is the door onto the CALL REGION (CallRegion, loop.go): what a
+	// native returns when its last act is running a body — `case`'s matched
+	// block. It is a driven loop of ONE round: the input enters sealed and
+	// inert, the body steps where the word stands, and the region's
+	// residual replaces it AS THE WORD'S RESULTS — stepped again where the
+	// word stood, where eachq's are handed to its driver and never stepped.
+	r.Register("callq", Signature{
+		Params: []FnParam{{Name: "x", Type: TAny}, {Name: "body", Type: TList}},
+		Impl: Go(func(a []Value, _ map[string]Value, _ []Value, reg *Registry) ([]Value, error) {
+			return CallRegion(reg, "callq", "callq body", []Value{a[0]}, a[1])
+		}),
+		BarrierPos: 2,
 	})
 	// qanyq is the /q fixture whose name slot is ANY rather than Atom, and
 	// it RETURNS what it captured, so a row can read the capture back. The

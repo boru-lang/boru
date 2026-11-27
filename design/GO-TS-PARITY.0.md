@@ -422,8 +422,9 @@ Three things from it are worth carrying even if the tables are never read:
   `if` continuation on a mark and move (basic/ts's `if` is its own), and
   no arity widening of a value call. All are specified in Lean and
   pinned on the Go column of `core/spec/divergent.tsv` (73, 48, 47 and 4
-  rows); the fixtures `forq`, `rangeq`, `whileq`, `breakq`, `contq`,
-  `ifq` and `replayq` are the Go runner's and the Lean runner's only.
+  rows, and 26 for call regions); the fixtures `forq`, `rangeq`,
+  `whileq`, `breakq`, `contq`, `ifq`, `replayq` and `callq` are the Go
+  runner's and the Lean runner's only.
 - NUR059: canon still renders sugar tags, `/r` and `/N` word modifiers,
   and paren groups in debug spelling. Both engines agree, so it is render
   quality rather than parity — pinned by corpus rows so a one-sided fix
