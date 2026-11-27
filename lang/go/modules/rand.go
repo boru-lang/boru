@@ -119,8 +119,7 @@ func randWithSeedReturns(_ []native.Value, _ *native.Registry) []native.Value {
 // randListOfReturns is `Rand.list-of`'s check-mode model: the generator body
 // runs in the pass's registry as each's body does (native.AnalyseMultiRunBody
 // — no inputs, the body's defs kept), so a name the body binds is the body's
-// binding after the call on both lanes (NUR330). The result stays the
-// declared List.
+// binding after the call (NUR330). The result stays the declared List.
 func randListOfReturns(args []native.Value, r *native.Registry) []native.Value {
 	native.AnalyseMultiRunBody(r, args[0])
 	return []native.Value{native.NewCarrier(native.TList)}
@@ -424,8 +423,8 @@ func randNativesForState(state *randState) []native.NativeFunc {
 						// n == 0 runs the body ZERO times, so an empty body is not
 						// an error there — the loop below never reaches its
 						// no-value check either. Measured: guarding on the body
-						// alone made `Rand.list-of [] 0` raise where both engines
-						// answer [].
+						// alone made `Rand.list-of [] 0` raise where the answer
+						// is [].
 						if n > 0 && len(bodyTokens) == 0 {
 							return nil, r.BoruError("rand_error",
 								"Rand.list-of[0]: body produced no value", "Rand.list-of")
@@ -474,13 +473,9 @@ func randNativesForState(state *randState) []native.NativeFunc {
 						if _, err := native.RequireConcreteList(bodyVal, "Rand.map-from value"); err != nil {
 							return nil, fmt.Errorf("evaluating Rand.map-from[%s]: %w", key, err)
 						}
-						// The body runs through the InvokeBody seam, the one
-						// every code-body word shares: on the interpreter it is
-						// RunPooled's run exactly (RunResolved over no inputs),
-						// and on a compiled run the VM hosts the raw token body
-						// as a run-time-stamped unit (eng vm_token_body.go)
-						// instead of stepping it on a pooled sub-engine — the
-						// interp-entry census's module-rand.tsv row.
+						// The body runs through InvokeBody, the one entry every
+						// code-body word shares: RunPooled's run exactly
+						// (RunResolved over no inputs).
 						res, err := native.InvokeBody(r, bodyVal, nil)
 						if err != nil {
 							return nil, fmt.Errorf("evaluating Rand.map-from[%s]: %w", key, err)
@@ -489,7 +484,7 @@ func randNativesForState(state *randState) []native.NativeFunc {
 						// its own ends the build and returns NO result, the
 						// iterating natives' contract (core.BodyEscaped): the
 						// enclosing run resolves the signal, and the escaped
-						// run's residual is no key's value on either lane.
+						// run's residual is no key's value.
 						if native.BodyEscaped(r) {
 							return nil, nil
 						}

@@ -1265,6 +1265,15 @@ func comboTypeNames(combo []core.Value) string {
 	return strings.Join(parts, ", ")
 }
 
+// dynamicReachableValueReturns returns the distinct 1-value return types of
+// the word's overloads that the (possibly dynamic) args can reach. It does
+// not bail on a sibling that returns 0 values — it is for the MIXED-arity
+// case: a mutator like `set` whose in-place overloads
+// (Array/Object/Store/Class) return nothing while the value-returning twins
+// (Map/List/Flex) return the updated node. A CONCRETE receiver reaches only
+// its own overload (sigTypeMatches is exact for it), so this returns nil
+// there and the true 0-arity stands; only a genuinely dynamic receiver
+// reaches both.
 func dynamicReachableValueReturns(r *core.Registry, word string, args []core.Value) []*core.Type {
 	fn := r.Lookup(word)
 	if fn == nil {
@@ -1912,6 +1921,16 @@ const loopAnalysisRounds = 3
 // analysed for before the checker answers from the declaration (A9).
 const FnAnalysisQuota = 64
 
+// isBindName reports whether name is one of a loop's own bind variables.
+func isBindName(bindNames []string, name string) bool {
+	for _, n := range bindNames {
+		if n == name {
+			return true
+		}
+	}
+	return false
+}
+
 // AnalyseLoopBody analyses a loop body to a bounded fixed point
 // (design/legacy/checker-accuracy-review.10.ignore A4). Each round binds the
 // loop's own names (iterator …) as carriers, runs the body, and
@@ -1929,17 +1948,6 @@ const FnAnalysisQuota = 64
 // The joined post-loop bindings are left installed (they ARE the
 // post-loop environment); the loop-local binds are popped. Returns
 // the final round's residual carrier stack.
-//
-// isBindName reports whether name is one of a loop's own bind variables.
-func isBindName(bindNames []string, name string) bool {
-	for _, n := range bindNames {
-		if n == name {
-			return true
-		}
-	}
-	return false
-}
-
 func AnalyseLoopBody(r *core.Registry, body core.Value, bindNames []string, bindVals []core.Value) []core.Value {
 	var stk []core.Value
 	var installed []string

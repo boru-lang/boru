@@ -190,7 +190,7 @@ var storageNatives = []NativeFunc{
 			// sig pins "set: <Kind> values are immutable" where
 			// sig-absence would raise an opaque dispatch failure.
 			// isInertConst's MicronPayload arm relies on this staying
-			// an error — see eng/go/emit.go.
+			// an error.
 			{
 				Args:      []*Type{TString, TAny, TMicron},
 				Impl:      Go(setMicronHandler),
@@ -445,9 +445,8 @@ func accessorGetSignatures() []Signature {
 		// member stays None (`{a:1}.b.c`), so the atom row carries QuoteArgs
 		// like every other receiver's — without it a BARE-WORD key over a
 		// run-time None was never collected, and the word stepped on its
-		// own as `undefined word: c` (NUR198: the interpreter's raise for
-		// the compiled lane's None; the string and materialised-atom keys
-		// always propagated).
+		// own as `undefined word: c` (NUR198; the string and
+		// materialised-atom keys always propagated).
 		{Args: []*Type{TAtom, TNone}, QuoteArgs: map[int]bool{0: true}, BarrierPos: 1, Impl: Go(getNoneHandler), Returns: []*Type{TNone}},
 		{Args: []*Type{TAny, TNone}, BarrierPos: 1, Impl: Go(getNoneHandler), Returns: []*Type{TNone}},
 		// [Key | Store] — check-mode-aware ReturnsFn picks up a
@@ -1504,15 +1503,14 @@ func getNodeReturns(args []Value, r *Registry) []Value {
 	}
 	if val.Parent().ConformsTo(TFunction) ||
 		IsReach(&val) || IsSplice(&val) {
-		// Shaped-instance-method annotation (Stage M2c, eng/method_shape.go):
-		// a NON-closure delegation wrapper member (`l.info`, `c.add`, `r.int`)
-		// stays dynamic — the runtime instance carries per-call state, so the
-		// member must never bake (freeze-gate) — but the fresh carrier is
-		// NOTED with the resolved member so the compile pass can model the
-		// interpreter's auto-dispatch mid-stream as a guarded OpCallDynMethod.
+		// Shaped-instance-method annotation (check/go/method_shape.go): a
+		// NON-closure delegation wrapper member (`l.info`, `c.add`, `r.int`)
+		// stays dynamic — the runtime instance carries per-call state — but
+		// the fresh carrier is NOTED with the resolved member so the check
+		// pass can model the interpreter's auto-dispatch mid-stream.
 		// NoteMethodShape vets the member (delegation wrapper only, never a
-		// genuine 0-arg overload — the miscompile-E auto-dispatch class stays
-		// declined); everything it declines keeps the bare dynamic Any.
+		// genuine 0-arg overload); everything it declines keeps the bare
+		// dynamic Any.
 		if r != nil && val.Parent().ConformsTo(TFunction) {
 			out := NewDynamicCarrier(TAny)
 			r.Check.NoteMethodShape(out, val)
@@ -1688,8 +1686,7 @@ func getNodeHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([
 // (own + inherited). A method field (function-typed), an absent/sealed
 // field (→ None), or a type whose schema can't be resolved keeps the
 // dynamic(Any) the poly path handles — the same dispatch-bearing exclusion
-// as the concrete-map case (a returned fn value would push the compiler to
-// lower a fn-value call and decline).
+// as the concrete-map case.
 func getObjectReturns(args []Value, r *Registry) []Value {
 	dyn := []Value{NewDynamicCarrier(TAny)}
 	if r == nil || len(args) != 2 || !IsConcrete(&args[0]) || args[1].Parent() == nil {
@@ -1727,7 +1724,7 @@ func getObjectReturns(args []Value, r *Registry) []Value {
 // getResourceReturns is getObjectReturns for the Resource/Entity
 // hierarchy: it reads the field type from the ResourceType schema so a
 // Resource-instance field read (`e.spec`) carries its declared type in
-// check/bytecode contexts instead of degrading to Any. Resource/Entity
+// check mode instead of degrading to Any. Resource/Entity
 // are installed as type bindings (installResourceTypes), so their
 // schema is reachable via TopTypeBody like a class type's.
 func getResourceReturns(args []Value, r *Registry) []Value {
@@ -1828,9 +1825,7 @@ func getStoreHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) (
 		// was spelled "unknown key_error" (the message's leading word glued to
 		// the code) with "unknown key" passed as the WORD, and both halves of
 		// that typo were user-visible: a code containing a SPACE cannot be
-		// matched by any `case` arm, and the compiled path renders the caret
-		// span at len(Word) — 11 carets for "unknown key" against the
-		// interpreter's 3 for the real token.
+		// matched by any `case` arm, and the WORD is what a diagnostic names.
 		return nil, r.BoruError("key_error", fmt.Sprintf("unknown key: %s", key), "get")
 	}
 	return []Value{val}, nil

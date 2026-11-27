@@ -144,8 +144,8 @@ type Options struct {
 	// capabilities.FixedStreamProbe, which is the only way the "yes, a
 	// terminal" arm is reachable in a suite whose streams are redirected.
 	Streams capabilities.StreamProbe
-	// Steps caps evaluation: the interpreter's Run loop, a single
-	// paren-group evaluation, and the VM's step counter. Zero uses the
+	// Steps caps evaluation: the interpreter's Run loop and a single
+	// paren-group evaluation. Zero uses the
 	// engine defaults (core.DefaultStepLimit / DefaultSubStepLimit). Set
 	// via the CLI's --options flag (e.g. `--options steps:50000000`) when
 	// a legitimately long computation trips the default ceiling, or

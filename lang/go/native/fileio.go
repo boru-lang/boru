@@ -419,30 +419,18 @@ func doWrite(r *Registry, path, content, enc, format, mode, nl string, atomic, e
 		return nil, r.BoruErrorAt("write_error", fmt.Sprintf("write: %v", encErr), "write", pos)
 	}
 
-	// effect ledger (core effects.go): a filesystem write is an observable
-	// effect the compiled-mode fallback cannot un-do, so it counts against
-	// the silent re-run. Noted on the ATTEMPT: an OS WriteFile can create
-	// or truncate the target before failing, so even the error path may
-	// already have mutated the filesystem.
-	// {exclusive} opens with O_EXCL BEFORE noting an effect: a compile failure
-	// (the path already exists) mutates nothing, so it stays a clean
-	// re-runnable write_error rather than tripping the compiled effect
-	// fence. writeExclusive notes the effect only once the create lands.
+	// {exclusive} opens with O_EXCL: a refusal (the path already exists)
+	// mutates nothing, and is a write_error.
 	if exclusive {
 		if err := writeExclusive(r, path, data); err != nil {
-			// A BoruError (not a bare fmt.Errorf) so the compiled runtime
-			// treats the compile failure as intentional and does not attempt a
-			// fallback — which a prior statement's effect would block,
-			// surfacing as a spurious internal_error (compiled_fullcorpus).
+			// A coded BoruError (not a bare fmt.Errorf): the failure has a
+			// code to dispatch on.
 			return nil, fileOpError(r, "write_error", "write", fmt.Sprintf("write: %v", err), err, pos)
 		}
 		return []Value{NewString(path)}, nil
 	}
-	// write_error for the same reason the {exclusive} branch above already
-	// gives: a coded BoruError is a deliberate compile failure the compiled runtime
-	// surfaces, where a foreign error triggers an interpreter re-run that
-	// the effect just noted would block — reappearing as a spurious
-	// internal_error. It also gives the failure a code to dispatch on.
+	// write_error for the same reason the {exclusive} branch above gives:
+	// a coded BoruError gives the failure a code to dispatch on.
 	if atomic {
 		if err := writeAtomic(r, path, data); err != nil {
 			return nil, fileOpError(r, "write_error", "write", fmt.Sprintf("write: %v", err), err, pos)
@@ -462,7 +450,7 @@ func doWrite(r *Registry, path, content, enc, format, mode, nl string, atomic, e
 func writeExclusive(r *Registry, path string, data []byte) error {
 	h, err := EffectiveFileOps(r).Open(path, capabilities.OpenOpts{Write: true, Create: true, Exclusive: true})
 	if err != nil {
-		return err // EEXIST (or a gate compile failure): nothing was created
+		return err // EEXIST (or a gate refusal): nothing was created
 	}
 	_, werr := h.Write(data)
 	cerr := h.Close()

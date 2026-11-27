@@ -186,8 +186,7 @@ func BuildTestModule(parent *native.Registry) (native.ModuleDesc, error) {
 		// Src lets import transport escaped type machinery — the
 		// preamble-minted record/table type NODES the exports now carry
 		// (TestSet, TestCase, …) are adopted into the importing
-		// registry's TypeTable so the compiled OpPushType path resolves
-		// them (adoptEscapedTypes).
+		// registry's TypeTable (adoptEscapedTypes).
 		Src:     modReg,
 		ID:      parent.Modules.NextID(),
 		Exports: exports,
@@ -498,10 +497,11 @@ func testNatives(parent *native.Registry) []native.NativeFunc {
 					// Side-effect suppression (design/legacy/module-fn-checkstate-ownership.1.ignore
 					// §5c): test-record accumulates pass/fail outcomes into the run. Once
 					// a module-fn body (run-case) runs IN CHECK MODE under the parent pass
-					// (§5b), this handler fires during the compile/check pass — it must NOT
-					// mutate observable state, or the compiled path leaks pass/fail counts
-					// (the module-test:38 {passed:1 failed:1} vs {passed:2 failed:0}
-					// divergence). Skip the write when the pass suppresses side effects.
+					// (§5b), this handler fires during the check pass — it must NOT
+					// mutate observable state, or the run that follows starts with the
+					// pass's counts (the module-test:38 {passed:1 failed:1} vs
+					// {passed:2 failed:0} divergence). Skip the write when the pass
+					// suppresses side effects.
 					if r != nil && r.Check.SkipsSideEffect() {
 						return nil, nil
 					}
@@ -842,10 +842,7 @@ func runCheckProp(parent *native.Registry, args []native.Value) ([]native.Value,
 
 		// Run the generator body with `r` bound to the iteration's rand
 		// instance. Body must leave exactly one value on the stack — the
-		// generated input. A stored-param-body carrier (compiled path)
-		// dispatches through InvokeCallback — the unit runs nested on the
-		// VM, and stale deps / internal errors degrade to the identical
-		// CallBoru frame; a raw body builds today's throwaway sig.
+		// generated input.
 		genResults, err := checkPropBody(parent, checkPropGenParams, args[1], []native.Value{native.NewMap(randMap)})
 		if err != nil {
 			failed = true
@@ -1112,9 +1109,8 @@ func shrinkFailingInput(
 			return shrink.Invalid
 		}
 		candidateValue := vals[len(vals)-1]
-		// The main loop's dispatch: the carrier on the VM, or the
-		// throwaway frame whose unnamed Any param makes `args.0`
-		// available inside the property body.
+		// The main loop's dispatch: the throwaway frame whose unnamed
+		// Any param makes `args.0` available inside the property body.
 		res, err := checkPropBody(parent, checkPropPropParams, propBody, []native.Value{candidateValue})
 		if err != nil || len(res) == 0 {
 			return shrink.Invalid

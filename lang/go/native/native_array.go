@@ -1414,22 +1414,7 @@ func pairsReturnsFn(args []Value, _ *Registry) []Value {
 
 // ---- each ----
 
-// collIsConcreteMap / collIsConcreteList report that the runtime collection is a
-// concrete Map / List — the SIBLING shape of the overload the compiler committed
-// for a gradual-Any (Dynamic) `each`/`fold`/`scan`. The recorder optimistically
-// bakes the first-reachable (List) overload; when the value turns out to be the
-// other shape at run time, the committed handler delegates to the sibling handler
-// so the SAME compiled closure drives it, matching the interpreter (which picks
-// the overload by the runtime type). Unreachable in the interpreter: matchSignature
-// gates a Map away from a TList sig and vice-versa, so these only redirect on the
-// compiled committed-overload path. See CallableSpec.CrossCollectionTokenShape.
-func collIsConcreteMap(v Value) bool  { return IsConcrete(&v) && v.Parent().ConformsTo(TMap) }
-func collIsConcreteList(v Value) bool { return IsConcrete(&v) && v.Parent().ConformsTo(TList) }
-
 func eachHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([]Value, error) {
-	if collIsConcreteMap(args[1]) {
-		return eachMapHandler(args, nil, nil, reg)
-	}
 	if err := requireConcreteArgs(reg, "each", "concrete lists", args[0], args[1]); err != nil {
 		return nil, err
 	}
@@ -1437,8 +1422,7 @@ func eachHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([]
 	// The loop runs ON THE TAPE (core loop.go): one sealed region per
 	// element, the body's top as the element's answer, break/continue
 	// passing through to the enclosing loop, a body error attributed
-	// `each: element N:`. Under the VM the same driver runs from Go
-	// through InvokeBody, the body a compiled closure, as before.
+	// `each: element N:`.
 	return StartLoop(reg, "each", newEachListDriver(reg, "each", args[0], dataList, true))
 }
 
@@ -1680,9 +1664,6 @@ func foldAccCarrier(init Value) Value {
 
 func foldWithInitHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([]Value, error) {
 	// Sig is [TList, TList, TAny]: args[0]=body, args[1]=data, args[2]=init.
-	if collIsConcreteMap(args[1]) {
-		return foldMapInitHandler(args, nil, nil, reg)
-	}
 	if err := requireConcreteArgs(reg, "fold", "concrete lists", args[0], args[1]); err != nil {
 		return nil, err
 	}
@@ -1711,9 +1692,6 @@ func foldWithInitReturnsFn(args []Value, r *Registry) []Value {
 }
 
 func foldNoInitHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([]Value, error) {
-	if collIsConcreteMap(args[1]) {
-		return foldMapNoInitHandler(args, nil, nil, reg)
-	}
 	if err := requireConcreteArgs(reg, "fold", "concrete lists", args[0], args[1]); err != nil {
 		return nil, err
 	}
@@ -1890,9 +1868,6 @@ func doFold(reg *Registry, acc Value, body Value, data ReadList) ([]Value, error
 // ---- scan ----
 
 func scanHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([]Value, error) {
-	if collIsConcreteMap(args[1]) {
-		return scanMapHandler(args, nil, nil, reg)
-	}
 	if err := requireConcreteArgs(reg, "scan", "concrete lists", args[0], args[1]); err != nil {
 		return nil, err
 	}
@@ -1936,9 +1911,7 @@ func outerHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([
 	left, _ := AsList(args[1])
 	right, _ := AsList(args[2])
 	// The body sees (left[i], right[j]) on the stack, one tape region per
-	// pair, row-major (outerDriver, core loop.go); under the VM the driver
-	// runs from Go over the compiled closure, so a compiled `outer` is
-	// byte-identical to the interpreter.
+	// pair, row-major (outerDriver, core loop.go).
 	return StartLoop(reg, "outer", newOuterDriver(reg, args[0], left, right))
 }
 
@@ -1975,8 +1948,7 @@ func innerHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([
 			return nil, reg.BoruError("inner_error", "inner: vectors must have same length", "inner")
 		}
 		// Pair-op over each pair, then the agg-op fold over the pairs —
-		// one tape loop in two phases (innerDriver, core loop.go); under
-		// the VM the driver runs from Go over the compiled closures.
+		// one tape loop in two phases (innerDriver, core loop.go).
 		return StartLoop(reg, "inner", newInnerDriver1D(reg, args[0], args[1], left, right))
 	}
 

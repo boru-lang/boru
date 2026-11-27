@@ -48,9 +48,9 @@ var macroNatives = []NativeFunc{
 			Impl:       Go(macroHandler, RunInCheck()),
 			// Pure construction, like fn/fnsig — runs in check mode so
 			// the macro INSTALLS during the check pass: its uses then
-			// expand on the tape (execMacro) and the checker (and the
-			// bytecode recording pass) see the expanded stream, never
-			// the raw-form operand span (plan R6 #29).
+			// expand on the tape (execMacro) and the checker sees the
+			// expanded stream, never the raw-form operand span (plan
+			// R6 #29).
 			Returns: []*Type{TFunction}, BarrierPos: -1,
 		}},
 	},
@@ -441,8 +441,7 @@ func miniHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Va
 		// bound-variable fallback. A registered kind wins a collision
 		// (checked above); an unbound name or a non-Function binding keeps
 		// the unknown-kind handling below. A name def-bound to a COMPUTED
-		// fn (`def m (mk)`) has no Defs binding under analysis — installDef
-		// declines so the compiled closure machinery owns the name — and
+		// fn (`def m (mk)`) has no Defs binding under analysis and
 		// resolves through the per-pass fn-carrier side table
 		// (checkFnCarrierBind) instead, like parse.
 		top, bound := r.Defs.Top(kind)
