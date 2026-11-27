@@ -48,7 +48,7 @@ package core
 // design/FORWARD-COLLECTION-PHASES.10.md.
 //
 // COMPLEXITY: this function once carried //nolint:gocyclo,gocognit at
-// 87/211 — a reading of the pre-carve eng/go/match.go version. Stage 2's
+// 87/211 — a reading of the pre-carve core/go/match.go version. Stage 2's
 // re-seat 2 (54d8830) extracted the per-candidate scan to
 // CollectCandidateScan and the live measure is 68/131, UNDER the repo
 // caps (70/200), so the exemption is deleted and the caps now bind here

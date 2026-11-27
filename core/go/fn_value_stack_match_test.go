@@ -7,14 +7,6 @@ import "testing"
 // no-match park — in both directions: what it dispatches, and what it must
 // refuse.
 
-func stackMatchFn(sigs ...Signature) FnDefInfo {
-	return FnDefInfo{Anonymous: true, Signatures: sigs}
-}
-
-func stackMatchSigOf(params ...FnParam) Signature {
-	return Signature{Params: params, BarrierPos: BarrierAllForward, Impl: Boru(nil)}
-}
-
 // TestUncalledRaisePos: the value's own position, else the first candidate
 // that has one.
 func TestUncalledRaisePos(t *testing.T) {

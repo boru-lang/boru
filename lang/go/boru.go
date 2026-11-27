@@ -154,7 +154,7 @@ type Options struct {
 }
 
 // TapeOptions configures the execution tape's bounded growth — see
-// eng/go/tape.go. InitialSize 0 derives from the program; MaxGrows 0 and
+// core/go/tape.go. InitialSize 0 derives from the program; MaxGrows 0 and
 // GrowthFactor 0 use the defaults (7 and 2.7).
 type TapeOptions = native.TapeConfig
 

@@ -1110,7 +1110,7 @@ func setWeakFlexMapHandler(args []Value, _ map[string]Value, _ []Value, r *Regis
 }
 
 // weakValueMirror is the check-time twin of the runtime weak-domain
-// refusal (the guaranteed-error mirror discipline, eng/go/CLAUDE.md):
+// refusal (the guaranteed-error mirror discipline, core/go/CLAUDE.md):
 // a statically-known stored value outside the weak domain — a concrete
 // value or a bare type literal — deterministically raises
 // weak_value_error at runtime, so the checker reports the same

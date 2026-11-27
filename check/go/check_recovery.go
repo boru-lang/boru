@@ -1163,10 +1163,9 @@ func recoveryArgsAt(e *core.Engine, positions []int) []core.Value {
 // (Engine.TryRecoverUserFn) with the dispatching word's cursor
 // published again right before it: the recovery's earlier probes (the poly
 // re-match's CarrierResults) analyse the callee's body, whose own dispatches
-// move the cursor, and the recovered call's ReturnsFn reads it as the call
-// word and the CALL_USER's position — the caret of a no-match its entry
-// check raises (`k m.a` over an Integer inside g anchored at `keys` in k's
-// body, NUR360).
+// move the cursor, and the recovered call's ReturnsFn reads it as the
+// call's position — the caret of a no-match (`k m.a` over an Integer inside
+// g anchored at `keys` in k's body, NUR360).
 func recoverUserFn(e *core.Engine, w core.WordInfo, pos core.SrcPos, sig *core.Signature, fn *core.FnDefInfo, args []core.Value, nStack int, positions []int) bool {
 	// A window whose written operands reach past the signature's barrier is
 	// the recovery's shortfall fill, not the interpreter's collection, which

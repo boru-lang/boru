@@ -24,25 +24,6 @@ func bsFn(body ...core.Value) core.Value {
 	}}})
 }
 
-// bsInstall installs a boru-bodied fn on r so Lookup aggregates it —
-// the registry-installed callee shape the transitive scan resolves.
-func bsInstall(t *testing.T, r *core.Registry, name string, body ...core.Value) {
-	t.Helper()
-	core.InstallFnDef(r, name, core.FnDefInfo{Signatures: []core.FnSig{{
-		Returns: []*core.Type{core.TInteger},
-		Impl:    core.Boru(body),
-	}}})
-}
-
-func bsRegistry(t *testing.T) *core.Registry {
-	t.Helper()
-	r, err := core.NewRegistry()
-	if err != nil {
-		t.Fatalf("NewRegistry: %v", err)
-	}
-	return r
-}
-
 // --- valueHasSentinel / BodyHasSentinel ------------------------------------
 
 func TestValueHasSentinelWordsAndLists(t *testing.T) {

@@ -74,7 +74,7 @@ var inlineSeq atomic.Int64
 // the registry, taken on the foreground goroutine before the watch begins, so
 // the watch goroutine's rebuilds run their boru actions on an isolated registry
 // that can never race the main interpreter — the same pattern timeout /
-// interval / await use (see eng/go/fork.go).
+// interval / await use (see core/go/fork.go).
 type modelHandle struct {
 	build     *model.Build
 	watch     *model.Watch
@@ -453,7 +453,7 @@ func modelStartHandler(args []native.Value, _ map[string]native.Value, _ []nativ
 	// foreground goroutine (ForkConcurrent's contract: fork while the parent is
 	// not concurrently mutating), and route action callbacks to it. Outputs are
 	// SyncWriter-wrapped so concurrent prints don't interleave with the main
-	// program's. Mirrors timeout / interval (eng/go/fork.go).
+	// program's. Mirrors timeout / interval (core/go/fork.go).
 	fork := r.ForkConcurrent()
 	fork.Output = native.NewSyncWriter(r.Output)
 	fork.ErrOutput = native.NewSyncWriter(r.ErrOutput)

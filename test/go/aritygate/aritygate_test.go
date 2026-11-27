@@ -70,7 +70,7 @@ var arityNames = map[string]bool{
 // arity comparisons. See the header for what a pin means.
 var pinnedAritySites = map[string]int{
 	// ── The matcher and its machinery: reading arities to MATCH a signature
-	//    is the one argument rule (eng/go/CLAUDE.md, "Signature Ordering"),
+	//    is the one argument rule (core/go/CLAUDE.md, "Signature Ordering"),
 	//    not an exception to it.
 	// 33 -> 28: the plan-level matcher moved to core/go/collect_plan.go
 	// (PlanMatch, the sixty-fourth increment) with its five comparisons —

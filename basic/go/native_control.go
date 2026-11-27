@@ -160,11 +160,10 @@ var ControlNatives = []NativeFunc{
 
 		// ONE sig (List, Any): the handler runs when the body raised (the do
 		// result is an Error), else the result passes through. The two cases were
-		// formerly two sigs (TError vs TAny), but a STATIC pick is unsound for the
-		// compiled path — the checker types `do [raise …]` as Any and would bake
-		// the pass-through sig even when the runtime value is an Error. One sig
-		// with a runtime IsError branch keeps dispatch mono (so the handler body
-		// compiles as a closure) and correct on both paths.
+		// formerly two sigs (TError vs TAny), but a STATIC pick is unsound —
+		// the checker types `do [raise …]` as Any and would pick the
+		// pass-through sig even when the runtime value is an Error. One sig
+		// with a runtime IsError branch keeps dispatch mono and correct.
 		Signatures: []Signature{
 			{
 				Args:       []*Type{TList, TAny},
@@ -189,8 +188,7 @@ func DoListHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]
 	}
 	// `do` runs its body with no per-call inputs and catches a body error,
 	// surfacing it as an Error VALUE rather than propagating (the escape
-	// hatch semantics). Routed through the InvokeBody seam so the VM can run
-	// the body as a compiled closure.
+	// hatch semantics).
 	result, err := InvokeBody(r, args[0], nil)
 	if err != nil {
 		// An `IO.exit` request crosses a HANDLER-LESS `do` unchanged. The
@@ -288,7 +286,7 @@ func DoListReturnsFn(args []Value, r *Registry) []Value {
 		// The defs the body makes AFTER the raise never happen: `do [raise
 		// bad_input "boom" def x 1] … x` is undefined_word (or the earlier
 		// binding) on the interpreter, and the keep-defs model leaked x = 1
-		// into the enclosing scope, which the compiled lane then folded.
+		// into the enclosing scope.
 		for _, k := range r.Defs.Names() {
 			if r.Defs.Depth(k) > snap[k] {
 				r.Defs.Truncate(k, snap[k])
@@ -338,7 +336,7 @@ func DoListReturnsFn(args []Value, r *Registry) []Value {
 			// isolated (InvokeBody), so each shuffle meets the values the
 			// body itself pushed, exactly as it did here — `do [1 drop]` nets
 			// nothing, and there is no Error to latch (NUR222: `1 do [1 drop]
-			// drop` is [] on both lanes; its consumer had bailed).
+			// drop` is []).
 			if shuffleOnlyBody(bl.Elems(), r) {
 				return nil
 			}
@@ -931,8 +929,7 @@ func IfListReturnsFn(args []Value, r *Registry) []Value {
 func ForCountHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	// Reject a non-concrete count (a DepScalar/refinement Integer, a carrier)
 	// rather than silently coercing it to zero and running the loop zero
-	// times — the VM's OpForSetup (eng/go/vm.go) raises for_error here, so
-	// both engines must agree instead of one looping and the other erroring.
+	// times: a for_error.
 	n, err := args[0].AsConcreteInteger()
 	if err != nil {
 		return nil, r.BoruError("for_error", "for: count must be a concrete Integer", "for")
@@ -950,8 +947,8 @@ func ForRangeHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) (
 	body := args[1]
 	start, end, step, err := ParseRange(rangeSpec)
 	if err != nil {
-		// for_error matches the VM's OpForSetup taxonomy (eng/go/vm.go) so a
-		// malformed/non-concrete range errors the same way in both engines.
+		// A malformed/non-concrete range is a for_error, as a non-concrete
+		// count is.
 		return nil, r.BoruError("for_error", "for: "+err.Error(), "for")
 	}
 	return RunForLoop(r, start, end, step, "i", body)
@@ -1238,10 +1235,8 @@ func ErrorHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]V
 	if !IsError(args[1]) {
 		return []Value{args[1]}, nil
 	}
-	// Run the handler with the caught error pushed as its one input. Routed
-	// through InvokeBody so a compiled handler closure runs VM-native (r.Invoker
-	// set); with no Invoker a fresh sub-engine runs the reconstructed token
-	// stream — byte-identical to the historical `New(r).Run([err, body…])`.
+	// Run the handler with the caught error pushed as its one input: a
+	// pooled sub-engine runs the reconstructed token stream (InvokeBody).
 	out, err := InvokeBody(r, args[0], []Value{args[1]})
 	if err != nil {
 		return nil, err

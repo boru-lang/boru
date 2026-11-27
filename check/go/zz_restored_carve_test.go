@@ -10,7 +10,7 @@ import (
 )
 
 // TestUsurpCheckModeDiagnostics is restored from the pre-carve tree
-// (aa732c2:eng/go/zz_cut_residual_test.go). It lives in check because the
+// (aa732c2:core/go/zz_cut_residual_test.go). It lives in check because the
 // undefined_word half of the assertion comes from the check piece's
 // CheckBraid.UndefinedWordCheckDiag registration (check_recovery.go); a
 // core-only build runs inactiveUndefinedWordCheckDiag, which yields an
@@ -40,7 +40,7 @@ func TestUsurpCheckModeDiagnostics(t *testing.T) {
 }
 
 // TestWordValCheckModeDiagnostics is restored from the pre-carve tree
-// (aa732c2:eng/go/zz_cut_residual_test.go). It is the `/v` twin of
+// (aa732c2:core/go/zz_cut_residual_test.go). It is the `/v` twin of
 // TestUsurpCheckModeDiagnostics above and lives in check for the same
 // reason: the undefined_word half of the assertion comes from the check
 // piece's CheckBraid registration, so a core-only build would produce an
@@ -103,7 +103,7 @@ func TestW8SpliceFnCheckTailCompaction(t *testing.T) {
 }
 
 // TestW8AnonFnCheckModeZeroArgActiveSlot is restored from the pre-carve tree
-// (aa732c2:eng/go/zz_cut_residual_test.go). It lives in check because the
+// (aa732c2:core/go/zz_cut_residual_test.go). It lives in check because the
 // behaviour under test is the check piece's spliceAnonCheckResult
 // (check_recovery.go), installed into core.CheckBraid.SpliceAnonCheckResult
 // by this module's init. The core-side twin
@@ -147,7 +147,7 @@ func TestW8AnonFnCheckModeEmptyBodyActiveSlot(t *testing.T) {
 }
 
 // TestW8AnonFnCheckModeNamedParamsStackActiveSlot is restored from the
-// pre-carve tree (aa732c2:eng/go/zz_cut_residual_test.go). It lives in check
+// pre-carve tree (aa732c2:core/go/zz_cut_residual_test.go). It lives in check
 // because the behaviour under test is the check piece's
 // spliceAnonCheckResult (check_recovery.go), installed into
 // core.CheckBraid.SpliceAnonCheckResult by this module's init. The core-side
@@ -214,7 +214,7 @@ func TestOrderingReturnsFn(t *testing.T) {
 }
 
 // TestRunCarrierBodyAndStacksEqual is restored from the pre-carve tree
-// (aa732c2:eng/go/zz_cut_residual_test.go). It lives in check because it
+// (aa732c2:core/go/zz_cut_residual_test.go). It lives in check because it
 // touches the unexported carrierStacksEqual, and core.RunCarrierBody is defined
 // here too (eng only re-exports it through the generated facade).
 func TestRunCarrierBodyAndStacksEqual(t *testing.T) {

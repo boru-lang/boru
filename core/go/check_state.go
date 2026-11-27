@@ -622,7 +622,7 @@ var checkCodeSeverity = map[string]CheckSeverity{
 	// design/FLEX-ATTRS.1.md §4.4).
 	"weak_value_error": SeverityError,
 	// Dry-pass mirrors of PURE words over concrete literals
-	// (eng/go/drypass.go DryPassReturns): each code is the runtime's own —
+	// (check's DryPassReturns): each code is the runtime's own —
 	// a failing Assert comparison, a malformed codec/parse literal, an
 	// out-of-range module list edit, a reify shape violation, and the
 	// outside-a-template macro words.
@@ -1872,11 +1872,10 @@ func CheckAddUniqueDiagnostic(r *Registry, code, detail, word string, pos SrcPos
 
 // CheckAddUnique is CheckAddUniqueDiagnostic's dedupe over a diagnostic the
 // caller shapes itself — for a finding that must NOT be stamped
-// RuntimeMirror because the compile pipeline should decline on it. That is
-// the MODEL-UNDERMINING class (eng/go/CLAUDE.md): a mirror promises the
-// program compiles and then raises the identical error, which is false when
-// dispatch itself did not resolve (`no_signature`, `undefined_word`,
-// `uncalled_function` — there is no call to compile).
+// RuntimeMirror. That is the MODEL-UNDERMINING class (core/go/CLAUDE.md): a
+// mirror promises the program raises the identical error when run, which is
+// false when dispatch itself did not resolve (`no_signature`,
+// `undefined_word`, `uncalled_function`).
 func CheckAddUnique(r *Registry, d CheckDiagnostic) {
 	for _, prev := range r.Check.Diagnostics {
 		if prev.Code == d.Code && prev.Detail == d.Detail &&

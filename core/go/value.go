@@ -1112,8 +1112,8 @@ type Loop struct {
 	Registry *Registry
 	// Word is the looping construct that owns the loop ("for", "while",
 	// "each", …), the label every annotation carries. Empty on a
-	// continuation built without one (the compiled lane's island restart,
-	// a test fixture): Describe then names the mode.
+	// continuation built without one (a test fixture): Describe then
+	// names the mode.
 	Word string
 	// Iter counts the iterations the loop has STARTED; the live region is
 	// iteration Iter-1 (0-based). Count is the iteration total when the
@@ -1151,8 +1151,7 @@ type Loop struct {
 	WhileCond   []Value
 	WhileInBody bool
 	// CondPos is the condition operand's own position — where a condition
-	// that produced no value is reported, on both lanes (the compiled
-	// terminal trap anchors there; NUR130).
+	// that produced no value is reported (NUR130).
 	CondPos SrcPos
 
 	// Driver drives a DRIVEN loop (loop.go); nil for a counted or while
@@ -1969,10 +1968,10 @@ func IDPrefixForType(t *Type) string {
 var checkPassDepth atomic.Int64
 
 // BeginIDMintScope arms eager ID minting for a non-pass producer whose
-// values must still carry compile identities — the PARSER. Program tokens
-// are the compile pass's raw material (a handler that returns its inputs
-// hands the emitter the parsed literals themselves; captures snapshot
-// parse-minted binding values), yet parsing runs before any pass begins.
+// values must still carry identities — the PARSER. Program tokens are the
+// check pass's raw material (a handler that returns its inputs hands back
+// the parsed literals themselves; captures snapshot parse-minted binding
+// values), yet parsing runs before any pass begins.
 // Parsing is once-per-program, so eager IDs there cost nothing on the
 // execution hot path. The returned closure disarms exactly once.
 func BeginIDMintScope() func() {
@@ -2892,8 +2891,7 @@ func NewClassType(t *Type, info ClassTypeInfo) Value {
 // namedClassInfo constructs the class decl declares, under its full type
 // path: the parent's path then name, or root then name for a direct child of
 // the class kind. A new info from decl's parts — never a write to decl, so
-// the anonymous declaration a `class` word produced (a pooled constant in a
-// compiled program, re-installed by the resident replay) stays unnamed. Its
+// the anonymous declaration a `class` word produced stays unnamed. Its
 // merged-field cache starts empty: the named class computes its own.
 func namedClassInfo(decl *ClassTypeInfo, root, name string) ClassTypeInfo {
 	full := root + "/" + name

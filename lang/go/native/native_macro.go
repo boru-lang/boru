@@ -12,7 +12,7 @@ import (
 // - macro (1c): the definer — an fn the expander runs on UNEVALUATED operand
 //   forms, whose returned token list is spliced into the call site.
 // - unquote / splice (1d): template escapes, recognized by the expander
-//   (eng/go/macro_expand.go); they error if stepped outside an expansion.
+//   (core/go/macro_expand.go); they error if stepped outside an expansion.
 // - macroexpand (1e): introspection — return the expansion without splicing.
 
 var macroNatives = []NativeFunc{

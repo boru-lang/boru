@@ -25,7 +25,7 @@ import (
 // an element first if it must be mutable inside the container.
 //
 // The algorithms (FlexDeepCopy, NodeDeepCopy, MakeNodeHandler) live
-// in eng/go/core_flex.go; this file owns the word names and dispatch
+// in core/go/core_flex.go; this file owns the word names and dispatch
 // wiring. The in-place `set` sigs live in native_storage.go and the
 // flex push/pop/unshift/shift sigs in natives.go (handlers in
 // listops.go).

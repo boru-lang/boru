@@ -15,7 +15,7 @@ import (
 // BEAM-style process words — the language surface of design/PROCESSES.0.md
 // phase 1: `spawn` / `self` / `send` / `receive` / `register` / `whereis` /
 // `unregister`, plus the opaque `Pid` handle type. The runtime substrate
-// (ProcessRuntime, Process, the bounded mailbox) lives in eng/go/process.go;
+// (ProcessRuntime, Process, the bounded mailbox) lives in core/go/process.go;
 // this file owns dispatch: patrun clause routing for `receive`, the
 // immutable-only `send` rule, and the `process`-scope capability gate on
 // `spawn`.

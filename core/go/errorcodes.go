@@ -46,7 +46,7 @@ import (
 // cannot prevent a rename, only make it impossible to do by accident.
 //
 // OWNERSHIP is layered the same way type registration is (see "Where a Type
-// Lives" in eng/go/CLAUDE.md): the kernel owns the mechanism and its own
+// Lives" in core/go/CLAUDE.md): the kernel owns the mechanism and its own
 // codes, and each layer above registers its own. A code minted in BOTH eng
 // and lang is owned by eng — the kernel's definition is the one that
 // travels, and lang's site is raising the kernel's error rather than defining

@@ -552,7 +552,7 @@ var (
 	WithPos                = core.WithPos
 	WithPosAt              = core.WithPosAt
 	DynStackShuffleWords   = core.DynStackShuffleWords
-	// `make` helpers, ported alongside the make word in eng/go/core_make.go.
+	// `make` helpers, ported alongside the make word in core/go/core_make.go.
 	ResolveFieldType = core.ResolveFieldType
 
 	// `get`/`set` helper, ported with those words to eng/go/core_storage.go.
@@ -561,7 +561,7 @@ var (
 	GeneraliseSpecUndef = core.GeneraliseSpecUndef
 )
 
-// Sugar roles (eng/go/sugar.go — ADR-012 rule 3, 2026-08-04
+// Sugar roles (core/go/sugar.go — ADR-012 rule 3, 2026-08-04
 // amendment): the keys bindSugarWords binds boru's word names to.
 const (
 	SugarUsurp       = core.SugarUsurp

@@ -131,16 +131,6 @@ func registerAdd(r *Registry) {
 	})
 }
 
-func seam7Reg(t *testing.T) *Registry {
-	t.Helper()
-	r, err := NewRegistry()
-	if err != nil {
-		t.Fatalf("NewRegistry: %v", err)
-	}
-	r.InitRootContext()
-	return r
-}
-
 // covWords registers a small vocabulary rich enough to exercise forward
 // and stack collection, polymorphic dispatch, string/list/map operands,
 // and a deliberately failing word for the runtime-error path.

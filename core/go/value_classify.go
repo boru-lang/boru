@@ -1,9 +1,8 @@
 package core
 
 // Core value classifiers (Stage 3a of the four-piece split): pure
-// predicates over core Values and registry scope state that the compiler,
-// checker, AND interpreter all consult. Moved down from the compiler-piece
-// files — they carry no recording or emission behavior.
+// predicates over core Values and registry scope state that the checker
+// and the interpreter both consult.
 
 // materialiseMember materialises one container member and reports whether it
 // CHANGED — a stripped carrier recovered to a concrete original (different
@@ -389,10 +388,8 @@ func TypeIsFnShape(t *Type) bool {
 // baked /v reference) or a Function-typed value (carrier or not). Used to
 // keep a fn value out of the trailing-arg positions of a leading-fn apply.
 func IsFnValueResidual(v Value) bool {
-	// One body with the VM's runtime test (isAppliableFn, vm.go): the
-	// recorder's residual question and the VM's apply question are the
-	// SAME question, and post-ADR-011 both reduce to Function
-	// conformance (the payload arm covers values mid-construction).
+	// Post-ADR-011 the question reduces to Function conformance (the
+	// payload arm covers values mid-construction).
 	return IsAppliableFn(v)
 }
 
@@ -765,9 +762,9 @@ func IsInertConstMember(v Value) bool {
 
 // isDelegationFnDef reports whether a Function VALUE is a trivial-delegation
 // wrapper — EVERY own sig is a `[Word(inner)]` pass-through to an inner native
-// (a module method like rand-int / MathUtil.sqrt), safely dispatched VM-native
-// via tryNativeFnApply. A user fn carries a REAL body, so it is NOT a delegation
-// and must island instead. An anonymous lambda or a sig-less value is not one.
+// (a module method like rand-int / MathUtil.sqrt). A user fn carries a REAL
+// body, so it is NOT a delegation. An anonymous lambda or a sig-less value is
+// not one.
 func IsDelegationFnDef(fd FnDefInfo) bool {
 	sigs := fd.OwnSigs()
 	if len(sigs) == 0 {

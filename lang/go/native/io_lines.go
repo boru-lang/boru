@@ -309,7 +309,7 @@ func lineReaderFor(v Value, r *Registry) (lineSource, error) {
 // ttyHandler implements IO.is-tty: is this stream a terminal?
 //
 // The word is `is-tty`, not the `tty?` of design/CLI-PROGRAMS.0.md §5. `?` is
-// rejected in a word name at registration (eng/go/word_name.go's
+// rejected in a word name at registration (core/go/word_name.go's
 // ValidateWordName), and its doc states both the rule and the replacement:
 // "the Lisp/Scheme/Ruby `?` predicate suffix is NOT allowed; predicates use
 // the `is-` prefix convention instead". It is also unlexable inside a word —
@@ -341,7 +341,7 @@ func ttyHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Val
 // that redirected a stream therefore gets the honest answer for free.
 //
 // Engine-side wrappers are unwrapped first. Every concurrency fork rewraps
-// the output writers in an core.SyncWriter (eng/go/process.go), which is a
+// the output writers in an core.SyncWriter (core/go/process.go), which is a
 // serialization detail the program never chose — without unwrapping, IO.is-tty
 // would answer FALSE for a genuine terminal inside any forked context, and
 // answer it silently.

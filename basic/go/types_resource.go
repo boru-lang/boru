@@ -6,7 +6,7 @@ import (
 
 // The predefined Resource / Entity object types (Ideal/Resource,
 // Ideal/Resource/Entity). The lattice nodes themselves are kernel
-// builtins (eng/go/typetable.go); this file owns their language-facing
+// builtins (core/go/typetable.go); this file owns their language-facing
 // definitions — the field schemas installed into every registry.
 
 // InstallResourceTypes pushes the builtin Resource and Entity object

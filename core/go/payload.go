@@ -75,7 +75,7 @@ type FloatPayload struct{ F float64 }
 // Scalar/Number/BigInteger value. Constructed by NewBigInteger. The
 // *big.Int is treated as immutable after construction — arithmetic
 // always allocates a fresh result — so the shallow Value copy and
-// sameContainer identity stay sound (see eng/go/CLAUDE.md Sealed Payload).
+// sameContainer identity stay sound (see core/go/CLAUDE.md Sealed Payload).
 type BigIntPayload struct{ N *big.Int }
 
 // DecimalPayload carries an arbitrary-precision base-10 decimal for a
@@ -294,7 +294,7 @@ func NewExtension(t *Type, body any) Value {
 }
 
 // HostTypeBody is an embeddable marker. A host module that introduces
-// a type-kind through an Ideal (see eng/go/ideal.go) embeds this in
+// a type-kind through an Ideal (see core/go/ideal.go) embeds this in
 // the struct it stores, via ExtensionPayload, for a *constructed type*
 // — as opposed to an instance. The kernel's type machinery
 // (IsTypeBody, TypeOf, isTypeLike, InstallType) then recognises the

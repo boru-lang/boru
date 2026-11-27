@@ -19,7 +19,7 @@ import (
 // that RUNS CLEAN (7): the body analysis left `(f x)` as the un-collapsed
 // [Function-carrier, arg] residual, so the pending `def` collection never
 // completed and `zr` stayed unbound in the model. The fix is
-// `checkModeParenFnCollapse` (eng/go/engine.go): on the PLAIN check surface
+// `checkModeParenFnCollapse` (core/go/engine.go): on the PLAIN check surface
 // (no active recorder — a bare `check` run, or the construction-time
 // AnalyseFnBody under a suspended compile pass) a fn-carrier apply window
 // collapses to the ONE dynamic(Any) value the interpreter nets, for exactly

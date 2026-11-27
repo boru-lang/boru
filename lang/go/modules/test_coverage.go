@@ -9,7 +9,7 @@ import (
 )
 
 // boru:test line-coverage feature. `Test.cover [body]` runs a test body with the
-// engine coverage hook (eng/go/coverage.go) armed, accumulating the source rows
+// engine coverage hook (core/go/coverage.go) armed, accumulating the source rows
 // the module-under-test executes; `Test.coverage <id>` reports the percentage
 // against the module's DENOMINATOR — every executable row of its registered
 // source (a module loader calls RegisterCoverSource + SetCoverID; boru:sift and

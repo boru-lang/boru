@@ -67,7 +67,7 @@ func DefaultRegistryWithPolicy(p policy.Policy, providers ...func(*Registry)) (*
 	// The shared stdin reader is installed EAGERLY, and both reasons matter.
 	//
 	// It cannot be created lazily on first IO.read-line: the capability store
-	// is an unsynchronised Go map (eng/go/capability.go:54-71) whose pointer
+	// is an unsynchronised Go map (core/go/capability.go:54-71) whose pointer
 	// ForkConcurrent shares across goroutines, so a lazy Set would race a
 	// concurrent Get — a fatal "concurrent map writes", not a recoverable one.
 	//

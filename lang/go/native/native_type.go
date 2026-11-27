@@ -1137,7 +1137,7 @@ func baseHandler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Va
 	return []Value{result}, nil
 }
 
-// torHandler, torReturnsFn, tandHandler: moved to eng/go/core_boolean.go.
+// torHandler, torReturnsFn, tandHandler: moved to core/go/core_boolean.go.
 // tand's `tall` reduction (below) calls core.TandValues directly.
 
 // ---- tany / tall ----

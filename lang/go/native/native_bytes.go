@@ -68,7 +68,7 @@ func binaryInstanceLayout(v Value) (Value, bool) {
 // through `convert`, sub-ranges through `slice`, concatenation through
 // `add`; the bit-syntax builds with `make Bytes`, decodes with `unpack`,
 // and streams with `unpack-prefix`. RegisterNativeFunc APPENDS these sigs
-// to the existing words (eng/go/registry.go upsertFnDef); a more-specific
+// to the existing words (core/go/registry.go upsertFnDef); a more-specific
 // sig wins dispatch, so the Bytes overloads take precedence over the
 // generic `[Scalar Scalar]` / `[Scalar Any]` forms.
 var bytesNatives = []NativeFunc{

@@ -936,13 +936,8 @@ func applyGradualContagion(r *core.Registry, word string, args []core.Value, out
 }
 
 // bodyHasSentinel reports whether a code body contains a flow-control
-// sentinel (break/continue/return). Such a body cannot compile to a closure
-// (or island): the sentinel targets an ENCLOSING loop/frame the VM cannot
-// reach across the call boundary, so the whole program must fall back and let
-// the interpreter unwind it. Unlike bodyFreeForFallback this does NOT reject
-// def references — the closure compile bakes a concrete def as a const or
-// threads an enclosing-fn binding as a capture, and the probe compile declines
-// anything it cannot resolve.
+// sentinel (break/continue/return): one that targets an ENCLOSING loop or
+// frame, across the body's own boundary.
 func BodyHasSentinel(body core.Value) bool {
 	return valueHasSentinel(body)
 }
@@ -1995,8 +1990,7 @@ func AnalyseLoopBody(r *core.Registry, body core.Value, bindNames []string, bind
 			// A body def of one of the loop's OWN bind names (its index)
 			// rebinds the iteration's binding and ends with it — the
 			// lexical index scope (NUR204): it is neither joined into the
-			// post-loop binding nor loop-carried (the lowering stores it
-			// into the index slot).
+			// post-loop binding nor loop-carried.
 			if isBindName(bindNames, k) {
 				continue
 			}
@@ -2233,11 +2227,9 @@ func RunFnBodyOnce(r *core.Registry, name string, paramNames []string, body, arg
 	parts := r.TypePartsSnapshot()
 
 	// Expose the params as the per-call args list so a body that reads
-	// `args` / `args.N` resolves them in check mode. The params ARE the
-	// frame's leading locals (0..n-1), so `args.N` folds to that local — at
-	// lowering it becomes PUSH_LOCAL N, no runtime args stack needed
-	// (CarrierResults' `args` projection + tryFoldStaticIndex). Pushed
-	// alongside the FnBaseline; popped together.
+	// `args` / `args.N` resolves them in check mode (CarrierResults' `args`
+	// projection + tryFoldStaticIndex). Pushed alongside the FnBaseline;
+	// popped together.
 	_ = r.Args.Push(core.NewList(append([]core.Value(nil), args...)))
 	defer func() { _, _ = r.Args.Pop() }()
 

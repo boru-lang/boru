@@ -207,7 +207,7 @@ func Register(r *Registry) {
 // bindSugarWords binds the kernel's sugar roles to boru's word names
 // (ADR-012 rule 3, 2026-08-04 amendment). The parser emits structural
 // sugar markers; the engine lowers each marker through these bindings
-// at step time (eng/go/sugar.go). This table is the ONLY place the
+// at step time (core/go/sugar.go). This table is the ONLY place the
 // surface sugars' word names are decided.
 func bindSugarWords(r *Registry) {
 	r.BindSugarWord(SugarUsurp, "usurp")

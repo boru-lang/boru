@@ -78,10 +78,10 @@ type Registry struct {
 	coverSources *coverSources
 	// TapeConfig bounds the execution tape's growth (initial size, max
 	// grows, growth factor). The zero value uses the defaults; hosts set
-	// it via lang.Options. See eng/go/tape.go.
+	// it via lang.Options. See tape.go.
 	TapeConfig TapeConfig
-	// StepLimit caps the interpreter's Run loop, a single paren-group
-	// evaluation, and the VM's step counter. Zero means unset — the
+	// StepLimit caps the interpreter's Run loop and a single paren-group
+	// evaluation. Zero means unset — the
 	// DefaultStepLimit / DefaultSubStepLimit constants apply. It is not a
 	// zero-value overload: a limit of 0 would abort before the first step,
 	// so the option parser rejects an explicit 0 (lang/go/options.go) and
@@ -173,9 +173,9 @@ type Registry struct {
 	FlowAt SrcPos
 	// FlowAtHeld reports that FlowAt already records where the pending
 	// signal stood, taken by the INNERMOST run that could not hand its tape
-	// back — an island, or a container literal's element run (NUR358). An
-	// enclosing island keeps it rather than overwriting it with its own
-	// position, and the top of an interpreted run reports it (the literal's
+	// back — a container literal's element run (NUR358). An enclosing run
+	// keeps it rather than overwriting it with its own position, and the
+	// top of the run reports it (the literal's
 	// elements stood where the signal escaped, not the run's pointer, which
 	// has moved past the literal). Cleared with the signal.
 	FlowAtHeld bool
@@ -1632,7 +1632,7 @@ func (r *Registry) callBoruNamed(sig *FnSig, args []Value, captures []CapturedBi
 	// Push the fn-entry baseline before installing anything. Inner
 	// fn constructions inside this body consult TopFnBaseline to
 	// identify enclosing-fn-local bindings; a leaf pushes a nil entry,
-	// which keeps the per-call stacks balanced (eng/go/CLAUDE.md).
+	// which keeps the per-call stacks balanced (core/go/CLAUDE.md).
 	if leaf {
 		r.PushFnBaseline(nil)
 	} else {

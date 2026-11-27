@@ -8,20 +8,6 @@ import "testing"
 // shape claim (CheckState.FnShapes — the arity a producing word's check-mode
 // ReturnsFn claims for a computed-fn carrier).
 
-// fnShapeGoSig builds the one all-forward Go-impl signature of fn-util's
-// produced wrappers (goFnValue's shape) over nParams Any params.
-func fnShapeGoSig(nParams int) Signature {
-	params := make([]FnParam, nParams)
-	for i := range params {
-		params[i] = FnParam{Type: TAny}
-	}
-	sig := Signature{Params: params, BarrierPos: nParams, Impl: Go(func(_ []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Value, error) {
-		return []Value{NewInteger(7)}, nil
-	})}
-	NormalizeSig(&sig)
-	return sig
-}
-
 func TestNoteFnShapeArms(t *testing.T) {
 	r := newTestRegistry(t)
 	out := NewCarrier(TFunction)

@@ -55,13 +55,11 @@ func recordSchemaCarrier(p core.FnParam, a core.Value) (core.Value, bool) {
 		return core.Value{}, false
 	}
 	if pm, ok := p.Pattern.Data().(core.MapPayload); ok && pm.M != nil {
-		// A fresh, distinct ID per carrier: the bytecode compiler keys a
-		// param's frame-local slot by Value.ID (StartFnCompile →
-		// RegisterLocal). A struct-literal carrier left with the zero ID would
-		// make every record-typed param collapse onto the SAME slot (id ""),
-		// so a fn reading >1 record param (`fn [[c:C d:D] …]`) miscompiles to a
-		// single local → RunCompiledStrict VM error / wrong local. Mint a
-		// unique node ID exactly as NewValueRaw does for ordinary values.
+		// A fresh, distinct ID per carrier, minted exactly as NewValueRaw
+		// does for ordinary values: the pass keys its per-carrier facts by
+		// Value ID, and a struct-literal carrier left with the zero ID would
+		// make every record-typed param of a fn (`fn [[c:C d:D] …]`) share
+		// one key.
 		return core.NewDynamicRecordCarrier(pm.M), true
 	}
 	return core.Value{}, false
@@ -276,7 +274,7 @@ func narrowArgsToParams(args []core.Value, params []core.FnParam) []core.Value {
 
 // stackHasFnValue reports whether any residual value is a Function —
 // the shape whose static count can over-report (an unapplied fn-value call
-// the interpreter applies at runtime; see emit.go's cluster-E compile failure).
+// the interpreter applies at runtime).
 func stackHasFnValue(stk []core.Value) bool {
 	for _, v := range stk {
 		if v.Parent() != nil && v.Parent().ConformsTo(core.TFunction) {

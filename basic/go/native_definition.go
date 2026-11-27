@@ -118,13 +118,9 @@ var DefinitionNatives = []NativeFunc{
 		Name: "var",
 
 		// var SPLICES its body (def/body/undef tokens) onto the tape for the
-		// engine to re-step. RunInCheckMode lets the recorder follow that splice
-		// so the inline let lowers as the body's events with the bound names as
-		// promoted value-def locals (the def/body/undef tokens record exactly as a
-		// hand-written `def NAME val end … undef NAME` would). A body word the
-		// recorder cannot lower marks the program uncompilable through the same
-		// path it does anywhere else, so a declining body DECLINES rather than
-		// producing a silent empty unit.
+		// engine to re-step. RunInCheckMode lets the check pass follow that
+		// splice, so the body is analysed exactly as a hand-written `def NAME
+		// val end … undef NAME` would be.
 		Signatures: []Signature{{
 			Args:       []*Type{TList},
 			NoEvalArgs: map[int]bool{0: true},
@@ -395,7 +391,7 @@ func InstallAndRecordDef(r *Registry, name string, value Value, pos SrcPos, stac
 // bare form after a def name is a declared def signature — the KEYWORD
 // form `def name <ctor> …` (keyword slots: a /q position with a
 // concrete Atom pattern admits exactly one literal word; see
-// patternsOk, eng/go/match.go, and design/STRICT-FORWARD-BARRIER.0.md).
+// patternsOk, core/go/match.go, and design/STRICT-FORWARD-BARRIER.0.md).
 // Each constructor's OWN signatures are mirrored mechanically, shifted
 // past the [name/q ctor/q] prefix, so the form is ordinary structural
 // dispatch: every operand resolves at plan time, nothing parks, and
@@ -796,9 +792,8 @@ func defFnPredicateBind(r *Registry, name, typeName string, constraint, body Val
 	if !matched {
 		// A type_error, exactly as the typed def's other refusals are (`def
 		// q:T "x"` — does not unify with declared type T): the predicate's
-		// refusal was a PLAIN error, which the interpreter surfaced bare and
-		// the compiled run — raising the same refusal from OpBindTyped —
-		// booked as a compiler defect's internal_error (NUR273).
+		// refusal was a PLAIN error, which the interpreter surfaced bare
+		// (NUR273).
 		return nil, r.BoruError("type_error",
 			fmt.Sprintf("def %s: value %s does not satisfy predicate type %s",
 				name, body.String(), describeType()), name)
@@ -1231,9 +1226,8 @@ func DefTypedHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) (
 				// unify is a GUARANTEED runtime error mirror — the non-check
 				// branch below raises the identical text — and rides the
 				// stamping helper (RuntimeMirror + dedupe, NUR058). A carrier
-				// body keeps the unstamped emission: the static compile failure is an
-				// approximation the runtime value could still satisfy, so the
-				// compile pipeline must keep declining on it.
+				// body keeps the unstamped emission: the static finding is an
+				// approximation the runtime value could still satisfy.
 				// Mirror discipline lives in typedDefUnifyMirror (NUR058).
 				typedDefUnifyMirror(r, name,
 					fmt.Sprintf("def %s: value %s does not unify with declared type %s",
@@ -1727,7 +1721,7 @@ func FnSigArgList(s core.Signature) string {
 
 // AfnHandler — `afn input body` constructs an anonymous Function value
 // with a single signature. Mirrors the per-triple shape of ParseFnDef
-// (eng/go/fn_def.go) for one triple: auto-wraps non-list input and body
+// (core/go/fn_def.go) for one triple: auto-wraps non-list input and body
 // into single-element lists, parses params via the shared
 // core.ParseFnParams, and constructs the FnSig with Returns=[TAny] and
 // Anonymous=true. Static Returns is conservative so call sites that
@@ -1796,7 +1790,7 @@ func AfnHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Val
 //
 // FnUndef is structural: any function value whose registered
 // signatures satisfy every pair in the FnUndef matches. See
-// eng/go/fnsig.go::FnUndefMatchesFnDef.
+// core/go/fnsig.go::FnUndefMatchesFnDef.
 // FnsigPairHandler is the 2-arg sugar `fnsig input output`, the exact
 // analogue of fn's 3-arg triple form with the body slot removed — a
 // function TYPE is a function minus its body. It wraps the pair into

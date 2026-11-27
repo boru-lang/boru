@@ -71,29 +71,6 @@ func TestComboTypeNamesRendering(t *testing.T) {
 
 // --- FnPredicateOverloadHazard ---------------------------------------------
 
-// covPredicateType mints a predicate type over Integer (the boru
-// fn-body membership shape, `fn [[n:Integer] [Boolean] [...]]`) and
-// returns its lattice node, whose Behavior is a *core.PredicateUnifier.
-func covPredicateType(t *testing.T, r *core.Registry, name string) *core.Type {
-	t.Helper()
-	pred := core.MarkPredicateFn(core.NewValueRaw(core.TFunction, &core.FnDefInfo{Signatures: []core.Signature{{
-		Params:  []core.FnParam{{Name: "n", Type: core.TInteger}},
-		Returns: []*core.Type{core.TBoolean},
-		Impl:    core.Boru([]core.Value{core.NewBoolean(true)}),
-	}}}))
-	if err := core.InstallType(r, name, pred); err != nil {
-		t.Fatalf("InstallType(%s): %v", name, err)
-	}
-	def := r.LookupTypeName(name)
-	if def == nil {
-		t.Fatalf("LookupTypeName(%s) = nil after install", name)
-	}
-	if _, ok := def.Behavior().(*core.PredicateUnifier); !ok {
-		t.Fatalf("%s behavior = %T, want *core.PredicateUnifier", name, def.Behavior())
-	}
-	return def
-}
-
 // --- DynamicReachableOverloadCount -----------------------------------------
 
 // --- AnyNonConcreteOperand -------------------------------------------------

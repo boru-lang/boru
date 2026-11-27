@@ -289,7 +289,7 @@ func IOModuleNativeFuncs(t IOModuleTypes) []NativeFunc {
 			// normal shape of a program in a pipeline.
 			//
 			// NOT `tty?`, which design/CLI-PROGRAMS.0.md §5 specifies: `?` is
-			// rejected in a word name outright (eng/go/word_name.go), whose doc
+			// rejected in a word name outright (core/go/word_name.go), whose doc
 			// names the reason and the alternative — "the Lisp/Scheme/Ruby `?`
 			// predicate suffix is NOT allowed; predicates use the `is-` prefix
 			// convention instead". `is-finite` / `is-inf` / `is-nan` are the
@@ -548,7 +548,7 @@ func IOModuleNativeFuncs(t IOModuleTypes) []NativeFunc {
 // These anchor on Pathon, a KERNEL builtin type. The module-scope safety rule
 // (requireUserTypedSigs) normally declines a core-word extension whose tuple has
 // no user-minted type; NewWordExtensionAnchored waives it because boru:io ships
-// and versions WITH the kernel (see eng/go/word_extend.go). The core `list` /
+// and versions WITH the kernel (see core/go/word_extend.go). The core `list` /
 // `remove` sigs match only Map/ResourceEntity/List, disjoint from Pathon, so
 // dispatch is unambiguous. listHandler closes over fileType so a
 // `list p {detail:true}` record's `type` field is an IO.FileType atom.

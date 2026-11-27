@@ -336,8 +336,7 @@ func openArgSpan(v Value) int {
 // beginLoopIteration is stepMark's arm for a driven loop's mark: the
 // iteration pushes a scoped context Store, as the sub-engine protocol's
 // Run pushed one per body run (the context boundary — `context set` in a
-// body stays the iteration's; the VM's enterBodyUnit is the twin), and the
-// trace notes the iteration.
+// body stays the iteration's), and the trace notes the iteration.
 func (e *Engine) beginLoopIteration(lp *Loop) {
 	if !lp.ctxPushed {
 		e.Registry.Contexts.Push(e.Registry.Contexts.Top())
