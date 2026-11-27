@@ -2320,7 +2320,12 @@ func (e *Engine) stepWordUsurp(val Value, w WordInfo) error {
 	// signature to reverse. ResolveUsurp returns the raw binding in
 	// that case so the IsFunctionRef check below raises illegal_ref.
 	if !IsFunctionRef(v) {
-		detail := "/u requires a function word: " + w.Name + " is bound to " + v.Parent().String()
+		// The binding's TYPE names what it is. Its Parent does not: a
+		// type literal's Parent is the lattice parent (`def x Integer`
+		// read "bound to Number"), and a root literal — None, Any, Never —
+		// has none, so naming it dereferenced nil and the read surfaced
+		// as internal_error.
+		detail := "/u requires a function word: " + w.Name + " is bound to " + ValueType(v).String()
 		if e.Registry != nil && e.Registry.analysisActive() {
 			e.Registry.noteAnalysisDiagnostic(CheckDiagnostic{
 				Code:   "illegal_ref",

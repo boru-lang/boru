@@ -80,7 +80,7 @@ def canon : Value → String
   | .word w => canonWord w
   | .parenExpr items => "(" ++ " ".intercalate (canonGroup items) ++ ")"
   | .disjunct alts => " tor ".intercalate (canonAlts alts)
-  | .fn _ sigs => "fn [" ++ " ".intercalate (canonSigs sigs) ++ "]"
+  | .fn _ sigs _ => "fn [" ++ " ".intercalate (canonSigs sigs) ++ "]"
   | .forward info _ => "__FW(" ++ info.funcName ++ ")"
   | .defCleanup _ => "__DC"
   | .returnCheck _ => "__RC"
@@ -143,6 +143,7 @@ def canonParams : List Param → List String
 
 def canonImpl : Impl → List String
   | .native _ => []
+  | .usurp _ _ => []
   | .boru body => canonSeq body
 
 end

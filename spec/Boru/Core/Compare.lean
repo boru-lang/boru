@@ -227,6 +227,13 @@ A disjunct is reduced (core/go/core_helpers.go `SimplifyDisjunctAlts`):
 alternative absorbed by a strictly wider bare type goes; what is left is
 ordered by the total order, ties by canonical text. -/
 
+/-- Two leaves are the same value: equal — and for two FUNCTIONS, the same
+    function. A function is equal to itself and to nothing else, however
+    alike two of them read (core/go/compare.go `sameFnIdentity`). -/
+def sameValue : Value → Value → Bool
+  | .fn _ _ i, .fn _ _ j => i == j
+  | a, b => a == b
+
 mutual
 /-- Value equality as a disjunct's alternatives are deduplicated by
     (core/go/equal.go `ValuesEqual`): structural, and for maps
@@ -237,7 +244,7 @@ def valuesEqual : Nat → Value → Value → Bool
     match a.unquote, b.unquote with
     | .list ea _, .list eb _ => listsEqual fuel ea eb
     | .map ea _, .map eb _ => ea.length == eb.length && entriesIn fuel ea eb
-    | x, y => x == y
+    | x, y => sameValue x y
 def listsEqual : Nat → List Value → List Value → Bool
   | 0, _, _ => false
   | _ + 1, [], [] => true

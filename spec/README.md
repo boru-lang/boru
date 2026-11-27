@@ -90,6 +90,12 @@ them because the kernel had them, and each was recorded in
 the records closed: the model now states the rule, and the rows that pin
 each fix are in `core/spec` under the record's number.
 
+Two more are open, and the model reproduces them until they are ruled on:
+a `/uv` value is not collected by a waiting word as a `/v` value is
+(NUR390), and a word with more than one definition is not equal to itself
+(NUR391). Both are marked where they are modelled and where they are
+pinned.
+
 ## Toolchain
 
 [`lean-toolchain`](lean-toolchain) pins `leanprover/lean4:v4.36.0`. No

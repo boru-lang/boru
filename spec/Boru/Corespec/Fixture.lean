@@ -19,7 +19,7 @@ private def p (name : String) (type : TypeId) (pattern : Option Value := none)
 
 private def word (name : String) (params : List Param) (returns : List TypeId) (barrier : Nat)
     (fullStack : Bool := false) : String × Value :=
-  (name, .fn name [.mk params returns barrier (.native name) fullStack])
+  (name, .fn name [.mk params returns barrier (.native name) fullStack] 0)
 
 private def asInt : Value → Int
   | .int n => n
@@ -55,7 +55,11 @@ def fixtureDefs : Defs :=
     word "unifyq" [p "a" TAny, p "b" TAny] [TBoolean] 2,
     -- the FULL-STACK fixture
     word "depthq" [] [] 0 (fullStack := true)
-  ].map fun (n, v) => (n, [v])
+  ].zipIdx.map fun ((n, v), i) =>
+    -- each fixture word is one function, with an identity of its own
+    (n, [match v with
+         | .fn name sigs _ => .fn name sigs (i + 1)
+         | v => v])
 
 /-- The fixture handlers. -/
 def fixtureNatives : Natives :=
