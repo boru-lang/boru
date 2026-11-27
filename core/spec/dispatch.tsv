@@ -445,3 +445,16 @@ run boomq fn( n Integer Any [ n ] )	ERROR:fixture_boom	a function value fills an
 run addq 9223372036854775807 1	-9223372036854775808	int64 max plus one wraps to the minimum
 run 9223372036854775807 1 sumq	-9223372036854775808	in stack form too
 run negq -9223372036854775808	-9223372036854775808	and the minimum is its own negation
+
+# --- `name/v`: the bound VALUE, never a call --------------------------------
+# A bare function word calls; `/v` is how the function is named as a value
+# (ADR-011). The value is collected by a waiting word like any literal and
+# is otherwise PLACED — the pointer steps past it. What happens to a placed
+# function afterwards is the ordinary rule for a function value: it is
+# called where something re-steps it. Most of this surface is in
+# divergent.tsv, because core/ts does not read the modifier at all.
+run ( negq/v 5 )	-5	a group holding a function value and an operand is re-stepped when it collapses, and the value is called there
+run ( 5 negq/v )	-5	with the operand beneath it, likewise
+run def x 7 ; x/v	7	/v on a plain binding is the bound value
+run nosuchword/v	ERROR:undefined_word	/v on an unbound name is an error, not an atom
+run dupq x/v	ERROR:undefined_word	and the same inside a forward window

@@ -124,6 +124,10 @@ func coreSpecToken(tok string) Value {
 	// suffix is not a modifier (`Scalar/String`) leaves the token a plain
 	// word.
 	if i := strings.LastIndexByte(tok, '/'); i > 0 && i < len(tok)-1 {
+		// `name/v`: the bound VALUE, never a call.
+		if tok[i+1:] == "v" {
+			return NewWordRef(tok[:i])
+		}
 		if n, forceStack, forceForward, ok := coreSpecModifiers(tok[i+1:]); ok {
 			return NewWordModified(tok[:i], n, forceStack, forceForward)
 		}
