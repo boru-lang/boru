@@ -6,8 +6,9 @@
 import { describe, it } from 'node:test'
 import { strict as assert } from 'node:assert'
 
-import { BoruError, Engine, Registry, TSugar, Value, compile, newInteger, newMark, newMove, newWord } from './index.ts'
+import { BoruError, Engine, Registry, TSugar, Value, newInteger, newMark, newMove, newWord } from './index.ts'
 import { newOpenParen } from '@boru-lang/core'
+import { runCheckRow } from './check-fixture.ts'
 import { registerSpecWords, renderStack, tokenize } from './spec-fixture.ts'
 
 function run(input: string): string {
@@ -147,10 +148,10 @@ describe('marker and token edge arms', () => {
     assert.equal(out[out.length - 1]!.data, 7n)
   })
   it('a recursive fn under the check pass takes the induction hatch', () => {
-    const r = new Registry()
-    registerSpecWords(r)
-    const result = compile(r, tokenize('def f fn [[n:Integer] [Integer] [f n]] f 1'))
-    assert.notEqual(result, undefined)
+    // The declared return is the induction hypothesis; a fn that declares
+    // none breaks the cycle with a dynamic Any.
+    assert.equal(runCheckRow('def f fn [[n:Integer] [Integer] [f n]] f 1'), 'Integer')
+    assert.equal(runCheckRow('def f fn [[n:Integer] [] [f n]] f 1'), 'dynamic(Any)')
   })
 })
 

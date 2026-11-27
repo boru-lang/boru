@@ -37,3 +37,17 @@ describe('check', () => {
     })
   }
 })
+
+// Gradual contagion through a returnsFn: `make` computes its result
+// carrier from its target type, and that strict carrier turns dynamic
+// when an operand is dynamic. The corpus has the `returns` half of this
+// (compose.tsv, `addq 1 (noretq 2)`); the Go checker renders both rows
+// here identically.
+describe('check: returnsFn contagion', () => {
+  it('a strict returnsFn carrier stays strict over strict operands', () => {
+    assert.equal(runCheckRow("make Integer '5'"), 'Integer')
+  })
+  it('a strict returnsFn carrier turns dynamic under a dynamic operand', () => {
+    assert.equal(runCheckRow('make Integer (noretq 5)'), 'dynamic(Integer) :: ~missing_returns')
+  })
+})
