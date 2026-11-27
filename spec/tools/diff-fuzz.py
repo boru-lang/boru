@@ -22,7 +22,7 @@ SPEC = os.path.dirname(HERE)
 REPO = os.path.dirname(SPEC)
 
 WORDS = ["addq", "negq", "pairq", "sumq", "boomq", "patq", "dupq", "__pa", "undef",
-         "qanyq", "bothq", "tyq", "tpatq", "unifyq", "depthq", "afn", "eachq"]
+         "qanyq", "bothq", "tyq", "tpatq", "unifyq", "meetq", "meetq", "depthq", "afn", "eachq"]
 LITS = ["0", "1", "2", "5", "7", "-3", "'a'", "'x'", "true", "false", "none", "null"]
 TYPES = ["Integer", "String", "Any", "None", "List", "Map", "Boolean", "Word", "Scalar/String"]
 NAMES = ["x", "y", "n", "nosuchword"]
@@ -186,16 +186,25 @@ def main():
         return 2
     lean = r.stdout.split("\n")
 
-    diffs, unmodelled = [], 0
+    # A program that does not terminate ends on a RESOURCE limit, and which
+    # one it meets first is the engine's accounting, not the language: the
+    # kernel has a step budget and a tape ceiling, the model only fuel. The
+    # two engines agree on such a program when both ran out.
+    resource = ("ERROR:evaluation_limit", "ERROR:tape_exhausted")
+    diffs, unmodelled, exhausted = [], 0, 0
     for i, p in enumerate(progs):
         g = go[i] if i < len(go) else "<missing>"
         l = lean[i] if i < len(lean) else "<missing>"
         if l in ("ERROR:unmodelled",):
             unmodelled += 1
             continue
+        if g in resource and l in resource:
+            exhausted += 1
+            continue
         if g != l:
             diffs.append((p, g, l))
-    print(f"seed {args.seed}: {len(progs)} programs, {len(diffs)} differ, {unmodelled} outside the model")
+    print(f"seed {args.seed}: {len(progs)} programs, {len(diffs)} differ, {unmodelled} outside the model"
+          + (f", {exhausted} ran out of a resource in both" if exhausted else ""))
     diffs.sort(key=lambda d: len(d[0]))
     for p, g, l in diffs[:args.show]:
         print(f"  {p}\n     go   {g}\n     lean {l}")
