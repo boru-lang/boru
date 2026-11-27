@@ -18,9 +18,6 @@ var Natives = []NativeFunc{
 	// ---- control flow ----
 	{
 		Name: "quote",
-		// The /q'd-Atom sig produces an inert quoted symbol the VM can bake +
-		// CALL_NATIVE faithfully (the TAny sig is RunInCheckMode and unaffected).
-		CompileEffect: CompileQuoteInert,
 
 		Signatures: []Signature{
 			{
@@ -57,8 +54,6 @@ var Natives = []NativeFunc{
 	// behave exactly like `quote`. See design/legacy/PAREN-REPRESENTATION.9.ignore §2.2.
 	{
 		Name: "codequote",
-		// Like quote: the /q'd-Atom sig bakes its inert symbol + CALL_NATIVE.
-		CompileEffect: CompileQuoteInert,
 
 		Signatures: []Signature{
 			{
@@ -99,10 +94,6 @@ var Natives = []NativeFunc{
 				NoEvalArgs: map[int]bool{1: true},
 				Impl:       Go(reachHandler),
 				Returns:    []*Type{TReach}, BarrierPos: -1,
-				// S2b's declaration: the NoEvalArgs list holds the lens's
-				// get SEGMENTS — keys the handler reads, never code it runs
-				// (CompileQuoteKey).
-				CompileEffect: CompileQuoteKey,
 			},
 		},
 	},
@@ -122,10 +113,6 @@ var Natives = []NativeFunc{
 				NoEvalArgs: map[int]bool{0: true},
 				Impl:       Go(wordHandler),
 				Returns:    []*Type{TAny}, BarrierPos: -1,
-				// S2b's declaration: the result is the __SP splice marker the
-				// tape re-steps against the live stack — the S2a rule
-				// (CompileResteps).
-				CompileEffect: CompileResteps,
 			},
 		},
 	},
@@ -233,8 +220,7 @@ var Natives = []NativeFunc{
 
 	// ---- size ----
 	{
-		Name:          "size",
-		CompileEffect: CompileModuleFold | CompileIslandPure,
+		Name: "size",
 
 		Signatures: []Signature{
 			{Args: []*Type{TAny}, Impl: Go(sizeHandler), ReturnsFn: sizeReturns, BarrierPos: -1, Returns: []*Type{TInteger}},
@@ -258,8 +244,7 @@ var Natives = []NativeFunc{
 
 	// ---- filter ----
 	{
-		Name:          "filter",
-		CompileEffect: CompileFallbackBody | CompileDynBody,
+		Name: "filter",
 
 		Signatures: []Signature{
 			{Args: []*Type{TFunction, TAny}, Impl: Go(filterHandler), ReturnsFn: filterReturnsFn, BarrierPos: -1},
@@ -298,18 +283,18 @@ var Natives = []NativeFunc{
 		Signatures: []Signature{
 			// CompileStoresFn: push STORES its operand and never steps it —
 			// the rule is stated once, at `set` (native_storage.go).
-			{Args: []*Type{TAny, TFlexList}, Impl: Go(pushFlexHandler), Returns: []*Type{TFlexList}, ReturnsFn: flexGrowReturns("push"), BarrierPos: -1, CompileEffect: CompileStoresFn | CompileSideEffect},
+			{Args: []*Type{TAny, TFlexList}, Impl: Go(pushFlexHandler), Returns: []*Type{TFlexList}, ReturnsFn: flexGrowReturns("push"), BarrierPos: -1},
 			// Returns a List (was undeclared → Any, which widened a fold/scan
 			// accumulator to Any on the second round and then wrongly rejected the
 			// next `push` — `[] fold [push] xs`). Mirrors unshift's List overload.
-			{Args: []*Type{TAny, TList}, Impl: Go(pushHandler), Returns: []*Type{TList}, ReturnsFn: plainListGrowReturns("push"), BarrierPos: -1, CompileEffect: CompileStoresFn},
+			{Args: []*Type{TAny, TList}, Impl: Go(pushHandler), Returns: []*Type{TList}, ReturnsFn: plainListGrowReturns("push"), BarrierPos: -1},
 		},
 	},
 	{
 		Name: "pop",
 
 		Signatures: []Signature{
-			{Args: []*Type{TFlexList}, Impl: Go(popFlexHandler), Returns: []*Type{TFlexList, TAny}, BarrierPos: -1, CompileEffect: CompileSideEffect},
+			{Args: []*Type{TFlexList}, Impl: Go(popFlexHandler), Returns: []*Type{TFlexList, TAny}, BarrierPos: -1},
 			{Args: []*Type{TList}, Impl: Go(popHandler), Returns: []*Type{TList, TAny}, ReturnsFn: listEdgeElemReturns(true), BarrierPos: -1},
 		},
 	},
@@ -318,15 +303,15 @@ var Natives = []NativeFunc{
 
 		Signatures: []Signature{
 			// CompileStoresFn: unshift STORES its operand — the rule at `set`.
-			{Args: []*Type{TAny, TFlexList}, Impl: Go(unshiftFlexHandler), Returns: []*Type{TFlexList}, ReturnsFn: flexGrowReturns("unshift"), BarrierPos: -1, CompileEffect: CompileStoresFn | CompileSideEffect},
-			{Args: []*Type{TAny, TList}, Impl: Go(unshiftHandler), Returns: []*Type{TList}, ReturnsFn: plainListGrowReturns("unshift"), BarrierPos: -1, CompileEffect: CompileStoresFn},
+			{Args: []*Type{TAny, TFlexList}, Impl: Go(unshiftFlexHandler), Returns: []*Type{TFlexList}, ReturnsFn: flexGrowReturns("unshift"), BarrierPos: -1},
+			{Args: []*Type{TAny, TList}, Impl: Go(unshiftHandler), Returns: []*Type{TList}, ReturnsFn: plainListGrowReturns("unshift"), BarrierPos: -1},
 		},
 	},
 	{
 		Name: "shift",
 
 		Signatures: []Signature{
-			{Args: []*Type{TFlexList}, Impl: Go(shiftFlexHandler), Returns: []*Type{TFlexList, TAny}, BarrierPos: -1, CompileEffect: CompileSideEffect},
+			{Args: []*Type{TFlexList}, Impl: Go(shiftFlexHandler), Returns: []*Type{TFlexList, TAny}, BarrierPos: -1},
 			{Args: []*Type{TList}, Impl: Go(shiftHandler), Returns: []*Type{TList, TAny}, ReturnsFn: listEdgeElemReturns(false), BarrierPos: -1},
 		},
 	},
@@ -347,12 +332,6 @@ var Natives = []NativeFunc{
 	// happens in the handler. See walk_core.go.
 	{
 		Name: "walk",
-		// CompileDynBody: a hook the closure path cannot compile — a fn VALUE
-		// from a factory, a container member, a module export, or a hook the
-		// pass could not type — lowers to a CALL_NATIVE under DynEnv, the
-		// handler classifying the runtime value exactly as the interpreter's
-		// dispatch does (the S1a rule each/fold/scan/filter follow).
-		CompileEffect: CompileDynBody,
 
 		Signatures: []Signature{
 			{

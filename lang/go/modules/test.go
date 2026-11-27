@@ -262,7 +262,7 @@ func activeRun(parent *native.Registry) *testRun {
 // are registered into the module sub-registry; their handlers reach
 // the active testRun via the captured parent registry.
 func testNatives(parent *native.Registry) []native.NativeFunc {
-	return native.SideEffecting([]native.NativeFunc{
+	return []native.NativeFunc{
 		// describe "name" [body] — push name onto the path, run body,
 		// pop. Body errors abort the describe but leave already-
 		// recorded results in place.
@@ -600,16 +600,6 @@ func testNatives(parent *native.Registry) []native.NativeFunc {
 				Returns:    []*native.Type{native.TMap},
 				ReturnsFn:  testPropResultShapeReturns,
 				BarrierPos: -1,
-				// runCheckProp runs BOTH bodies (the generator, param `r`; the
-				// property, one unnamed param) through parent.CallBoru in fresh
-				// isolated frames against the module-captured parent registry — the
-				// SAME Go handler in interpreter and compiled mode. So the bodies
-				// never couple to the VM tape or a compiled frame local: a plain
-				// CALL_NATIVE bake is sound even when the bodies arrive as DYNAMIC
-				// values (the declarative `_prop_spec` surface fetches them via
-				// `p get "gen"` / `p get "property"`). Without this the NoEvalArgs
-				// dynamic-body compile failure blocked every `_prop_spec` file.
-				CompileEffect: native.CompileRunsBodyIsolated,
 				Impl: native.Go(func(args []native.Value, _ map[string]native.Value, _ []native.Value, _ *native.Registry) ([]native.Value, error) {
 					return runCheckProp(parent, args)
 				}),
@@ -657,7 +647,7 @@ func testNatives(parent *native.Registry) []native.NativeFunc {
 				},
 			},
 		},
-	})
+	}
 }
 
 // ---- check-mode shape ReturnsFns -------------------------------------

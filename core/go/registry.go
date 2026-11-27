@@ -1585,11 +1585,11 @@ func (r *Registry) RegisterNativeFunc(fn NativeFunc) {
 		// The native author fills a plain Signature (positional Args + a Go
 		// Handler); Register → upsertFnDef → normalizeSig synthesizes the
 		// authoritative Params from Args+Patterns. Only the WORD-level field
-		// (CompileEffect) folds onto each sig here. `BarrierAllForward`
+		// (ConstFold) folds onto each sig here. `BarrierAllForward`
 		// (-1) is the "default all-forward" sentinel; `0` is explicit all-stack —
 		// upsertFnDef resolves it once.
 		s := sig
-		s.CompileEffect |= fn.CompileEffect
+		s.ConstFold = s.ConstFold || fn.ConstFold
 		r.Register(fn.Name, s)
 	}
 }

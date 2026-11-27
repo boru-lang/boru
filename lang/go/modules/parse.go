@@ -221,11 +221,10 @@ func BuildParseModule(parent *native.Registry) (native.ModuleDesc, error) {
 	subReg.RegisterNativeFunc(native.NativeFunc{
 		Name: "parse-spec",
 		Signatures: []native.Signature{{
-			Args:          []*native.Type{gT, native.TMap},
-			Returns:       []*native.Type{},
-			BarrierPos:    -1,
-			CompileEffect: native.CompileStoresFn, // action/matcher fns in the map are stored, not invoked
-			Impl:          native.Go(parseSpecHandler),
+			Args:       []*native.Type{gT, native.TMap},
+			Returns:    []*native.Type{},
+			BarrierPos: -1,
+			Impl:       native.Go(parseSpecHandler),
 			// Check-mode hook: the map's section/shape rules are
 			// map-decidable, so a dry pass validates a concrete spec map
 			// during analysis (parseSpecReturns).
@@ -255,12 +254,11 @@ func BuildParseModule(parent *native.Registry) (native.ModuleDesc, error) {
 	subReg.RegisterNativeFunc(native.NativeFunc{
 		Name: "parse-matcher",
 		Signatures: []native.Signature{{
-			Args:          []*native.Type{gT, native.TAtom, native.TInteger, native.TFunction},
-			QuoteArgs:     map[int]bool{1: true},
-			Returns:       []*native.Type{},
-			BarrierPos:    -1,
-			CompileEffect: native.CompileStoresFn, // the fn is stored, not invoked on the tape
-			Impl:          native.Go(parseMatcherHandler),
+			Args:       []*native.Type{gT, native.TAtom, native.TInteger, native.TFunction},
+			QuoteArgs:  map[int]bool{1: true},
+			Returns:    []*native.Type{},
+			BarrierPos: -1,
+			Impl:       native.Go(parseMatcherHandler),
 		}},
 	})
 	exports.Set("matcher", wrapMiniFnDef("parse-matcher", [][]native.FnParam{
@@ -271,11 +269,10 @@ func BuildParseModule(parent *native.Registry) (native.ModuleDesc, error) {
 	subReg.RegisterNativeFunc(native.NativeFunc{
 		Name: "parse-action",
 		Signatures: []native.Signature{{
-			Args:          []*native.Type{gT, native.TString, native.TFunction},
-			Returns:       []*native.Type{},
-			BarrierPos:    -1,
-			CompileEffect: native.CompileStoresFn, // the fn is stored, not invoked on the tape
-			Impl:          native.Go(parseActionHandler),
+			Args:       []*native.Type{gT, native.TString, native.TFunction},
+			Returns:    []*native.Type{},
+			BarrierPos: -1,
+			Impl:       native.Go(parseActionHandler),
 		}},
 	})
 	exports.Set("action", wrapMiniFnDef("parse-action", [][]native.FnParam{

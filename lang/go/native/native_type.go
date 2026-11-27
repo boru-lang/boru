@@ -129,27 +129,20 @@ var typeNatives = []NativeFunc{
 			Impl:       Go(enumHandler),
 			Returns:    []*Type{TEnum},
 			ReturnsFn:  enumReturns, BarrierPos: -1,
-			// S2b's declaration: the member list is literal DATA the handler
-			// consumes verbatim (a bare word becomes its atom), never code
-			// it runs — CompileQuoteInert for a NoEvalArgs operand.
-			CompileEffect: CompileQuoteInert,
 		}},
 	},
 	{
-		Name:          "typeof",
-		CompileEffect: CompileModuleFold | CompileIslandPure,
+		Name: "typeof",
 
 		Signatures: []Signature{{
 			Args:      []*Type{TAny},
 			Impl:      Go(typeofHandler),
 			Returns:   []*Type{TType},
 			ReturnsFn: typeofReturns, BarrierPos: -1,
-			CompileEffect: CompileReadsFn, // reads a fn value's type, never invokes it
 		}},
 	},
 	{
-		Name:          "is",
-		CompileEffect: CompileModuleFold | CompileIslandPure,
+		Name: "is",
 
 		Signatures: []Signature{{
 			Args:       []*Type{TAny, TAny},
@@ -158,14 +151,10 @@ var typeNatives = []NativeFunc{
 			Returns:    []*Type{TBoolean},
 			// Membership reads the VALUE slot's lattice tag / runs the type's
 			// own Match predicate over it — a fn value there (`(+re/…/) is
-			// (MiniLang.Re)`, module-minilang.tsv) is DATA, never invoked
-			// (Stage M2d, design/legacy/STAGE3-INLINING-DESIGN-ROUND.0.ignore). The TYPE
-			// slot (position 0) is deliberately NOT inert: a concrete Function
-			// there is a PREDICATE the handler INVOKES via RunPredicate
-			// (`5 is Positive`), so whole-sig CompileReadsFn would miscompile —
-			// the positional map keeps that slot on the compile failure path (pinned by
-			// TestFnValueIntrospectionLowers' invoke negative).
-			FnInertArgs: map[int]bool{1: true},
+			// (MiniLang.Re)`, module-minilang.tsv) is DATA, never invoked.
+			// A concrete Function in the TYPE slot (position 0) is a
+			// PREDICATE the handler INVOKES via RunPredicate (`5 is
+			// Positive`).
 		}},
 	},
 	{
@@ -179,8 +168,7 @@ var typeNatives = []NativeFunc{
 		// dispatches the base FlexMap overload — the override's nominal
 		// anchor cannot match the widened view — while the handler still
 		// receives the real subtype-tagged m.
-		Name:          "as",
-		CompileEffect: CompileIslandPure,
+		Name: "as",
 
 		Signatures: []Signature{{
 			Args:       []*Type{TAny, TAny},
@@ -190,32 +178,27 @@ var typeNatives = []NativeFunc{
 			ReturnsFn:  asReturns,
 			// Both slots are DATA: the type operand is a literal the
 			// handler validates (never a predicate to invoke, unlike
-			// `is`), and the value slot mirrors `is`'s inert value rule.
-			FnInertArgs: map[int]bool{0: true, 1: true},
+			// `is`), and the value slot is read, never invoked.
 		}},
 	},
 	{
-		Name:          "teq",
-		CompileEffect: CompileIslandPure,
+		Name: "teq",
 
 		Signatures: []Signature{{
-			Args:          []*Type{TAny, TAny},
-			BarrierPos:    1,
-			Impl:          Go(teqHandler),
-			Returns:       []*Type{TBoolean},
-			CompileEffect: CompileReadsFn, // type-algebra reads fn-value types, never invokes
+			Args:       []*Type{TAny, TAny},
+			BarrierPos: 1,
+			Impl:       Go(teqHandler),
+			Returns:    []*Type{TBoolean},
 		}},
 	},
 	{
-		Name:          "tis",
-		CompileEffect: CompileIslandPure,
+		Name: "tis",
 
 		Signatures: []Signature{{
-			Args:          []*Type{TAny, TAny},
-			BarrierPos:    1,
-			Impl:          Go(tisHandler),
-			Returns:       []*Type{TBoolean},
-			CompileEffect: CompileReadsFn, // reads the operands' lattice tags, never invokes
+			Args:       []*Type{TAny, TAny},
+			BarrierPos: 1,
+			Impl:       Go(tisHandler),
+			Returns:    []*Type{TBoolean},
 		}},
 	},
 	{
@@ -241,42 +224,36 @@ var typeNatives = []NativeFunc{
 	// (core.TorHandler / core.TandHandler / core.TandValues); the
 	// registrations here own the names and dispatch wiring.
 	{
-		Name:          "tor",
-		CompileEffect: CompileIslandPure,
+		Name: "tor",
 
 		Signatures: []Signature{{
-			Args:          []*Type{TAny, TAny},
-			BarrierPos:    1,
-			Impl:          Go(core.TorHandler),
-			ReturnsFn:     core.TorReturnsFn,
-			CompileEffect: CompileReadsFn, // type-algebra reads fn-value types, never invokes
+			Args:       []*Type{TAny, TAny},
+			BarrierPos: 1,
+			Impl:       Go(core.TorHandler),
+			ReturnsFn:  core.TorReturnsFn,
 		}},
 	},
 	{
-		Name:          "tand",
-		CompileEffect: CompileIslandPure,
+		Name: "tand",
 
 		Signatures: []Signature{{
-			Args:          []*Type{TAny, TAny},
-			BarrierPos:    1,
-			Impl:          Go(core.TandHandler),
-			ReturnsFn:     core.TandReturnsFn,
-			CompileEffect: CompileReadsFn, // type-algebra reads fn-value types, never invokes
+			Args:       []*Type{TAny, TAny},
+			BarrierPos: 1,
+			Impl:       Go(core.TandHandler),
+			ReturnsFn:  core.TandReturnsFn,
 		}},
 	},
 	// `tnot` (type negation / complement) — closes the type algebra
 	// under Boolean operations. `tnot T` matches v iff v does not match
 	// T. Algorithm lives in eng (core.TnotHandler / core.NegateType).
 	{
-		Name:          "tnot",
-		CompileEffect: CompileIslandPure,
+		Name: "tnot",
 
 		Signatures: []Signature{{
-			Args:          []*Type{TAny},
-			BarrierPos:    -1,
-			Impl:          Go(core.TnotHandler),
-			ReturnsFn:     core.TnotReturnsFn,
-			CompileEffect: CompileReadsFn, // type-algebra reads fn-value types, never invokes
+			Args:       []*Type{TAny},
+			BarrierPos: -1,
+			Impl:       Go(core.TnotHandler),
+			ReturnsFn:  core.TnotReturnsFn,
 		}},
 	},
 	{
@@ -294,8 +271,7 @@ var typeNatives = []NativeFunc{
 		},
 	},
 	{
-		Name:          "convert",
-		CompileEffect: CompileModuleFold,
+		Name: "convert",
 
 		Signatures: []Signature{
 			// Ideal → Map / List (per-type IdealConverter; base Ideal → {} / [])

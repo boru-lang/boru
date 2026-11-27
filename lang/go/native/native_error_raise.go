@@ -25,12 +25,6 @@ import (
 var errorNatives = []NativeFunc{
 	{
 		Name: "raise",
-		// The /q'd error-code Atom is inert data; raise bakes + CALL_NATIVE,
-		// raising the byte-identical error at run time (it declares no returns).
-		// CompileDiverges marks it as an always-raising terminal, so a closure
-		// body ending in `raise` (a caught `do [raise …]` / `error` handler tail)
-		// compiles with no RET — the error propagates and the catcher wraps it.
-		CompileEffect: CompileQuoteInert | CompileDiverges,
 
 		Signatures: []Signature{
 			// raise <code> <message> — the /q'd Atom position lets a
@@ -64,8 +58,7 @@ var errorNatives = []NativeFunc{
 		// string, or a variable bound to `code/q`), but NEITHER quotes a
 		// bare word — the bare-word-quoting (QuoteArgs) variant lives on
 		// `dot`. Mirrors the get/dot split in native_storage.go.
-		Name:          "get",
-		CompileEffect: CompileModuleFold | CompileIslandPure,
+		Name: "get",
 
 		Signatures: []Signature{
 			{Args: []*Type{TString, TError}, Impl: Go(getErrorFieldHandler), ReturnsFn: errorFieldReturns, Returns: []*Type{TAny}, BarrierPos: -1},
@@ -75,8 +68,7 @@ var errorNatives = []NativeFunc{
 	{
 		// dot on an Error value — the `.`-sugar target; quotes a bare-word
 		// key as a literal field name (`err.code` ≡ `err dot code`).
-		Name:          "dot",
-		CompileEffect: CompileModuleFold | CompileIslandPure,
+		Name: "dot",
 
 		Signatures: []Signature{
 			{Args: []*Type{TString, TError}, Impl: Go(getErrorFieldHandler), ReturnsFn: errorFieldReturns, Returns: []*Type{TAny}, BarrierPos: -1},

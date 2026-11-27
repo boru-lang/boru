@@ -104,8 +104,7 @@ func makeNodeReturns() ReturnsFunc {
 
 var makeNatives = []NativeFunc{
 	{
-		Name:          "make",
-		CompileEffect: CompileIslandPure,
+		Name: "make",
 
 		Signatures: []Signature{
 			// make is an IMPURE constructor: each call mints a fresh

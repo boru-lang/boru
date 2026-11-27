@@ -78,11 +78,11 @@ var bytesNatives = []NativeFunc{
 			// String <-> Bytes (UTF-8), List <-> Bytes (0-255 ints), and
 			// Bytes -> Bytes (compact copy). Target type is the literal arg0.
 			// There is no Bytes literal, so `convert Bytes "m"` is how a
-			// program writes a Bytes constant: over a const string the compile
-			// pass folds it (CompileScalarFold), so a refinement bounded by one
+			// program writes a Bytes constant: over a const string the check
+			// pass folds it (ConstFold), so a refinement bounded by one
 			// (`def Hi (Bytes gte (convert Bytes "m"))`) has a KNOWN bound
 			// (NUR009, NUR308).
-			{Args: []*Type{TBytes, TString}, TypeArgs: map[int]bool{0: true}, Impl: Go(convertStringToBytes), ReturnsFn: ReturnsFreshInstance(0), BarrierPos: -1, CompileEffect: CompileScalarFold},
+			{Args: []*Type{TBytes, TString}, TypeArgs: map[int]bool{0: true}, Impl: Go(convertStringToBytes), ReturnsFn: ReturnsFreshInstance(0), BarrierPos: -1, ConstFold: true},
 			{Args: []*Type{TString, TBytes}, TypeArgs: map[int]bool{0: true}, Impl: Go(convertBytesToString), ReturnsFn: ReturnsFreshInstance(0), BarrierPos: -1},
 			{Args: []*Type{TBytes, TList}, TypeArgs: map[int]bool{0: true}, Impl: Go(convertListToBytes), ReturnsFn: ReturnsFreshInstance(0), BarrierPos: -1},
 			{Args: []*Type{TList, TBytes}, TypeArgs: map[int]bool{0: true}, Impl: Go(convertBytesToList), ReturnsFn: ReturnsFreshInstance(0), BarrierPos: -1},

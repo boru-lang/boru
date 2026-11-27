@@ -293,11 +293,10 @@ var fnUtilNatives = []native.NativeFunc{
 	{
 		Name: "_f_const",
 		Signatures: []native.Signature{{
-			BarrierPos:    -1,
-			CompileEffect: native.CompileStoresFn,
-			Args:          []*native.Type{native.TAny},
-			Returns:       []*native.Type{native.TFunction},
-			ReturnsFn:     fnShapeReturns(fnShapeConst(1)),
+			BarrierPos: -1,
+			Args:       []*native.Type{native.TAny},
+			Returns:    []*native.Type{native.TFunction},
+			ReturnsFn:  fnShapeReturns(fnShapeConst(1)),
 			Impl: native.Go(func(args []native.Value, _ map[string]native.Value, _ []native.Value, _ *native.Registry) ([]native.Value, error) {
 				x := args[0]
 				return []native.Value{goFnValue("const", 1,
@@ -312,11 +311,10 @@ var fnUtilNatives = []native.NativeFunc{
 	{
 		Name: "compose",
 		Signatures: []native.Signature{{
-			BarrierPos:    -1,
-			CompileEffect: native.CompileStoresFn | native.CompileFnHandlerStrict,
-			Args:          []*native.Type{native.TFunction, native.TFunction},
-			Returns:       []*native.Type{native.TFunction},
-			ReturnsFn:     fnShapeReturns(fnShapeConst(1)),
+			BarrierPos: -1,
+			Args:       []*native.Type{native.TFunction, native.TFunction},
+			Returns:    []*native.Type{native.TFunction},
+			ReturnsFn:  fnShapeReturns(fnShapeConst(1)),
 			Impl: native.Go(func(args []native.Value, _ map[string]native.Value, _ []native.Value, r *native.Registry) ([]native.Value, error) {
 				f, err := fnUtilArg(args[0], "FnUtil.compose", r)
 				if err != nil {
@@ -342,11 +340,10 @@ var fnUtilNatives = []native.NativeFunc{
 	{
 		Name: "pipe",
 		Signatures: []native.Signature{{
-			BarrierPos:    -1,
-			CompileEffect: native.CompileStoresFn | native.CompileFnHandlerStrict,
-			Args:          []*native.Type{native.TFunction, native.TFunction},
-			Returns:       []*native.Type{native.TFunction},
-			ReturnsFn:     fnShapeReturns(fnShapeConst(1)),
+			BarrierPos: -1,
+			Args:       []*native.Type{native.TFunction, native.TFunction},
+			Returns:    []*native.Type{native.TFunction},
+			ReturnsFn:  fnShapeReturns(fnShapeConst(1)),
 			Impl: native.Go(func(args []native.Value, _ map[string]native.Value, _ []native.Value, r *native.Registry) ([]native.Value, error) {
 				f, err := fnUtilArg(args[0], "FnUtil.pipe", r)
 				if err != nil {
@@ -373,11 +370,10 @@ var fnUtilNatives = []native.NativeFunc{
 	{
 		Name: "flip",
 		Signatures: []native.Signature{{
-			BarrierPos:    -1,
-			CompileEffect: native.CompileStoresFn | native.CompileFnHandlerStrict,
-			Args:          []*native.Type{native.TFunction},
-			Returns:       []*native.Type{native.TFunction},
-			ReturnsFn:     fnShapeReturns(fnShapeFromOperand(0)),
+			BarrierPos: -1,
+			Args:       []*native.Type{native.TFunction},
+			Returns:    []*native.Type{native.TFunction},
+			ReturnsFn:  fnShapeReturns(fnShapeFromOperand(0)),
 			Impl: native.Go(func(args []native.Value, _ map[string]native.Value, _ []native.Value, r *native.Registry) ([]native.Value, error) {
 				if _, err := fnUtilSigArg(args[0], "FnUtil.flip", r); err != nil {
 					return nil, err
@@ -395,11 +391,10 @@ var fnUtilNatives = []native.NativeFunc{
 	{
 		Name: "curry",
 		Signatures: []native.Signature{{
-			BarrierPos:    -1,
-			CompileEffect: native.CompileStoresFn | native.CompileFnHandlerStrict,
-			Args:          []*native.Type{native.TFunction},
-			Returns:       []*native.Type{native.TFunction},
-			ReturnsFn:     fnShapeReturns(fnShapeCurry()),
+			BarrierPos: -1,
+			Args:       []*native.Type{native.TFunction},
+			Returns:    []*native.Type{native.TFunction},
+			ReturnsFn:  fnShapeReturns(fnShapeCurry()),
 			Impl: native.Go(func(args []native.Value, _ map[string]native.Value, _ []native.Value, r *native.Registry) ([]native.Value, error) {
 				fd, err := fnUtilSigArg(args[0], "FnUtil.curry", r)
 				if err != nil {
@@ -424,11 +419,10 @@ var fnUtilNatives = []native.NativeFunc{
 	{
 		Name: "partial",
 		Signatures: []native.Signature{{
-			BarrierPos:    -1,
-			CompileEffect: native.CompileStoresFn | native.CompileFnHandlerStrict,
-			Args:          []*native.Type{native.TFunction, native.TAny},
-			Returns:       []*native.Type{native.TFunction},
-			ReturnsFn:     fnShapeReturns(fnShapeFromOperand(-1)),
+			BarrierPos: -1,
+			Args:       []*native.Type{native.TFunction, native.TAny},
+			Returns:    []*native.Type{native.TFunction},
+			ReturnsFn:  fnShapeReturns(fnShapeFromOperand(-1)),
 			Impl: native.Go(func(args []native.Value, _ map[string]native.Value, _ []native.Value, r *native.Registry) ([]native.Value, error) {
 				fd, err := fnUtilSigArg(args[0], "FnUtil.partial", r)
 				if err != nil {
@@ -461,11 +455,10 @@ var fnUtilNatives = []native.NativeFunc{
 	{
 		Name: "on",
 		Signatures: []native.Signature{{
-			BarrierPos:    -1,
-			CompileEffect: native.CompileStoresFn | native.CompileFnHandlerStrict,
-			Args:          []*native.Type{native.TFunction, native.TFunction},
-			Returns:       []*native.Type{native.TFunction},
-			ReturnsFn:     fnShapeReturns(fnShapeConst(2)),
+			BarrierPos: -1,
+			Args:       []*native.Type{native.TFunction, native.TFunction},
+			Returns:    []*native.Type{native.TFunction},
+			ReturnsFn:  fnShapeReturns(fnShapeConst(2)),
 			Impl: native.Go(func(args []native.Value, _ map[string]native.Value, _ []native.Value, r *native.Registry) ([]native.Value, error) {
 				b, err := fnUtilArg(args[0], "FnUtil.on", r)
 				if err != nil {
@@ -498,11 +491,10 @@ var fnUtilNatives = []native.NativeFunc{
 	{
 		Name: "memoize",
 		Signatures: []native.Signature{{
-			BarrierPos:    -1,
-			CompileEffect: native.CompileStoresFn | native.CompileFnHandlerStrict,
-			Args:          []*native.Type{native.TFunction},
-			Returns:       []*native.Type{native.TFunction},
-			ReturnsFn:     fnShapeReturns(fnShapeFromOperand(0)),
+			BarrierPos: -1,
+			Args:       []*native.Type{native.TFunction},
+			Returns:    []*native.Type{native.TFunction},
+			ReturnsFn:  fnShapeReturns(fnShapeFromOperand(0)),
 			Impl: native.Go(func(args []native.Value, _ map[string]native.Value, _ []native.Value, r *native.Registry) ([]native.Value, error) {
 				fd, err := fnUtilSigArg(args[0], "FnUtil.memoize", r)
 				if err != nil {

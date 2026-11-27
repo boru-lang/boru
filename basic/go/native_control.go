@@ -17,27 +17,11 @@ var ControlNatives = []NativeFunc{
 				NoEvalArgs: map[int]bool{0: true},
 				Impl:       Go(DoListHandler),
 				ReturnsFn:  DoListReturnsFn, BarrierPos: -1,
-				// Only the LIST (code-body) sig islands — its NoEvalArgs body
-				// re-enters the interpreter. The Map sig is a pure value eval
-				// whose arg auto-evaluates BEFORE the handler, so it bakes a
-				// plain CALL_NATIVE (do {a:1 b:2} no longer islands).
-				// CompileDynBody is the universal backstop: a body the closure
-				// path declines (computed carriers, args-bearing bodies) lowers
-				// to a CALL_NATIVE under the program's DynEnv mode instead of
-				// declining — the handler's runtime execution is the
-				// interpreter's own semantics once names and args resolve
-				// identically (see eng CompileDynBody).
-				CompileEffect: CompileFallbackBody | CompileDynBody,
 			},
 			{
 				Args:    []*Type{TMap},
 				Impl:    Go(DoMapHandler),
 				Returns: []*Type{TAny}, BarrierPos: -1,
-				// CompileDynBody here too: a GRADUAL operand can commit to
-				// this sig at check time while the runtime value is a List —
-				// the dyn-body poly re-match picks the real overload at run
-				// time (tryRecordDynBody's body.Dynamic branch).
-				CompileEffect: CompileDynBody,
 			},
 		},
 	},
@@ -50,17 +34,12 @@ var ControlNatives = []NativeFunc{
 				NoEvalArgs: map[int]bool{0: true, 1: true, 2: true},
 				Impl:       Go(if3Handler),
 				ReturnsFn:  if3ReturnsFn, BarrierPos: -1,
-				// The branch is lowered by the ReturnsFn (RecordBranch), never
-				// as a dispatch over the arm bodies (S2b's declaration).
-				CompileEffect: CompileOwnLowering,
 			},
 			{
 				Args:       []*Type{TAny, TAny},
 				NoEvalArgs: map[int]bool{0: true, 1: true},
 				Impl:       Go(if2Handler),
-				// As the three-operand form: RecordBranch lowers it (S2b).
-				CompileEffect: CompileOwnLowering,
-				ReturnsFn:     If2ReturnsFn, BarrierPos:
+				ReturnsFn:  If2ReturnsFn, BarrierPos:
 
 				// Clause-list form: `if [c1 b1 c2 b2 … else]`. Even elements
 				// are conditions, the following odd element is that clause's
@@ -79,15 +58,6 @@ var ControlNatives = []NativeFunc{
 				NoEvalArgs: map[int]bool{0: true},
 				Impl:       Go(IfListHandler),
 				ReturnsFn:  IfListReturnsFn, BarrierPos: -1,
-				// The handler returns ifClause's tokens — the chosen body
-				// SPLICED for the tape to re-step — so the dispatch is never
-				// a CALL_NATIVE: under the recording pass the ReturnsFn
-				// lowers the chain as the if3 / if2 branch events it is
-				// equivalent to (ifClauseRecord, 2026-09-26; declared
-				// CompileResteps until then, when a clause list holding a
-				// code body compiled to that CALL_NATIVE and died at run
-				// time on the tape-coupled splice).
-				CompileEffect: CompileOwnLowering,
 			},
 		},
 	},
@@ -109,8 +79,7 @@ var ControlNatives = []NativeFunc{
 		// (case_not_exhaustive, case_exhaustive.go): a default-less
 		// case reaches that produce-nothing path only for a dynamic
 		// (untyped) scrutinee.
-		Name:          "case",
-		CompileEffect: CompileFallbackBody,
+		Name: "case",
 
 		Signatures: []Signature{
 			// One Any/Any sig; the handler disambiguates the two call
@@ -136,25 +105,12 @@ var ControlNatives = []NativeFunc{
 				NoEvalArgs: map[int]bool{1: true},
 				Impl:       Go(ForCountHandler),
 				ReturnsFn:  forIntegerListReturnsFn, BarrierPos: -1,
-				// The loop is lowered by the ReturnsFn (RecordLoop), never as
-				// a dispatch over the body (S2b's declaration). A COMPUTED
-				// body (`for 3 (mk 0)`, code-bodies.tsv L141) has no tokens
-				// for RecordLoop to capture: CompileDynBody hands that
-				// dispatch to the dyn-body backstop, which HOSTS the
-				// handler's splice on the VM's interpreter island — admitted
-				// only where the splice and the island cannot be told apart
-				// (the program's last statement over an empty stack; see
-				// compiler's hostsSplice, 2026-09-26).
-				CompileEffect: CompileOwnLowering | CompileDynBody,
 			},
 			{
 				Args:       []*Type{TList, TList},
 				NoEvalArgs: map[int]bool{1: true},
 				Impl:       Go(ForRangeHandler),
 				ReturnsFn:  forListListReturnsFn, BarrierPos: -1,
-				// RecordLoop, as the count form (S2b); a computed body takes
-				// the hosted splice, as the count form's does.
-				CompileEffect: CompileOwnLowering | CompileDynBody,
 			},
 		},
 	},
@@ -173,10 +129,6 @@ var ControlNatives = []NativeFunc{
 			NoEvalArgs: map[int]bool{0: true, 1: true},
 			Impl:       Go(WhileHandler),
 			ReturnsFn:  whileReturnsFn, BarrierPos: -1,
-			// The loop is lowered by the ReturnsFn (RecordLoop, the
-			// "while" loop event), never as a dispatch over the condition
-			// or the body (S2b's declaration).
-			CompileEffect: CompileOwnLowering,
 		}},
 	},
 	// break and continue signal via Registry.FlowCtrl rather than
@@ -205,20 +157,6 @@ var ControlNatives = []NativeFunc{
 	},
 	{
 		Name: "error",
-		// do [body] error [handler] — the handler runs as a closure with the
-		// caught Error pushed as its one input (BodyPos 0, BodyOut 1). A handler
-		// that CONSUMES the error (`[get message]`, `[get code case …]`) nets 1
-		// and compiles; one that IGNORES it (`["fallback"]`) leaves error+result
-		// (nets 2) — StripsUnconsumedInput admits that shape too: the handler's
-		// runtime identity probe strips the unconsumed error from the residual
-		// bottom (ErrorHandler), so the closure nets ONE value either way and
-		// compiles natively instead of islanding.
-		// CompileDynBody (2026-09-25): a COMPUTED handler body — a List
-		// param, a fn's result — lowers to a plain CALL_NATIVE under the
-		// program's DynEnv mode where the closure path declined, exactly as
-		// `do`'s does: ErrorHandler runs the body through the InvokeBody
-		// seam, which stamps a run-time token body and hosts it on the VM.
-		CompileEffect: CompileFallbackBody | CompileDynBody,
 
 		// ONE sig (List, Any): the handler runs when the body raised (the do
 		// result is an Error), else the result passes through. The two cases were
@@ -736,12 +674,12 @@ func ifTakenArmReturns(r *Registry, cond, arm Value, lit bool) []Value {
 		restoreThen := ApplyGuardNarrowing(r, cond)
 		stk, defs = RunCarrierBodyWithDefs(r, arm)
 		restoreThen()
-		InstallTakenArmDefs(r, defs, nil)
+		InstallJoinedDefs(r, defs, nil)
 	} else {
 		restoreElse := ApplyComplementNarrowing(r, cond)
 		stk, defs = RunCarrierBodyWithDefs(r, arm)
 		restoreElse()
-		InstallTakenArmDefs(r, nil, defs)
+		InstallJoinedDefs(r, nil, defs)
 	}
 	if len(stk) == 0 {
 		// The taken arm leaves no value (`if [true] [def x 1] [2]`, NUR243):
@@ -761,7 +699,7 @@ func ifTakenArmReturns(r *Registry, cond, arm Value, lit bool) []Value {
 
 // staticCondArm reports the taken arm for a statically-known BARE concrete
 // Boolean condition — the shape a paren comparison folds to in plain check
-// (`(n eq 0)` → concrete false via CompileScalarFold, carrier.go). It is the
+// (`(n eq 0)` → concrete false via Signature.ConstFold, carrier.go). It is the
 // bare-value analogue of LiteralCondValue (which reads a length-1 LIST body)
 // and reuses condSelectsArm's concrete-Boolean probe. ok=false for a
 // list-form / dynamic / non-Boolean condition, so the caller falls through to
@@ -853,12 +791,12 @@ func reduceStaticArm(r *Registry, cond, arm Value, isThen bool) []Value {
 		restore := ApplyGuardNarrowing(r, cond)
 		stk, defs = RunCarrierBodyWithDefs(r, arm)
 		restore()
-		InstallTakenArmDefs(r, defs, nil)
+		InstallJoinedDefs(r, defs, nil)
 	} else {
 		restore := ApplyComplementNarrowing(r, cond)
 		stk, defs = RunCarrierBodyWithDefs(r, arm)
 		restore()
-		InstallTakenArmDefs(r, nil, defs)
+		InstallJoinedDefs(r, nil, defs)
 	}
 	return stk
 }

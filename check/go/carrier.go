@@ -552,7 +552,7 @@ func CarrierResults(r *core.Registry, word string, sig *core.Signature, args []c
 	}
 	out := declaredReturnCarriers(r, word, sig, args, pos)
 	if folded, ok := tryFoldScalarConst(r, sig, args); ok && len(out) == 1 {
-		// Concrete-condition folding (CompileScalarFold): the comparison ran
+		// Concrete-condition folding (Signature.ConstFold): the comparison ran
 		// for real over compile-time-known scalars, so the concrete result
 		// replaces the declared-type carrier — `(n eq 0)` with a const n
 		// reads as a known false downstream (return-membership conformance,
@@ -565,7 +565,7 @@ func CarrierResults(r *core.Registry, word string, sig *core.Signature, args []c
 }
 
 // scalarFoldOperand reports whether a check-mode dispatch operand carries a
-// compile-time-known SCALAR value a CompileScalarFold dispatch may fold
+// check-time-known SCALAR value a ConstFold dispatch may fold
 // over: an inert const, or a check-mode literal — which rides as a
 // concrete-PAYLOAD carrier (Carrier=true, Data set; the same shape the
 // DepScalar predicate evaluation reads for `f 5`), so the isInertConst

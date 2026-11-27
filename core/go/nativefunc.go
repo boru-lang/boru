@@ -24,11 +24,8 @@ type NativeFunc struct {
 	Name       string
 	Signatures []Signature
 
-	// CompileEffect is a WORD-level compile-effect declaration OR'd into every
-	// one of this word's signatures at registration. Use it for per-word
-	// classifications that apply to all overloads (a pure module reader, an
-	// island-pure dispatch word, a code-body higher-order word) so the bytecode
-	// recorder reads sig.CompileEffect instead of a name-keyed eng table. A
-	// single overload that needs an extra flag can still set Signature.CompileEffect.
-	CompileEffect CompileEffect
+	// ConstFold is the WORD-level form of Signature.ConstFold: set here it
+	// holds for every one of this word's signatures (folded onto each at
+	// registration). A single overload sets Signature.ConstFold instead.
+	ConstFold bool
 }

@@ -133,8 +133,7 @@ var allArrayNatives = []NativeFunc{
 		}},
 	},
 	{
-		Name:          "where",
-		CompileEffect: CompileFallbackBody,
+		Name: "where",
 
 		Signatures: []Signature{{
 			Args:      []*Type{TList},
@@ -240,8 +239,7 @@ var allArrayNatives = []NativeFunc{
 		}},
 	},
 	{
-		Name:          "group",
-		CompileEffect: CompileFallbackBody,
+		Name: "group",
 
 		Signatures: []Signature{
 			{
@@ -295,8 +293,7 @@ var allArrayNatives = []NativeFunc{
 
 	// ---- higher-order ----
 	{
-		Name:          "each",
-		CompileEffect: CompileFallbackBody | CompileDynBody,
+		Name: "each",
 
 		Signatures: []Signature{
 			{
@@ -335,8 +332,7 @@ var allArrayNatives = []NativeFunc{
 		// fine), so index-less mutating loops no longer need to push a
 		// throwaway sentinel just to satisfy each's "body produced a
 		// result" rule. See §7.4 in the DX report.
-		Name:          "for-each",
-		CompileEffect: CompileFallbackBody | CompileDynBody,
+		Name: "for-each",
 
 		Signatures: []Signature{
 			{
@@ -360,8 +356,7 @@ var allArrayNatives = []NativeFunc{
 		},
 	},
 	{
-		Name:          "fold",
-		CompileEffect: CompileFallbackBody | CompileDynBody,
+		Name: "fold",
 
 		Signatures: []Signature{
 			{
@@ -404,8 +399,7 @@ var allArrayNatives = []NativeFunc{
 		},
 	},
 	{
-		Name:          "scan",
-		CompileEffect: CompileFallbackBody | CompileDynBody,
+		Name: "scan",
 
 		Signatures: []Signature{
 			{
@@ -431,8 +425,7 @@ var allArrayNatives = []NativeFunc{
 		},
 	},
 	{
-		Name:          "outer",
-		CompileEffect: CompileFallbackBody,
+		Name: "outer",
 
 		Signatures: []Signature{{
 			Args:       []*Type{TList, TList, TList},
@@ -442,8 +435,7 @@ var allArrayNatives = []NativeFunc{
 		}},
 	},
 	{
-		Name:          "inner",
-		CompileEffect: CompileFallbackBody,
+		Name: "inner",
 
 		Signatures: []Signature{{
 			Args:       []*Type{TList, TList, TList, TList},

@@ -23,7 +23,6 @@ import (
 
 // *Type aliases — every exported type from core is re-exported here.
 type (
-	BranchJoin         = core.BranchJoin
 	CodeEffectInfo     = core.CodeEffectInfo
 	DeqIndex           = core.DeqIndex
 	BoruError          = core.BoruError
@@ -91,7 +90,6 @@ type (
 	GoImpl               = core.GoImpl   // native / internal Go-handler implementation
 	BoruImpl             = core.BoruImpl // boru body implementation (module ref / lambda / installed fn)
 	GoOpt                = core.GoOpt    // optional dispatch knob for Go(...)
-	CompileEffect        = core.CompileEffect
 	ClassInstanceInfo    = core.ClassInstanceInfo
 	ClassTypeInfo        = core.ClassTypeInfo
 	ResourceInstanceInfo = core.ResourceInstanceInfo
@@ -242,28 +240,6 @@ const (
 	DepGTE = core.DepGTE
 	DepLT  = core.DepLT
 	DepLTE = core.DepLTE
-
-	// Compile-effect classifications (core.CompileEffect) for the bytecode
-	// recorder — declared on a Signature instead of a name-keyed eng table.
-	CompileDefault            = core.CompileDefault
-	CompileReadsFn            = core.CompileReadsFn
-	CompileStoresFn           = core.CompileStoresFn
-	CompileModuleFold         = core.CompileModuleFold
-	CompileIslandPure         = core.CompileIslandPure
-	CompileScalarFold         = core.CompileScalarFold
-	CompileFallbackBody       = core.CompileFallbackBody
-	CompileQuoteInert         = core.CompileQuoteInert
-	CompileQuoteKey           = core.CompileQuoteKey
-	CompileDiverges           = core.CompileDiverges
-	CompileValueDiverges      = core.CompileValueDiverges
-	CompileStoresBody         = core.CompileStoresBody
-	CompileStoresBodyList     = core.CompileStoresBodyList
-	CompileFnHandlerStrict    = core.CompileFnHandlerStrict
-	CompileResteps            = core.CompileResteps
-	CompileOwnLowering        = core.CompileOwnLowering
-	CompileRunsBodyIsolated   = core.CompileRunsBodyIsolated
-	CompileRunsBodyOnRegistry = core.CompileRunsBodyOnRegistry
-	CompileDynBody            = core.CompileDynBody
 )
 
 // Flow-control signal values exposed by the engine. These travel
@@ -434,7 +410,6 @@ var (
 	RunCarrierBodyWithDefs   = core.RunCarrierBodyWithDefs
 	RunCarrierCondBody       = core.RunCarrierCondBody
 	InstallJoinedDefs        = core.InstallJoinedDefs
-	InstallTakenArmDefs      = core.InstallTakenArmDefs
 	New                      = core.New
 	RunPooled                = core.RunPooled
 	RunPooledTop             = core.RunPooledTop

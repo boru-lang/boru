@@ -134,9 +134,9 @@ func TestS6aGradualContagionStrictDedup(t *testing.T) {
 	}
 }
 
-// registerIslandWord registers a word with the given compile effect and
-// arg count and returns the REGISTERED sig pointer (identity matters).
-func registerIslandWord(t *testing.T, r *core.Registry, name string, effect core.CompileEffect, argc int, barrier int) *core.Signature {
+// registerPlainWord registers a word with the given arg count and returns
+// the REGISTERED sig pointer (identity matters).
+func registerPlainWord(t *testing.T, r *core.Registry, name string, argc int, barrier int) *core.Signature {
 	t.Helper()
 	args := make([]*core.Type, argc)
 	for i := range args {
@@ -145,8 +145,7 @@ func registerIslandWord(t *testing.T, r *core.Registry, name string, effect core
 	r.RegisterNativeFunc(core.NativeFunc{
 		Name: name,
 		Signatures: []core.Signature{{
-			Args:          args,
-			CompileEffect: effect,
+			Args: args,
 			Impl: core.Go(func(_ []core.Value, _ map[string]core.Value, _ []core.Value, _ *core.Registry) ([]core.Value, error) {
 				return []core.Value{core.NewInteger(0)}, nil
 			}),
@@ -192,7 +191,7 @@ func TestS6aDisjunctPartitionUnknownWordDeclines(t *testing.T) {
 
 func TestS6aDisjunctPartitionComboCapDeclines(t *testing.T) {
 	r := newTestRegistry(t)
-	registerIslandWord(t, r, "s6apart", 0, 1, -1)
+	registerPlainWord(t, r, "s6apart", 1, -1)
 	done := r.Check.Begin()
 	defer done()
 	alts := make([]core.Value, disjunctPartitionCap+1)

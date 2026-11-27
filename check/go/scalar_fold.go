@@ -2,18 +2,16 @@ package check
 
 import core "github.com/boru-lang/boru/core/go"
 
-// tryFoldScalarConst const-folds a CompileScalarFold dispatch whose operands
-// are ALL inert consts, by running the real handler concretely — twice, with
-// a determinism-agreement guard — and returning the concrete result when it
-// is itself an inert const. An erroring dispatch (family-restricted ordering
+// tryFoldScalarConst const-folds a ConstFold dispatch whose operands are ALL
+// inert consts, by running the real handler concretely — twice, with a
+// determinism-agreement guard — and returning the concrete result when it is
+// itself an inert const. An erroring dispatch (family-restricted ordering
 // over cross-family operands) declines, keeping the ordinary diagnostic
-// path. See CompileScalarFold (core/go/value.go) for the motivation
+// path. See Signature.ConstFold (core/go/value.go) for the motivation
 // (concrete-condition folding: the check pass sees `(n eq 0)` as a concrete
-// false when n is a known const, so a branch on it is decided). (Moved here
-// from the compiler module when the compiled lane was removed, 2026-10-16:
-// the fold ran on the plain check pass all along.)
+// false when n is a known const, so a branch on it is decided).
 func tryFoldScalarConst(r *core.Registry, sig *core.Signature, args []core.Value) (core.Value, bool) {
-	if sig == nil || !sig.CompileEffect.Has(core.CompileScalarFold) ||
+	if sig == nil || !sig.ConstFold ||
 		sig.DispatchHandler() == nil || len(sig.NoEvalArgs) > 0 || len(args) == 0 {
 		return core.Value{}, false
 	}

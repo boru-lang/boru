@@ -76,7 +76,7 @@ func TestLaneRemovalFnMemberReads(t *testing.T) {
 	}
 }
 
-func TestLaneRemovalJoinedDefsNarrowingAndTakenArms(t *testing.T) {
+func TestLaneRemovalJoinedDefsNarrowingAndOneArm(t *testing.T) {
 	r := w8reg(t)
 	r.Check.Mode = true
 	pre := NewDynamicCarrier(TAny)
@@ -95,19 +95,20 @@ func TestLaneRemovalJoinedDefsNarrowingAndTakenArms(t *testing.T) {
 	if d := r.Defs.Depth("bjq"); d != 1 {
 		t.Fatalf("a genuine both-arms join must push: depth = %d", d)
 	}
-	// A constant-condition branch: the taken arm's own value, marked Taken.
+	// A one-arm binding with nothing bound before the branch: the arm's own
+	// value.
 	tv := NewInteger(1)
-	joins := InstallTakenArmDefs(r, map[string]Value{"tka": tv}, nil)
-	if len(joins) != 1 || !joins[0].Taken || !joins[0].ThenBinds || joins[0].ElseBinds || joins[0].Name != "tka" {
-		t.Fatalf("a then-arm taken binding reports one Taken then-join: %+v", joins)
-	}
+	InstallJoinedDefs(r, map[string]Value{"tka": tv}, nil)
 	if got, ok := r.Defs.Top("tka"); !ok || IDOf(&got) != IDOf(&tv) {
-		t.Errorf("the taken arm's binding is the arm's own value: %v/%v", got, ok)
+		t.Errorf("a then-only binding is the arm's own value: %v/%v", got, ok)
 	}
 	ev := NewString("e")
-	joins = InstallTakenArmDefs(r, nil, map[string]Value{"tkb": ev})
-	if len(joins) != 1 || !joins[0].Taken || joins[0].ThenBinds || !joins[0].ElseBinds {
-		t.Fatalf("an else-arm taken binding reports one Taken else-join: %+v", joins)
+	InstallJoinedDefs(r, nil, map[string]Value{"tkb": ev})
+	if got, ok := r.Defs.Top("tkb"); !ok || IDOf(&got) != IDOf(&ev) {
+		t.Errorf("an else-only binding is the arm's own value: %v/%v", got, ok)
+	}
+	if _, ok := r.Defs.Top("never-bound"); ok {
+		t.Error("a name neither arm bound stays unbound")
 	}
 }
 

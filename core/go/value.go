@@ -366,34 +366,28 @@ type FnSig struct {
 	// QuoteArgs / TypeArgs are per-position dispatch modifiers.
 	QuoteArgs map[int]bool
 	TypeArgs  map[int]bool
-	// FnInertArgs marks per-position slots where a FN-VALUED operand is INERT
-	// DATA for the bytecode recorder — read or compared, never invoked — on a
-	// word that is NOT wholesale CompileReadsFn because ANOTHER slot does
-	// invoke a fn. The one holder today is `is` (Stage M2d): its VALUE slot
-	// only reads the operand's lattice tag (`(+re/…/) is (MiniLang.Re)`),
-	// while a Function in its TYPE slot is a predicate the handler INVOKES
-	// (`5 is Positive` — RunPredicate) and must keep declining. Read by
-	// recordCallOperands alongside CompileReadsFn/CompileStoresFn.
-	FnInertArgs map[int]bool
-	// FnDataArgs marks per-position slots where a fn-value operand resolved via
-	// a dynamic-scope read (an enclosing `def op (Parse.parser g)`) must be READ
-	// AS DATA — the lowering picks OpLookupDynScopeData, which PUSHES the
-	// FnDefInfo binding instead of deferring like the plain OpLookupDynScope
-	// (whose FnDefInfo defer is for a name-POSITION read the interpreter would
-	// dispatch). The one holder is parselang-fn-dispatch's arg0 (the computed
-	// parser fn), which the interpreter passes as data to parseFnDispatchHandler.
-	FnDataArgs map[int]bool
 	// Fallback marks the synthesized 0-arg catch-all sig.
 	Fallback bool
 	// ReturnsFn is the check-mode return computer (native-authored or
 	// boru-derived); orthogonal to the run implementation in Impl.
 	ReturnsFn ReturnsFunc
-	// CompileEffect declares the word's compile-relevant semantics for the
-	// bytecode recorder, so it can classify the word WITHOUT a name-keyed table
-	// in eng (which couples the engine to specific, often module, word names).
-	// The zero value is CompileDefault (an ordinary word). Set on the Signature
-	// at registration; copied here by RegisterNativeFunc.
-	CompileEffect CompileEffect
+	// ConstFold marks a PURE value-level word (the comparison family:
+	// eq/neq/deq/cmp/tcmp/lt/lte/gt/gte) whose dispatch over operands the
+	// check pass knows as constants it may FOLD by running the real handler
+	// (check's tryFoldScalarConst): the concrete result replaces the
+	// declared-type carrier, so a literal condition like `(n eq 0)` with a
+	// const-bound n folds to a concrete Boolean and the `if` analysis sees a
+	// decided branch instead of a Disjunct residual (the
+	// forward-barrier.tsv:83 soundness pin). The fold is evaluated twice
+	// with an agreement guard, so a non-deterministic handler never
+	// freezes; an erroring dispatch (the family-restricted `lt` on
+	// cross-family operands) declines the fold and keeps the ordinary
+	// diagnostic path. One overload outside the family declares it:
+	// `convert Bytes <String>`, the only way to write a Bytes constant,
+	// whose type-literal target folds with it — so a refinement it bounds
+	// is known (NUR009). Set on the Signature, or on the NativeFunc for
+	// every overload of a word.
+	ConstFold bool
 
 	// Locked marks a signature registered through the Go registration
 	// layer (Registry.Register — every native / kernel word plus host
@@ -437,328 +431,6 @@ type FnSig struct {
 	// tuple would trip the module-scope user-type rule).
 	CoreDefault bool
 }
-
-// CompileEffect is a set of compile-relevant capability flags a word declares
-// so the bytecode recorder can classify it from the Signature rather than from
-// name-keyed tables — decoupling eng from specific (often module) word names.
-// It is a BITFIELD: the flags are orthogonal and a word may carry several (e.g.
-// `typeof` reads a fn value AND is a pure module reader AND re-dispatches as an
-// island-pure word). The zero value, CompileDefault, is an ordinary word.
-type CompileEffect uint32
-
-const (
-	// CompileReadsFn marks an INTROSPECTION word that READS a fn value's
-	// immutable shape (typeof / inspect / arityof / type-algebra) and never
-	// invokes it. The fn bakes as a const the handler inspects — and because only
-	// the shape is read, even a CAPTURING fn is safe to bake (its captures are
-	// irrelevant to its signature).
-	CompileReadsFn CompileEffect = 1 << iota
-	// CompileStoresFn marks a word that STORES a fn value for later
-	// interpreter-side invocation (minilang / parselang register), never the VM
-	// tape. A fn-valued operand rides as an inert const; but unlike
-	// CompileReadsFn, only a PURE fn literal bakes (a capturing / sub-registry fn
-	// declines at isInertConst), because the stored fn is invoked later and must
-	// keep its real binding.
-	CompileStoresFn
-	// CompileModuleFold marks a PURE reader word (get / getr / convert / typeof /
-	// is / size / has) whose result over an import-bound module value plus inert
-	// const operands is deterministic — so the recorder const-folds it.
-	CompileModuleFold
-	// CompileIslandPure marks a PURE typed-dispatch word (get / getr / size /
-	// make / is / typeof / type-algebra) with no side effects: where the checker
-	// could not commit to one overload, the word may run as an interpreter island
-	// that re-dispatches on the real runtime value (and a stack-form island when
-	// it has no threaded body inputs).
-	CompileIslandPure
-	// CompileFallbackBody marks a code-body higher-order word (each / fold / scan
-	// / filter / select / group / do / case / where / having / order / …) that
-	// may compile its body as a Stage-5 interpreter island.
-	CompileFallbackBody
-	// CompileQuoteInert marks a word whose implicit-quote (QuoteArgs) operand is
-	// INERT DATA the handler consumes verbatim — a quoted symbol (`quote name`,
-	// `raise bad_input …`) or a quoted code body held as data (`timeout 1000
-	// [body]`) — so the word bakes as a plain CALL_NATIVE once each quoted operand
-	// resolves to an inert const: the VM runs the SAME handler over the SAME baked
-	// value as the interpreter. It is the opt-in for the QuoteArgs compile failure, the
-	// declared analogue of the get/getr/set exemption. Do NOT set it on a
-	// dispatch-manipulating meta word (usurp / force-arity / valof) whose quoted
-	// operand drives a RE-STEPPING result the VM cannot reproduce by re-running
-	// the handler: those declare CompileResteps, the named refusal.
-	//
-	// S2b (2026-09-26): `enum [red green blue]` declares it for a NoEvalArgs
-	// operand — the member list is literal data the handler consumes verbatim
-	// (a bare word becomes its atom). quoteOperandInertOK requires QuoteArgs,
-	// so the flag lowers nothing there; the list bakes by the code-body arm's
-	// own inertness test, as before.
-	CompileQuoteInert
-	// CompileQuoteKey marks a word whose implicit-quote (QuoteArgs) operand is a
-	// KEY the handler READS at dispatch — the atom field name of a container write
-	// or removal (`p set x 7`, `m del a`) — rather than a literal the handler bakes
-	// into its result. That difference is the whole reason it is a separate flag
-	// from CompileQuoteInert: an inert operand is a precondition THERE, because the
-	// baked const IS the handler's datum, but here the operand is just the key, so
-	// it lowers as an ordinary operand and the VM reads whatever the interpreter
-	// would. A CARRIER-delivered key therefore stays compilable — `set (k) v m`
-	// inside a fn whose `k` is an `Atom/q` param, which is how an open-words
-	// override delegates to the base overload (lang/spec/as.tsv:52-54). Requiring
-	// inertness here cost exactly those rows and put three compile failures back on the
-	// regression ceiling, which is how the distinction was found.
-	//
-	// This is the declared form of what used to be a by-name test for `set`/`del`
-	// (setDelKernelSig, NUR057) at the recorder's two quoted-operand gates. As with
-	// CompileQuoteInert, do NOT set it on a dispatch-manipulating meta word whose
-	// quoted operand drives a RE-STEPPING result the VM cannot reproduce by
-	// re-running the handler (CompileResteps). The binding words carry it too:
-	// `def name …` / `undef name` / `__varundef name` quote the NAME of a
-	// registry write or removal, and `unpack Export 'mod'` the export it
-	// selects — a key the handler reads, never a literal it bakes; the recorder
-	// reaches none of them through the quoted-operand gates (they run in check
-	// mode and are lowered by the binder hooks), so the flag is the census's
-	// answer for them, not a lowering.
-	//
-	// S2b (2026-09-26) extends the same answer to a NoEvalArgs operand that is
-	// a list of NAMES or KEYS rather than code: `unpack [a b] m` (the names it
-	// binds), `import [Orig Renamed] mod` / `import [...] 'file'` (the export
-	// names it renames) and `reach recv [k1 k2]` (the get segments of the lens
-	// it builds). The recorder reads the flag only behind a QuoteArgs
-	// requirement and a NoEvalArgs screen, so on these it lowers nothing: the
-	// operand still bakes (or refuses) exactly as the code-body arm decides.
-	CompileQuoteKey
-	// CompileDiverges marks a word whose handler ALWAYS raises (it never returns
-	// normally) — `raise`, the user-error constructor. A call to it is recorded as
-	// a CALL_NATIVE (the handler raises the byte-identical error at run time) but
-	// the recorder treats it as a DIVERGENT terminal: control never reaches the
-	// fragment's end, so a closure body ending in it (`do [raise …]`, `error`'s
-	// handler tail) compiles with NO RET — the error propagates out of the VM and
-	// the catching word (`do` / `error`) turns it into the Error value via
-	// InvokeBody, exactly as the interpreter does. This is the bytecode side of
-	// structured exception handling: a trapping closure body is catchable rather
-	// than uncompilable. The divergence is sound in a branch/loop arm too (the
-	// arm never produces a value, like break/continue).
-	CompileDiverges
-	// CompileRunsBodyIsolated marks a word whose NoEvalArgs body(ies) are NEITHER
-	// spliced onto the tape NOR const-baked and re-run in the enclosing sub-engine.
-	// Instead the handler executes each body via a fresh, ISOLATED CallBoru frame
-	// against a registry the word CAPTURED at registration (not the passed-in `r`),
-	// binding only that body's own parameters. Test.check-prop is the canonical
-	// case: runCheckProp runs the generator body (param `r` = a seeded rand
-	// instance) and the property body (one unnamed param) each through
-	// parent.CallBoru, so name resolution inside a body is IDENTICAL under the
-	// interpreter and the VM -- it never touches a compiled frame local, because the
-	// CallBoru frame binds only the body's params and resolves everything else
-	// against the captured parent (module / global scope), exactly as it does when
-	// the interpreter drives the same handler. So a plain CALL_NATIVE bake is sound
-	// even when the body is a DYNAMIC value (a map get, `p get "gen"`) whose tokens
-	// are not statically inert -- the VM evaluates the operand to the same List value
-	// and hands it to the same handler. The flag exempts ONLY the inert-scoped
-	// disjunct of the code-body compile failure.
-	CompileRunsBodyIsolated
-	// CompileRunsBodyOnRegistry marks a word whose NoEvalArgs body the handler
-	// TREE-WALKS in a sub-engine over the ENCLOSING registry (`native.New(r)
-	// .Run(body)`) in both modes — the boru:test coverage harness `Test.cover`,
-	// whose body arms the coverage hook and runs a whole suite (imports, defs,
-	// cases) that the closure path cannot compile (an `import` inside a body).
-	// Sound at MODULE SCOPE only: there every name the body reads or binds
-	// resolves through the registry under the interpreter and the VM alike
-	// (the compiled program's top-level defs are written back), and a name the
-	// body binds and the program reads after it is a check-time undefined_word
-	// (the check pass does not run a NoEvalArgs body), so the program declines
-	// loud rather than reading a stale slot. Inside a compiled fn frame a body
-	// token naming a frame local would resolve against the registry instead
-	// of the VM slot, so the recorder honours the flag only when no unit is
-	// open (len(es.units)==1) and keeps the inert-scope decline otherwise — save
-	// a body that names nothing the program or the registry knows, which the
-	// hazard cannot reach (registryBodyNamesNothingKnown, 2026-09-26, added when
-	// `receive` declared the flag: its handler runs the chosen clause body on
-	// New(r) the same way, and the check pass never runs it). The
-	// flag exempts ONLY the inert-scoped disjunct of the code-body compile
-	// failure, as CompileRunsBodyIsolated does.
-	CompileRunsBodyOnRegistry
-
-	// CompileScalarFold marks a PURE value-level word (the comparison family:
-	// eq/neq/deq/cmp/tcmp/lt/lte/gt/gte) whose dispatch over ALL-inert-const
-	// operands the check pass may CONST-FOLD by running the real handler
-	// (tryFoldScalarConst, carrier.go): the concrete result replaces the
-	// declared-type carrier, so a literal condition like `(n eq 0)` with a
-	// const-bound n folds to a concrete boolean and downstream `if` analysis
-	// sees a statically-determined branch instead of a Disjunct residual
-	// (the forward-barrier.tsv:83 soundness pin). Folding is double-evaluated
-	// with an agreement guard exactly like CompileModuleFold, so a
-	// non-deterministic handler never freezes; an erroring dispatch (the
-	// family-restricted `lt` on cross-family operands) declines the fold and
-	// keeps today's diagnostic path. One overload outside the family declares
-	// it: `convert Bytes <String>`, the only way to write a Bytes constant,
-	// whose type-literal target folds with it (a declared type slot is
-	// compile-time known) — so a refinement it bounds is known (NUR009).
-	CompileScalarFold
-	// CompileValueDiverges marks a word that diverges VALUE-DEPENDENTLY: it
-	// returns its declared result for most operands but RAISES for a specific
-	// statically-decidable operand shape — `div` / `mod` by a static-zero
-	// integer divisor (`1 div 0`). Unlike CompileDiverges (ALWAYS raises), the
-	// divergence is per-call, so the recorder infers it from the word's own
-	// check-mode ReturnsFn: when the ReturnsFn produced NO result (the divergent
-	// path — returnsDivMod returns nil for a static-zero divisor), the call
-	// raises and is recorded as a divergent terminal (like raise), so a closure
-	// body ending in it (`do [1 div 0]`) compiles with no RET and the catching
-	// `do` turns the raised error into an Error value — instead of islanding.
-	// The flag scopes the "0 results ⇒ diverges" inference to these words: a
-	// genuinely void word (print/set, declared 0-result) is unaffected.
-	CompileValueDiverges
-	// CompileDynBody marks a body-running word (`do`; since S1a of
-	// design/FULL-COMPILATION-REPLAN.0.md also each/fold/scan/filter) whose
-	// dispatch may lower to a plain CALL_NATIVE even when the closure path
-	// declines — a COMPUTED (carrier) body, a concrete body carrying
-	// context-dependent words (args), or a gradual-Any operand (the
-	// collection or the callback) that leaves two overloads reachable, where
-	// the site records a poly re-match over the word's own overloads and the
-	// handler picks the live one — because the handler's runtime execution (InvokeBody →
-	// RunResolved, or a JIT-compiled unit) IS the interpreter's own semantics
-	// PROVIDED the name environment matches. Recording such a site therefore
-	// arms the program's DynEnv mode: every def and every named unit param
-	// emits an OpBindDynScope twin (registry-visible, frame-unwound) and the
-	// VM brackets each CALL_USER frame with an args-stack push, so the body's
-	// sub-run resolves names and `args` exactly as it does under the
-	// interpreter. The result is marked variadic (the runtime count is the
-	// body's own), so only variadic-absorbing positions consume it.
-	//
-	// A STORE-FN word declares it too (`behave`, 2026-09-26): it stores a fn
-	// and runs the fn's body LATER against the registry, so the same
-	// name-environment proviso holds. Its record arms DynEnv when the stored
-	// body names something, and a GRADUAL fn operand whose payload the
-	// recorder proves records as a poly re-match (compiler recordStoredFnDyn)
-	// — 0 results, nothing variadic.
-	CompileDynBody
-	// CompileStoresBody marks a word that STORES a NoEvalArgs CODE-BODY list to run
-	// LATER on its own registry — `spawn`'s process body. Like CompileStoresFn but
-	// for a code list rather than a fn value: the recorder compiles the body's
-	// tokens to a 0-param unit and hands the word a synthetic fn-value carrier
-	// (raw Body tokens + a CompiledFnRef), so the word runs the compiled unit via
-	// RunUnit on its fork instead of a fresh interpreter sub-engine. A body that
-	// fails to compile rides as the plain inert const list and the word runs it
-	// on the interpreter, unchanged.
-	CompileStoresBody
-	// CompileStoresBodyList marks a word that stores a NoEvalArgs LIST OF
-	// code-body lists to run later on per-branch registry forks — `await`'s
-	// parallels. The recorder compiles each list element to its own 0-param
-	// unit (compileStoredBody) and rebuilds the list with synthetic fn-value
-	// carriers in place of the elements that compiled, so the word runs each
-	// branch via RunUnit on its fork. An element that fails to compile
-	// rides as its plain list and that branch interprets — per-element and
-	// sound.
-	CompileStoresBodyList
-	// CompileFnHandlerStrict marks a store-fn word (a CompileStoresFn slot)
-	// whose native VALIDATES and DISPATCHES its handler as an FnDefInfo value
-	// — the `service`/`add` family (requireHandlerFn + the call seam's
-	// MatchFnSig, which both need a real FnDefInfo). A CAPTURING handler at
-	// such a slot cannot stamp (captures) and would otherwise fall through to
-	// a bare OpPushClosure ClosurePayload the native rejects ("got Function")
-	// — a divergence. The recorder declines it so the interpreter owns the
-	// shape; a non-strict store-fn word (a Patrun `add`, which invokes a
-	// stored closure fine) is unaffected. Non-capturing handlers stamp
-	// either way.
-	CompileFnHandlerStrict
-	// CompileResteps marks a word whose handler's RESULT is RE-STEPPED by the
-	// engine rather than delivered as a value: a token SPLICE the tape runs
-	// (`mini` / `parse` / `emit` expand to the standard transducer call —
-	// `MiniLang.lang_<kind> <src> <opts> end`, or `<fn> <src> <opts> end` for
-	// the value form), a dispatch-manipulating meta word's re-dispatch (the
-	// by-name `usurp` / `stack-args` / `forward-args` / `force-arity` forms
-	// resolve the quoted name and return a wrapper the tape then dispatches;
-	// `valof` parks a resolved binding at the call site), or `apply`'s marked
-	// fn, which the tape applies to the values beneath it. The VM cannot
-	// reproduce such a result by re-running the handler over baked operands —
-	// a CALL_NATIVE would leave the splice or the marked fn on the stack as
-	// DATA — so the flag DECLARES the refusal the recorder used to make on the
-	// zero value's silence: it is the handler-contract triple's `tapeBound:
-	// Yes` (design/FULL-COMPILATION.0.md §6.8) written down, a named refusal
-	// rather than a fallback. The quoted-operand gates (recordCallCompileFailure,
-	// quoteOperandInertOK, recordPolyCall's quoted line) decline a declaring
-	// sig by this flag's name, before and regardless of any admission it also
-	// carries, and RecordCallOperands declines a fn-operand slot the same way.
-	// Neither CompileQuoteInert nor CompileQuoteKey may be set beside it as an
-	// admission: a re-stepped result is never "the same handler over the same
-	// baked value". Every declarer today also runs in check mode, where the
-	// check engine steps the handler's result and the recorder follows the
-	// re-stepped stream (a splice records as the expanded call; a wrapper's
-	// dispatch records through recordGradualWrap; apply's identity result is
-	// elided by name and its re-step records the real dispatch), so the flag
-	// changes no recorded program: it names what the RunInCheckMode screen and
-	// the by-name apply arms were carrying.
-	//
-	// S2b (2026-09-26) added three CODE-BODY declarers whose handler's result
-	// is a splice the tape re-steps: `var` (def/body/undef tokens; check
-	// mode), `word` (the __SP splice marker; not check mode) and `if`'s
-	// clause-list form `if [c1 b1 … else]` (ifClause's tokens; not check
-	// mode — the recorder has no structured lowering for this form, unlike
-	// the two- and three-operand `if`). None has a quoted or fn-typed
-	// operand, and every gate that reads the flag sits behind a
-	// `len(sig.NoEvalArgs) > 0` screen or requires one of those, so on them
-	// too the flag is the census's answer and changes no recorded program.
-	CompileResteps
-	// CompileOwnLowering marks a CODE-BODY word (a NoEvalArgs operand) that
-	// the recorder never lowers as a dispatch over its body: what compiles is
-	// what the word's COMPILE-TIME HALF produced. Two shapes carry it, and a
-	// declarer is one of them:
-	//
-	//   - a STRUCTURED ReturnsFn that records the word as its own event — `if`'s
-	//     three- and two-operand forms (RecordBranch, the branch fragments the
-	//     arms recorded), `for` ×2 and `while` (RecordLoop). The generic record
-	//     of the same dispatch is then elided because its outputs are already
-	//     produced by a structured hook (recordCallElided), not by the word's
-	//     name. Where the structured half does not claim the site (a computed
-	//     arm or loop body), the generic arm's code-body refusal is what
-	//     answers, exactly as before the declaration;
-	//   - a RunInCheck handler that runs FOR REAL on the check engine during
-	//     the recording pass, so its effect exists before the recorder looks
-	//     and the recorder lowers the effect, never the body: a BINDING
-	//     through the binder hooks (`def`'s keyword forms whose constructor
-	//     takes a raw body or a gen params list — `def f fn […]`, `def G gen
-	//     [T] class …`; `import`'s inline-module forms), or a CONSTRUCTED
-	//     value whose body the recorder compiles on its own path (`fn` ×2 and
-	//     `afn` — a fn value whose body compiles as a unit at the call;
-	//     `fnsig` ×2, `fnpred` ×2, `gen`, `macro`, `module` — a type, a gen
-	//     spec, a macro or a module instance built at compile time).
-	//
-	// It is a FACT the recorder reads nowhere that changes behaviour: every
-	// quoted-operand, fn-operand and poly gate screens NoEvalArgs or
-	// RunInCheckMode first, and noEvalBodyBakes reads only the two
-	// RunsBody flags. It exists so the handler-contract census
-	// (declaration_census_test.go) counts these words as declared by the
-	// contract they actually have instead of by the zero value's silence —
-	// the by-name knowledge ("structured-lowering words (if / for …)" in
-	// check's BodyRefsFnLocalFns, the RunInCheckMode screen) written down on
-	// the signature. It is NOT an admission: a word that re-runs its body at
-	// run time (receive's clause body on a sub-engine, `do`'s InvokeBody)
-	// owes CompileDynBody / CompileRunsBody*, never this,
-	// and a word whose result the tape re-steps owes CompileResteps.
-	CompileOwnLowering
-	// CompileSideEffect marks a word whose handler has an effect the program
-	// or its host may observe beyond the values it returns: it reads or
-	// writes the world outside the run (files, the environment, stdin, the
-	// terminal, the network, a database, the vault), reads the clock or a
-	// random source, prints or logs, runs or signals another process, or
-	// changes state that outlives the call (a flex container in place, a
-	// matcher, a service, a stored registration, a counter). A value-returning
-	// word is otherwise taken to be QUIET — the same value, and nothing else,
-	// whenever it runs — which is what lets the recorder run it where the
-	// interpreter runs it later or never: a list or map literal handed to a
-	// call matched at run time is assembled before the match, where the
-	// interpreter evaluates it only once a signature takes it
-	// (compiler eager_literal.go mayEffect, NUR356). A literal holding a call
-	// of a word that declares this flag declines there. A word that returns
-	// nothing is taken to be called for its effect whether or not it declares
-	// it; declaring it anyway keeps the census honest (effect_census_test.go
-	// in lang/go/native).
-	CompileSideEffect
-)
-
-// CompileDefault is an ordinary word: no compile-relevant capability. A
-// fn-valued operand reaching it means the handler invokes the fn on the tape,
-// which the VM cannot honour, so the recorder declines (Stage 3).
-const CompileDefault CompileEffect = 0
-
-// Has reports whether the effect set includes flag f.
-func (e CompileEffect) Has(f CompileEffect) bool { return e&f != 0 }
 
 // FnDefInfo holds the function specification for a def-defined function.
 // Name is the function's registered name (set by InstallDef). Registry is the
@@ -846,47 +518,6 @@ type FnDefInfo struct {
 	// test" is a property of what was written, not of one call site.
 	Predicate bool
 
-	// ArgsReversed marks a value built by UsurpFunction (the `usurp` word and
-	// the `/u` modifier): its signatures' Params are the wrapped word's in
-	// REVERSE, and each carries a Go handler that re-dispatches the original.
-	//
-	// It exists because the reversal is otherwise UNDETECTABLE by inspection.
-	// A wrapper keeps the wrapped word's Name, and comparing its params
-	// against the registry's cannot see the swap whenever the sig is
-	// homogeneous — `sub(Number, Number)` reversed is still
-	// `sub(Number, Number)`. Measured the hard way: a param-type comparison
-	// admitted `m.s/u 10 3` to a VM fast path that then answered -7 against
-	// the interpreter's 7.
-	//
-	// Any future wrapper that changes the ARG-TO-PARAM mapping must set it
-	// too. Wrappers that only re-base the barrier (`/s`, `/f`) must not —
-	// they leave params alone, and the barrier is spent once the args are
-	// collected.
-	ArgsReversed bool
-	// Wrap and Wraps expose what a MODIFIER WRAPPER re-dispatches, so a
-	// consumer without a tape can do the re-dispatch itself.
-	//
-	// Every wrapper's handler returns TOKENS — a paren group
-	// `( stack-part  orig  forward-part )` for the engine to step — which is
-	// why a compiled dispatch of one has to island: a group needs a tape and
-	// the VM has none. But the group is a pure RESHUFFLE, and working it
-	// through CLAUDE.md's argument-order rule collapses it to a permutation
-	// that does not depend on the barrier at all:
-	//
-	//	WrapReverse    sig[i] = args[n-1-i]   (usurp, `/u`)
-	//	WrapRebarrier  sig[i] = args[i]       (forward-args, stack-args,
-	//	                                       force-arity)
-	//
-	// So a consumer that can see through the wrapper can permute the args and
-	// dispatch Wraps directly, with no tokens and no tape.
-	//
-	// ArgsReversed does NOT answer this. It is a one-way MARK — UsurpFunction
-	// sets it true and the others propagate it — so `usurp (usurp f)` reports
-	// reversed where the composed permutation is the identity. That is safe
-	// for its own job (declining a fast path) and wrong for this one, which
-	// is why the chain is walked rather than the flag read.
-	Wrap  WrapKind
-	Wraps *Value
 	// Gen carries the generic-parameter spec for a generic fn
 	// (`def identity gen [T] fn [[x:T] [T] [x]]`). Nil for ordinary
 	// fns. Dispatch admission rides the placeholder nodes' Behaviors;
@@ -1608,22 +1239,6 @@ type ModuleDesc struct {
 	// type keeps `make` working. In-process only — never serialized.
 	Src *Registry
 }
-
-// WrapKind names what a modifier wrapper does to the ARG-TO-PARAM mapping of
-// the value it wraps. The zero is "not a wrapper", which is the honest
-// reading of an absent Wraps.
-type WrapKind uint8
-
-const (
-	WrapNone WrapKind = iota
-	// WrapReverse reverses the arg-to-param mapping: `usurp` and `/u`.
-	WrapReverse
-	// WrapRebarrier leaves the mapping alone and only re-bases the barrier:
-	// `forward-args` / `/f`, `stack-args` / `/s`, and `force-arity` / `/N`.
-	// The barrier is spent once the args are collected, so by the time a
-	// consumer holds them in sig order this wrapper is the identity.
-	WrapRebarrier
-)
 
 // WordInfo carries the name and optional modifiers for a function reference.
 type WordInfo struct {
