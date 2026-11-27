@@ -105,6 +105,17 @@ def takeFlow (d : Defs) : Defs := d.filter (fun (k, _) => k != flowKey)
     its own. -/
 def markKey : String := " mark"
 
+/-- THE ARGS STACK rides in the binding table too (core/go
+    `Registry.Args`): every call of a boru-bodied function pushes the list
+    of its arguments, in signature order, and its frame's cleanup pops
+    it. -/
+def argsKey : String := " args"
+
+def pushArgs (d : Defs) (args : List Value) : Defs := d.push argsKey (.list args false)
+def popArgs (d : Defs) : Defs := d.pop argsKey
+/-- The arguments of the call the pointer is in, if it is in one. -/
+def topArgs? (d : Defs) : Option Value := d.top? argsKey
+
 def freshMark (d : Defs) : Nat × Defs :=
   let n := match d.stack markKey with
     | .int k :: _ => k.toNat
@@ -280,7 +291,7 @@ def scopeStart (tape : List Value) : Nat → Nat
   | 0 => 0
   | i + 1 =>
     match tape[i]? with
-    | some .openParen | some .frameOpen => i + 1
+    | some .openParen | some (.frameOpen _) => i + 1
     | _ => scopeStart tape i
 
 /-- The nearest parked forward before `i` in the same paren scope. -/
@@ -288,7 +299,7 @@ def pendingForwardIdx (tape : List Value) : Nat → Option Nat
   | 0 => none
   | i + 1 =>
     match tape[i]? with
-    | some .openParen | some .frameOpen => none
+    | some .openParen | some (.frameOpen _) => none
     | some (.forward _ _) => some i
     | _ => pendingForwardIdx tape i
 
@@ -297,7 +308,7 @@ def scopeForwards (tape : List Value) : Nat → List ForwardInfo
   | 0 => []
   | i + 1 =>
     match tape[i]? with
-    | some .openParen | some .frameOpen => []
+    | some .openParen | some (.frameOpen _) => []
     | some (.forward f _) => f :: scopeForwards tape i
     | _ => scopeForwards tape i
 
@@ -325,7 +336,7 @@ def resolvedIdxBack (tape : List Value) : Nat → Nat → List Nat
   | _, 0 => []
   | i + 1, n + 1 =>
     match tape[i]? with
-    | some .openParen | some .frameOpen => []
+    | some .openParen | some (.frameOpen _) => []
     | some (.forward _ _) | some (.mark _) | some (.move _ _) => resolvedIdxBack tape i (n + 1)
     | _ => i :: resolvedIdxBack tape i n
 
@@ -358,7 +369,7 @@ def scanAdmits (defs : Defs) (s : Sig) (fwd : Nat) (tok : Value) : Bool :=
           && !(!s.isTypeArg fwd && rejectsTypeLiteral (.typeLit t) expected)
       | none => sigArgMatches s fwd (.atom w.name) || expected == TAny
   match tok with
-  | .forward _ _ | .endMark | .closeParen | .openParen | .frameOpen | .defCleanup _ | .returnCheck _
+  | .forward _ _ | .endMark | .closeParen | .openParen | .frameOpen _ | .defCleanup _ | .returnCheck _ _
   | .mark _ | .move _ _ => false
   | .word w =>
     if s.isQuote fwd then conforms TAtom expected                  -- `/q`: the name is the operand

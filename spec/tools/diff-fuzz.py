@@ -23,7 +23,8 @@ REPO = os.path.dirname(SPEC)
 
 WORDS = ["addq", "negq", "pairq", "sumq", "boomq", "patq", "dupq", "__pa", "undef",
          "qanyq", "bothq", "tyq", "tpatq", "unifyq", "meetq", "meetq", "depthq", "afn", "eachq",
-         "forq", "forq", "rangeq", "whileq", "breakq", "contq", "ifq", "ifq", "replayq", "callq", "callq"]
+         "forq", "forq", "rangeq", "whileq", "breakq", "contq", "ifq", "ifq", "replayq", "callq", "callq",
+         "argsq"]
 LITS = ["0", "1", "2", "5", "7", "-3", "'a'", "'x'", "true", "false", "none", "null"]
 TYPES = ["Integer", "String", "Any", "None", "List", "Map", "Boolean", "Word", "Scalar/String"]
 NAMES = ["x", "y", "n", "nosuchword"]
@@ -220,11 +221,25 @@ def gen_program(rng, max_len):
     if rng.random() < 0.10:
         body = rng.choice(["[ addq n 1 ]", "[ n ]", "[ negq n ]", "[ n n ]", "[ ]", "[ 'a' ]", "[ dupq n ]",
                            "[ n breakq ]", "[ n contq ]", "[ forq 2 [q i breakq ] n ]", "[ [ n breakq ] ]",
-                           "[ ifq [q n ] [q 1 ] [q 2 ] ]", "[ ifq [q n ] [q n ] [q breakq ] ]", "[ replayq [q n ] ]"])
+                           "[ ifq [q n ] [q 1 ] [q 2 ] ]", "[ ifq [q n ] [q n ] [q breakq ] ]", "[ replayq [q n ] ]",
+                           "[ argsq ]", "[ __pa argsq ]", "[ __pa n ]", "[ n argsq ]", "[ eachq [q 1 ] [q argsq ] ]",
+                           "[ afn m [q argsq ] ]", "[ argsq breakq ]", "[ __pa afn m [q addq m n ] ]"])
         toks += ["def", "inc", "fn(", "n", rng.choice(["Integer", "Any"]),
                  rng.choice(["Integer", "Any"])] + body.split() + [")", ";"]
         if rng.random() < 0.8:
             toks += ["inc"]
+    # a function of UNNAMED parameters: its arguments are the frame's first
+    # stack values, and up to that many values beneath its declared return
+    # are let pass and dropped
+    if rng.random() < 0.10:
+        k = rng.randint(1, 2)
+        body = rng.choice(["", "7", "7 8", "7 8 9", "negq/s", "negq/s 7", "dupq/s", "sumq", "depthq", "argsq",
+                           "addq 1", "pairq/s", "( )", "[ 1 ]", "breakq", "x", "boomq", "fn( n Integer Integer [ n ] )",
+                           "5 pairq/s", "__pa", "eachq [q 1 ] [q negq ]"])
+        toks += ["def", "un", "fn("] + ["_", rng.choice(["Any", "Any", "Integer"])] * k + [
+            rng.choice(["Any", "Any", "Integer"]), "["] + body.split() + ["]", ")", ";"]
+        if rng.random() < 0.8:
+            toks += [rng.choice(["un", "un", "un/u", "un/s", "un/v"])]
     # a word with SEVERAL definitions, of one or two parameters: which one
     # a call takes is the dispatch order — more arguments first, then the
     # more specific type at the first position that differs, then the
@@ -235,8 +250,11 @@ def gen_program(rng, max_len):
         for tag in range(1, rng.randint(2, 4) + 1):
             params = []
             for name in ["a", "b"][:rng.randint(1, 2)]:
-                params += [name, rng.choice(ptypes)]
-            body = rng.choice([[str(tag)], [str(tag)], ["a"], ["addq", "a", str(tag)]])
+                # `_` is an UNNAMED parameter: its argument enters the frame
+                # as stack data instead of being bound
+                params += [name if rng.random() < 0.8 else "_", rng.choice(ptypes)]
+            body = rng.choice([[str(tag)], [str(tag)], ["a"], ["addq", "a", str(tag)], [], ["argsq"],
+                               ["negq/s"], ["dupq/s"], ["depthq"], [str(tag), str(tag)], ["sumq"]])
             toks += ["def", "ov", "fn("] + params + ["Any", "["] + body + ["]", ")", ";"]
     items = [gen_item(rng, 2) for _ in range(rng.randint(1, max_len))]
     if overloaded:

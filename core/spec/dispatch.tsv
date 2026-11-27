@@ -1101,3 +1101,79 @@ run def w fn( f Any Any [ null [q ] f 5 ] ) ; w fn( a Any b Scalar Any [ 1 ] )	E
 # rows are in `divergent.tsv`, with the case where it misfires, NUR401.)
 run def ov fn( a Integer b String Any [ 2 ] ) ; def ov fn( a Integer Any [ 1 ] ) ; ov 5 6	1 6	the word takes the 5 and leaves the 6
 run def ov fn( a Integer b String Any [ 2 ] ) ; def ov fn( a Integer Any [ 1 ] ) ; ov 5 'x'	2	and takes both when the wider definition fills at once
+
+# --- UNNAMED parameters: an argument that is the frame's own stack data ---------
+# `_` in the `fn(` form is a parameter with no name. Its argument is matched
+# and typed like any other and is NOT bound: it enters the frame as a value,
+# in signature order, for the body to read from the stack. What the body
+# leaves of them is dropped beneath the declared returns — up to as many
+# values as there are unnamed parameters. (core/ts binds the argument under
+# the empty name instead, so a row whose body READS the argument, or leaves
+# it as the return, is in `divergent.tsv`. These are the rows the two share:
+# how the function renders, what it matches, and a body that leaves its own
+# results above the arguments.)
+run def f fn( _ Any Any [ ] ) ; f/v	fn [[:Any][Any][]]	an unnamed parameter renders as its type after a bare colon
+run def f fn( a Any _ Integer Any [ a ] ) ; f/v	fn [[a:Any :Integer][Any][a]]	named and unnamed in one signature
+run def f fn( _ Any Any [ ] ) ; f/v 5	fn [[:Any][Any][]] 5	the value is not a call, unnamed or not
+run def f fn( _ Any Any [ 7 ] ) ; f 5	7	the body's own value is the return, and the argument beneath it is dropped
+run def f fn( _ Any _ Any Any [ 7 ] ) ; f 5 6	7	two arguments beneath one return
+run def f fn( _ Any _ Any _ Any Any [ 9 ] ) ; f 5 6 7	9	three
+run def f fn( _ Any Any [ 7 8 ] ) ; f 5	ERROR:type_error	two values above the argument is one more than the return allows
+run def f fn( _ Any _ Any Any [ 7 8 ] ) ; f 5 6	ERROR:type_error	the same above two arguments
+run def f fn( _ Any _ Any _ Any Any [ 8 9 ] ) ; f 5 6 7	ERROR:type_error	and above three
+run def f fn( a Any _ Any Any [ a ] ) ; f 5 6	5	a named parameter beside it is bound as ever
+run def f fn( _ Any b Any Any [ b ] ) ; f 5 6	6	in either position
+run def f fn( _ Integer Integer [ ] ) ; f 'x'	ERROR:signature_error	an unnamed parameter's TYPE is matched like any other
+run def f fn( _ Any Integer [ 'x' ] ) ; f 5	ERROR:type_error	and the return is checked like any other
+run def f fn( _ String Integer [ 7 ] ) ; f 'x'	7	a return the argument's type would fail is the body's own
+run def f fn( _ Integer Any [ 1 ] ) ; def f fn( _ String Any [ 2 ] ) ; f 5 f 'x'	1 2	two definitions told apart by an unnamed parameter's type
+run def f fn( _ Any Any [ ] ) ; f	ERROR:signature_error	with no argument there is no call
+run def f fn( _ Any Any [ ] ) ; ( f ) 5	ERROR:signature_error	nor across a group's edge
+run def f fn( _ Any Any [ boomq 1 ] ) ; f 5	ERROR:fixture_boom	an error in the body is the call's error
+run def f fn( _ Any Any [ ( 7 ) ] ) ; f 5	7	a group in the body
+run def f fn( _ Any Any [ __pa 7 ] ) ; f 5	7	the frame's argument is not its args list: popping the list leaves it
+run def f fn( _ Integer String [ ] ) ; f 5	ERROR:type_error	an argument left as the return is checked as one, and fails
+run def f fn( _ String Integer [ ] ) ; f 'x'	ERROR:type_error	in either direction
+run def f fn( _ Any Any [ 5 pairq/s ] ) ; f 9	ERROR:type_error	three values in a frame of one argument and one return
+
+# --- the ARGS LIST: every argument of the call a body is running in ---------------
+# A call pushes its arguments — named or not, in signature order — as one list
+# beside the frame, and pops it when the frame closes. `argsq` reads the top
+# one (the fixture over the mechanism basic's `args` word reads), and says so
+# when there is none.
+run def f fn( n Any Any [ argsq ] ) ; f 5	[5]	the call's arguments, as a list
+run def f fn( a Any b Any Any [ argsq ] ) ; f 5 6	[5 6]	in SIGNATURE order
+run def f fn( a Any b Any Any [ argsq ] ) ; 6 f 5	[5 6]	one forward, one from the stack: the forward one is first
+run def f fn( a Any b Any Any [ argsq ] ) ; 5 6 f	[6 5]	both from the stack: top first
+run def f fn( a Any b Any Any [ argsq ] ) ; f/u 5 6	[6 5]	reversed by /u, as the call is
+run def f fn( _ Any Any [ argsq ] ) ; f 5	[5]	an unnamed argument is in the list as a named one is
+run def f fn( _ Any _ Any Any [ argsq ] ) ; f 5 6	[5 6]	two of them
+run def f fn( _ Any _ Any Any [ argsq ] ) ; 5 6 f	[6 5]	from the stack, top first
+run def f fn( a Any _ Any Any [ argsq ] ) ; f 5 6	[5 6]	named and unnamed in one list
+run def f fn( n Any Any [ argsq ] ) ; f d( 1 2 )	[(1 tor 2)]	a disjunct argument
+run def f fn( n Any Any [ argsq ] ) ; f {q a: 1 }	[{a:1}]	a map
+run def f fn( n Any Any [ argsq ] ) ; f negq/v	[fn [[a:Integer][Integer][]]]	a function
+run def f fn( n Any Any [ ( argsq ) ] ) ; f 5	[5]	read inside a group
+run def f fn( n Any Any [ [ argsq ] ] ) ; f 5	[[5]]	inside a list literal
+run def f fn( n Integer Any [ argsq ] ) ; def f fn( s String Any [ 0 ] ) ; f 5 f 'x'	[5] 0	the chosen definition's
+run argsq	ERROR:fixture_no_args	outside a function there are none
+run ( argsq )	ERROR:fixture_no_args	a group is not a function
+run def f fn( n Any Any [ n ] ) ; f 5 argsq	ERROR:fixture_no_args	the list is gone when the call ends
+run def g fn( m Any Any [ argsq ] ) ; def f fn( n Any Any [ g 9 ] ) ; f 5	[9]	NESTED: an inner call reads its own
+run def g fn( m Any Any [ m ] ) ; def f fn( n Any Any [ bothq ( g 9 ) ( argsq ) ] ) ; f 5	[5]	and the outer's are back when it returns
+run def g fn( m Any Any [ boomq 1 ] ) ; def f fn( n Any Any [ g 1 ] ) ; f 5	ERROR:fixture_boom	an error inside
+run def f fn( n Any Any [ argsq ] ) ; f/v 5	fn [[n:Any][Any][argsq]] 5	the value is not a call
+
+# --- `__pa`: the frame-tail word, called where it does not belong ------------------
+# `__pa` is what a frame's own close does — it pops the args list and the
+# frame's baseline — and it is a word, so a body can call it. The close then
+# pops AGAIN, and takes the enclosing call's with it.
+run __pa		at the top level there is no frame to pop
+run __pa __pa 5	5	however often
+run def f fn( n Any Any [ n ] ) ; __pa f 5	5	a call after it has its own
+run def f fn( n Any Any [ __pa argsq ] ) ; f 5	ERROR:fixture_no_args	in a body, the frame's arguments are gone
+run def f fn( n Any Any [ __pa n ] ) ; f 5	5	the named binding is not
+run def f fn( n Any Any [ __pa ] ) ; f 5	ERROR:type_error	it answers nothing
+run def g fn( m Any Any [ __pa m ] ) ; def f fn( n Any Any [ g 9 argsq ] ) ; f 5	ERROR:fixture_no_args	the frame's own close pops AGAIN: the outer call's arguments go with the inner's
+run def g fn( m Any Any [ __pa m ] ) ; def f fn( n Any Any [ g 9 ] ) ; f 5 f 6	9 9	and the calls after are whole
+run def f fn( n Any Any [ __pa __pa n ] ) ; f 5 ; argsq	ERROR:fixture_no_args	twice

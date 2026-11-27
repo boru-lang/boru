@@ -39,6 +39,7 @@ theorem, or by the differential search.
 | Call regions: a native whose last act is running a body returns the run as a driven loop of one round — the inputs sealed and inert, the body stepped where the word stands — whose residual replaces the region as the word's results and is stepped again | `loop.go` `CallRegion`, `callDriver` | `Engine.lean` `Driver`, `driveLoop` (a driver of one round that answers with its residual; `Corespec/Fixture.lean` `callq`) | `Theorems/Loop.lean` (`a_call_region_*`); `divergent.tsv` (Go column); search |
 | Function identity: a function is equal only to itself — in unification and in a disjunct's reduction — a reference carries the identity of the one function bound to its name, and a wrapper is a new function | `compare.go` `sameFnIdentity`, `registry.go` `aggregateIdent`, `value.go` `NewFunction` | `Value.lean` (`fn … ident`), `Compare.lean` `sameValue`, `Match.lean` `Defs.refIdent` | `Theorems/UnifyOrder.lean` (`function_identity`); `unify.tsv`; `dispatch.tsv`; search |
 | The dispatch order: which of a name's several definitions a call takes — more arguments first, then the greater expectation at the first position that differs (a pattern before its family's bare type, a type before every type above it, a branch root before `Any`), then a piped barrier, then the newest definition; one order however the definitions were made, and the order a reference lists them in | `signature.go` `CompareSignatures`, `SortSignatures`, `registry.go` `aggregateDispatch` | `Match.lean` `Sig.order`, `Defs.insertSig`, `Defs.lookup?` | `Theorems/Overload.lean`; `dispatch.tsv`; search |
+| A call's arguments: an UNNAMED parameter's argument is not bound — it is the frame's own stack data, the frame's first tokens in signature order, resolved where the call was made and skipped by every stepping loop (the frame's argument span); the return check lets as many values pass beneath the declared returns as there are unnamed parameters, and drops them (NUR404, as the kernel has it: a count, whatever the values are). The ARGS LIST: every argument of the call, in signature order, pushed beside the frame and popped with the frame's baseline — by the close, by an error, by a flow signal that leaves the frame | `engine.go` `execFnDefSig`, `stepPastOpenParen`, `openArgSpan`, the return check in the frame's close; `core_helpers.go` (the frame skeleton); `value.go` `NewFrameOpenSpan`, `ReturnCheckInfo.UnnamedCount`; `argsstack.go`; `registry.go` `PopFrameArgs` | `Value.lean` `frameOpen`, `openSpan`, `returnCheck`; `Engine.lean` `execMatch`, `closeFrame`, `popNames`; `Match.lean` `Defs.pushArgs`, `popArgs`, `topArgs?` | `Theorems/Frame.lean`; `dispatch.tsv`; `divergent.tsv` (Go column); search |
 | A failed plan: retried with every argument from the stack — for a native word, a function literal and a forced arity, and NOT for a word defined in boru, whose synthetic fallback answers it (NUR398, as the kernel has it) | `engine.go` `matchForDispatch`, `registry.go` `fnFallbackSig` | `Engine.lean` `answersItself`, `dispatchWord` | `dispatch.tsv`; `divergent.tsv` (Go column); search |
 | The stack-form probe | `signature.go` `MatchSignature` | `Match.lean` | search |
 | The step loop: literals and arrival, word resolution, word literals, undefined words | `engine.go` | `Engine.lean` | corpus; search |
@@ -63,10 +64,10 @@ no expression in the `core/spec` notation, so specifying them means
 extending the notation and its fixture in all three runners first.
 
 **The step loop**
-- an applied mark, a function from another registry, unnamed parameters
-  and the frame argument span, the args stack, the truncation of a
-  frame's body-local definitions, tail-call frame elision, return
-  patterns;
+- an applied mark, a function from another registry, the truncation of
+  a frame's body-local definitions, tail-call frame elision, return
+  patterns, a function of several declared returns (the `fn(` form
+  declares one), an OPTIONAL parameter and its default;
 - the dispatch order's two inputs the fixture cannot reach: a pattern
   against a bare type across two overloads of one word, and `CoreDefault`
   (every fixture word has one signature, and `fn(` declares types only);

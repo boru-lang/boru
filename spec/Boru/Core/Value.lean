@@ -95,6 +95,10 @@ inductive Value where
       everything that asks "is this an open paren" it is one; it is told
       apart only where a frame's own tail must find its own open. -/
   | frameOpen
+       /- how many of the tokens after it are the call's UNNAMED
+          arguments: resolved where the call was made, they enter the
+          frame as stack data, and the step loop skips them -/
+       (argSpan : Nat)
   /-- `Word/__CP` — the close-paren marker. -/
   | closeParen
   /-- `Word/__ED` — the collection barrier (`end` / `;`). -/
@@ -118,6 +122,9 @@ inductive Value where
   /-- `Word/__RC` — a call frame's return check: the declared return
       types the frame's residual must satisfy. -/
   | returnCheck (returns : List TypeId)
+       /- how many unnamed arguments the frame was entered with: that
+          many values beneath the declared returns are let pass -/
+       (unnamed : Nat)
   /-- `Word/__MK` — a MARK: the head of a loop's region on the tape. -/
   | mark (id : Nat)
   /-- `Word/__MV` — the MOVE that ends a loop's region. Stepped, it takes
@@ -234,7 +241,10 @@ def isTypeLiteral : Value → Bool
 
 def isWord : Value → Bool | word _ => true | _ => false
 def isForward : Value → Bool | forward _ _ => true | _ => false
-def isOpenParen : Value → Bool | openParen | frameOpen => true | _ => false
+def isOpenParen : Value → Bool | openParen | frameOpen _ => true | _ => false
+/-- The inert tokens an open paren carries past it: a call frame's unnamed
+    arguments. -/
+def openSpan : Value → Nat | frameOpen k => k | _ => 0
 def isCloseParen : Value → Bool | closeParen => true | _ => false
 def isEnd : Value → Bool | endMark => true | _ => false
 def isFn : Value → Bool | fn _ _ _ => true | _ => false
@@ -263,14 +273,14 @@ def typeOf : Value → TypeId
   | parenExpr _ => "Word/__PE"
   | word _ => "Word"
   | openParen => "Word/__OP"
-  | frameOpen => "Word/__OP"
+  | frameOpen _ => "Word/__OP"
   | closeParen => "Word/__CP"
   | endMark => "Word/__ED"
   | dispatchMod _ => "Word/__DM"
   | forward _ _ => "Word/__FW"
   | fn _ _ _ => "Type/Function"
   | defCleanup _ => "Word/__IN/__DC"
-  | returnCheck _ => "Word/__RC"
+  | returnCheck _ _ => "Word/__RC"
   | mark _ => "Word/__MK"
   | move _ _ => "Word/__MV"
   | quoted v => typeOf v
@@ -282,7 +292,7 @@ def unquote : Value → Value
 
 /-- A marker the step loop reads structurally: it is never an operand. -/
 def isStructural : Value → Bool
-  | forward _ _ | defCleanup _ | returnCheck _ | mark _ | move _ _ => true
+  | forward _ _ | defCleanup _ | returnCheck _ _ | mark _ | move _ _ => true
   | _ => false
 
 /-- A pending container: one the parser wrote that nothing has evaluated. -/

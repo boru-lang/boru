@@ -63,6 +63,8 @@ def fixtureDefs : Defs :=
     -- the `if` continuation, and the plain mark and move
     word "ifq" [p "cond" TList, p "then" TList, p "else" TList] [] 3,
     word "replayq" [p "body" TList] [] 1,
+    -- the ARGS STACK: the arguments of the call the word runs in
+    word "argsq" [] [TList] 0,
     -- the FLOW SIGNALS: break and continue
     word "breakq" [] [] 0,
     word "contq" [] [] 0,
@@ -110,7 +112,12 @@ def fixtureNatives : Natives :=
     ("boomq", .plain fun _ _ => throw { code := "fixture_boom", detail := "the fixture word always raises" }),
     ("patq", .plain fun _ d => pure ([.int 1], d)),
     ("dupq", .plain fun a d => pure ([a.getD 0 .none, a.getD 0 .none], d)),
-    ("__pa", .plain fun _ d => pure ([], d)),
+    -- the frame's args-and-baseline pop, as a word
+    ("__pa", .plain fun _ d => pure ([], d.popArgs.popBaseline)),
+    ("argsq", .plain fun _ d =>
+      match d.topArgs? with
+      | some args => pure ([args], d)
+      | none => throw { code := "fixture_no_args", detail := "argsq: not inside a function" }),
     ("undef", .plain fun a d =>
       match a.getD 0 .none with
       | .atom n => pure ([], d.pop n)

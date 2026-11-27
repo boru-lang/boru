@@ -131,7 +131,10 @@ function item(toks: string[], st: { i: number }): Value {
     };
     const params: { name: string; type: BoruType }[] = [];
     for (let i = 0; i + 1 < spec.length; i += 2) {
-      params.push({ name: spec[i]!, type: fnType(spec[i + 1]!) });
+      // `_` is the UNNAMED parameter: the empty name, whose argument is
+      // the frame's own stack data rather than a binding.
+      const pname = "_" === spec[i] ? "" : spec[i]!;
+      params.push({ name: pname, type: fnType(spec[i + 1]!) });
     }
     const rtype = fnType(spec[spec.length - 1]!);
     const body = item(toks, st);
@@ -347,6 +350,33 @@ function fixtureRegistry(): Registry {
         ): Value[] => {
           reg.popArgs();
           return [];
+        },
+      },
+    ],
+  });
+  // argsq reads the per-call args frame: the list a function's body sees
+  // as its own arguments — every one of them, named or not, in signature
+  // order. Outside a function there is none, and the fixture says so
+  // rather than answer an empty list (basic's `args` word answers `[]`;
+  // the fixture keeps the two cases apart).
+  r.registerNativeFunc({
+    name: "argsq",
+    signatures: [
+      {
+        args: [],
+        returns: [TList],
+        barrierPos: 0,
+        handler: (
+          _a: Value[],
+          _c: unknown,
+          _s: Value[],
+          reg: Registry,
+        ): Value[] => {
+          const top = reg.topArgs();
+          if (undefined === top) {
+            throw new BoruError("fixture_no_args", "argsq: not inside a function");
+          }
+          return [newList([...top])];
         },
       },
     ],
