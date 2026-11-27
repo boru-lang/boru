@@ -94,6 +94,24 @@ run [ 1 end 2 ]	ERROR:undefined_word
 run 1 2 addq end	ERROR:undefined_word
 run 1 negq end	ERROR:undefined_word
 
+# The same holds in a forward WINDOW: the word `end` there is a name the
+# call plans like any other, not the marker that closes the window — so it
+# is stepped, and reported, before the call can fire or fail on its own.
+run boomq end	ERROR:undefined_word	a word named `end` in the window is an unbound name, not the end of the window
+run 1 boomq end	ERROR:undefined_word	even with an argument on the stack the call could have taken instead
+run bothq 1 end	ERROR:undefined_word	in a later slot
+run 1 bothq end	ERROR:undefined_word	and beside a stack operand
+run dupq end	ERROR:undefined_word	whatever the word
+run ( boomq end )	ERROR:undefined_word	inside a paren group
+run [ boomq end ]	ERROR:undefined_word	inside a list literal
+run { a: p( boomq end ) }	ERROR:undefined_word	and in a map member
+run def inc fn( n Any Any [ n ] ) ; inc end	ERROR:undefined_word	a boru-bodied call plans it the same way
+run fn( n Any Any [ n ] ) end	ERROR:undefined_word	and so does a function value's
+run addq 1 end	ERROR:signature_error	an Integer slot never plans a word: the call fails first, for want of its argument
+run negq end	ERROR:signature_error	at arity one too
+run boomq ;	ERROR:signature_error	the MARKER, by contrast, closes the window: there is no argument
+run 1 boomq ;	ERROR:fixture_boom	and the call takes the one on the stack
+
 # --- a type literal is not a word ---------------------------------------
 # `Word` names the lattice branch, and its literal shares that branch's
 # vType. core/ts's isWord() tested the vType ALONE, so stepWord resolved
@@ -254,6 +272,65 @@ run addq ( negq 3	ERROR:signature_error
 run boomq (	ERROR:signature_error
 run negq (	ERROR:signature_error
 
+# The same is true where the POINTER meets one. An unmatched `(` is walked
+# past and then bounds what the tokens after it can see — the stack
+# beneath it is out of reach — so the words after it run, or fail, on
+# their own terms. What is refused is the open paren still standing when
+# the run ENDS: that is the syntax_error, and it is the last thing checked
+# before the pending container literals are evaluated.
+run ( boomq	ERROR:signature_error	the word after it fails for want of an argument, not for the paren
+run ( boomq 1	ERROR:fixture_boom	and with its argument it runs
+run 1 ( negq	ERROR:signature_error	the 1 beneath the paren is out of negq's reach
+run 1 ( negq 5	ERROR:syntax_error	but a run that ends with the paren unmatched is a syntax error
+run ( 1	ERROR:syntax_error	with nothing else wrong, that is the error
+run (	ERROR:syntax_error	alone
+run 1 (	ERROR:syntax_error	last
+run ( ( 1 )	ERROR:syntax_error	the INNER pair matches; the outer open is the unmatched one
+run ( 1 ) (	ERROR:syntax_error	a matched group before it changes nothing
+run ( addq 1 2	ERROR:syntax_error	a call that succeeded after it does not rescue it
+run ( ;	ERROR:syntax_error	nor does an `end`
+run [ boomq 1 ] (	ERROR:syntax_error	the paren is refused BEFORE the pending literals are evaluated: no fixture_boom
+run ( [ boomq 1 ] ) (	ERROR:syntax_error	and a group does not evaluate the literal it hands back
+run bothq __pa true (	ERROR:signature_error	a collection still parked is refused before the paren is
+
+# A CONTAINER LITERAL's elements run in a sealed region, and an unmatched
+# `(` is a scan boundary there exactly as at the top level. The region
+# ends in the other order: the pending containers its residual holds are
+# evaluated FIRST — a fault inside one surfaces — and only then is the
+# region refused for the paren.
+run [ ( ]	ERROR:syntax_error	a list whose elements end with the paren unmatched
+run [ ( 1 ]	ERROR:syntax_error	whatever follows it
+run [ 1 ( ]	ERROR:syntax_error	or precedes it
+run [ ( boomq ]	ERROR:signature_error	a word after it fails on its own terms
+run [ ( boomq 1 ]	ERROR:fixture_boom	or runs
+run [ [ boomq 1 ] ( ]	ERROR:fixture_boom	a pending list in the residual is evaluated before the region is refused
+run [ ( [ boomq 1 ] ]	ERROR:fixture_boom	on either side of the paren
+run [ ( ] [ boomq 1 ]	ERROR:syntax_error	but the FIRST literal's refusal comes before the second literal is reached
+run [ [ ( ] ]	ERROR:syntax_error	at any depth
+run { a: ( }	ERROR:syntax_error	a map member is a region too
+run { a: [ ( ] }	ERROR:syntax_error	and so is a list inside one
+run { a: [ [ boomq 1 ] ( ] }	ERROR:fixture_boom	with the same order of ending
+run boomq [ ( ]	ERROR:syntax_error	an argument's program is refused before the word that wanted it runs
+run boomq [ [ boomq 1 ] ( ]	ERROR:fixture_boom	after its own pending literals
+run ( [ ( ] )	ERROR:syntax_error	inside a paren group
+
+# A call FRAME's body is no different while it runs: the paren bounds the
+# tokens after it, and they run or fail on their own terms. (How a body
+# that ENDS with the paren unmatched is refused is NUR392: core/go hands
+# the paren to the return check, core/ts refuses it as the top level does;
+# and a driven loop's body, which core/ts does not have, collects it as a
+# value. The rows where the two differ are in divergent.tsv.)
+run def inc fn( n Integer Any [ ( boomq ] ) ; inc 1	ERROR:signature_error	a word after it fails on its own terms
+run def inc fn( n Integer Any [ ( boomq n ] ) ; inc 1	ERROR:fixture_boom	or runs
+run def inc fn( n Integer Any [ ( n ] ) ; inc 1	ERROR:syntax_error	and a body whose results are in order is refused for the paren
+
+# A paren GROUP only produces values: a pending container among them is
+# left pending, for the word that takes it or the run the group stands in.
+run boomq ( {q } { a: addq b: 1 } )	ERROR:fixture_boom	boomq takes the first value; the map behind it is never evaluated
+run dupq ( [ addq 1 2 ] )	[3] [3]	a pending list handed to a word is evaluated as that word's argument
+run ( [ addq 1 2 ] 5 )	[3] 5	and one left on the stack is evaluated when the program ends
+run ( [ boomq 1 ] )	ERROR:fixture_boom	where its fault surfaces
+
 # --- a concrete-scalar PATTERN narrows the overload ----------------------
 # patq's only slot is typed Integer AND patterned on the value 7, so it
 # matches 7 and refuses 8 — the pattern is part of the match, not a
@@ -297,6 +374,36 @@ run def x 7 ; dupq x	7 7	identity returns see the substituted value
 run def x 7 ; { a: x }	{a:7}	a map value resolves through the binding
 run def d [q 1 2 ] ; d	[1 2]	a QUOTED list binding is data, opaque
 run def b [ addq 1 2 ] ; addq b 1	ERROR:signature_error	and a list does not fit an Integer slot
+
+# A binding holds a VALUE, and stepping its name SUBSTITUTES that value and
+# steps it as a literal — collected by a waiting word, or placed. It is
+# never re-read as a program: a list bound to a name is the list, which is
+# then evaluated like any pending list literal (to the list of its
+# residuals); a word bound to a name is the word, as data. Splicing a
+# list's elements into the program is a different binding altogether (the
+# language's `def name word [ … ]`, an explicit splice marker), not what an
+# unquoted list means.
+run def b [ addq 1 2 ] ; b	[3]	a list binding substitutes the LIST, which evaluates where any list literal would
+run def b [ 1 2 ] ; b	[1 2]	with no words in it the residual is still the list, not its elements
+run def b [ ] ; b	[]	and an empty list is an empty list
+run def b [ addq 1 2 ] ; b b	[3] [3]	each read is the list again
+run def b [ addq 1 2 ] ; dupq b	[3] [3]	a waiting word collects the list, evaluated as its argument
+run def b [ addq 1 2 ] ; ( b )	[3]	in a paren group
+run def b [ addq 1 2 ] ; [ b ]	[[3]]	as an element of a list literal
+run def b [ addq 1 2 ] ; { a: b }	{a:[3]}	as a map member
+run def b [ boomq 1 ] ; b	ERROR:fixture_boom	a fault in the list surfaces when the list is evaluated
+run def b [ boomq 1 ] ; def c 5 ; c	5	and never if it is not read
+run def b [ 1 2 ] ; 7 b sumq	ERROR:signature_error	its elements do not reach the stack: sumq finds a list, not two Integers
+run def b { a: [ addq 1 2 ] } ; b	{a:[3]}	a map binding is the map, evaluated the same way
+run def b p( addq 1 2 ) ; b	3	a paren-expression binding is a group: it runs to its results
+run def h negq ; h	negq	a WORD binding substitutes the word as data: it is not called
+run def h negq ; h 5	negq 5	nor called on what follows
+run def h negq ; 5 h	5 negq	or on what lies beneath
+run def h zzz ; h	zzz	and an unbound name inside is never looked up
+run def h x ; def x 5 ; h	x	nor a bound one resolved
+run def h negq ; boomq h	ERROR:fixture_boom	it reaches a waiting word as a value
+run def h negq ; qanyq h	negq	which hands it back, still a word
+run def h negq/v ; h	negq/v	a `/v` word bound to a name is that word too, unread
 
 # --- user-defined FUNCTIONS ----------------------------------------------
 # `fn( NAME PTYPE RTYPE [ body ] )` builds a boru-bodied function value,
@@ -449,11 +556,170 @@ run addq/2f 1 2	3	arity and forward form together
 
 # --- a function VALUE in the program ---------------------------------------
 # One Function type (ADR-011): a function value standing where the pointer
-# reaches it is a CALL, planned exactly as its word would be. Most of this
-# surface is in divergent.tsv — core/ts leaves the value as data — and
-# these are the rows the two engines share: the value collected as an
-# argument, and the notation's own limit.
+# reaches it is a CALL, planned exactly as its word would be — the forward
+# window first (its paren groups evaluated, its bound names resolved), then
+# the value stack. `fn( … )` builds a NAMED function: the runners install
+# it under a scratch name, and the name is what the miss rule below turns
+# on.
 run boomq fn( n Integer Any [ n ] )	ERROR:fixture_boom	a function value fills an Any slot like any other value
+run fn( n Integer Integer [ addq n 1 ] ) 5	6	the value is called on the argument after it
+run 5 fn( n Integer Integer [ addq n 1 ] )	6	or on the one beneath it
+run 9 fn( n Integer Integer [ n ] ) 5	9 5	forward first: the 9 beneath is left alone
+run fn( n Integer Integer [ n ] ) 5 6	5 6	and it takes only what its signature has room for
+run def x 5 ; fn( n Integer Any [ n ] ) x	5	a bound name in the window resolves, as it does for a word
+run fn( n Integer Any [ n ] ) ( addq 1 2 )	3	a paren group in the window is evaluated first
+run fn( n Integer Any [ n ] ) p( addq 1 2 )	3	and so is a paren-expression value
+run fn( n Integer Integer [ addq n 1 ] ) ( fn( n Integer Integer [ addq n 1 ] ) 5 )	7	so calls nest through a group
+run ( 2 fn( n Integer Any [ negq n ] ) )	-2	inside a paren group
+run [ fn( n Integer Integer [ addq n 1 ] ) 5 ]	[6]	inside a list literal
+run [ [ fn( n Integer Any [ n ] ) 5 ] ]	[[5]]	at any depth
+run { a: [ fn( n Integer Any [ n ] ) 5 ] }	{a:[5]}	in a map member's list
+run { a: p( fn( n Integer Any [ n ] ) 5 ) }	{a:5}	and in a member that is a paren expression
+run [q fn( n Any Any [ n ] ) 5 ]	[fn [[n:Any][Any][n]] 5]	a QUOTED list is data: nothing in it is stepped
+run 5 tyq fn( n Integer Any [ negq n ] )	-5	a word's RESULT is re-stepped, so a function it hands back is called on what is there
+run bothq 1 fn( n Integer Any [ n ] ) 2	2	collected by a waiting word, handed back, and then called on the 2
+run addq 1 ( fn( n Integer Any [ n ] ) 2 )	3	a call in a group is an ordinary argument expression
+run fn( n Any Any [ fn( m Any Any [ m ] ) n ] ) 5	5	a function value in a BODY is called there like anywhere else
+run fn( n Any Any [ n fn( m Any Any [ m ] ) ] ) 5	5	from the frame's own stack too
+
+# A call that MATCHES NOTHING. A named function with anything to be called
+# on — a value beneath it in its paren scope, or a token after it up to
+# the next boundary — is a failed call: `uncalled_function`, raised where
+# it stands rather than left for a later word to trip over.
+run fn( n Integer Integer [ n ] ) 'x'	ERROR:uncalled_function	the argument after it does not fit
+run 'x' fn( n Integer Integer [ n ] )	ERROR:uncalled_function	nor does the one beneath
+run 2 'a' fn( n Integer Any [ n ] )	ERROR:uncalled_function	only the TOP of the stack is its argument
+run 'a' 2 fn( n Integer Any [ n ] )	'a' 2	and when the top fits, what lies deeper is not its business
+run fn( n Integer Any [ n ] ) Integer	ERROR:uncalled_function	a type literal is not an Integer
+run def x 'a' ; fn( n Integer Any [ n ] ) x	ERROR:uncalled_function	a bound name is judged by its value
+run fn( n Integer Any [ n ] ) ( 'a' )	ERROR:uncalled_function	and a group by its result
+run fn( n Integer Integer [ addq n 1 ] ) negq 5	ERROR:uncalled_function	a function word is a barrier: the value cannot reach past it
+run fn( n Integer Any [ n ] ) depthq	ERROR:uncalled_function	whatever the word
+run fn( n Integer Integer [ addq n 1 ] ) fn( n Integer Integer [ addq n 1 ] ) 5	ERROR:uncalled_function	another function value is not an Integer either
+run dupq fn( n Integer Any [ n ] )	ERROR:uncalled_function	two copies handed back: the first is called on the second
+run ( fn( n Integer Any [ n ] ) 'x' )	ERROR:uncalled_function	the same in a paren group
+run [ fn( n Integer Any [ n ] ) 'a' ]	ERROR:uncalled_function	in a list literal
+run { a: p( fn( n Integer Any [ n ] ) 'x' ) }	ERROR:uncalled_function	in a map member
+run boomq [ fn( n Integer Any [ n ] ) 'x' ]	ERROR:uncalled_function	and in an argument's program, before the word that wanted it runs
+
+# With NOTHING to be called on, the value is simply data — which is how a
+# function is passed around. An `end`, a close paren or the end of the
+# program bounds what "after it" means.
+run fn( n Any Any [ n ] )	fn [[n:Any][Any][n]]	alone, it is placed
+run fn( n Any Any [ n ] ) ;	fn [[n:Any][Any][n]]	and `end` after it changes nothing
+run fn( n Any Any [ n ] ) ; 5	fn [[n:Any][Any][n]] 5	`end` closes its window: the 5 is not an argument
+run 3 fn( n Any Any [ n ] ) ; 5	3 5	though the stack beneath is still read
+run fn( n Any Any [ n ] ) ( )	fn [[n:Any][Any][n]]	a group that produces nothing leaves nothing to call it on
+run fn( n Any Any [ n ] ) ( ) 5	5	and what follows the empty group is then its argument
+run [ fn( n Any Any [ n ] ) ]	[fn [[n:Any][Any][n]]]	alone in a list literal
+run {q a: fn( n Any Any [ n ] ) }	{a:fn [[n:Any][Any][n]]}	a runtime map's member is never stepped at all
+
+# An Any slot PLANS a word it cannot yet read, so the call waits on it —
+# and a function word beginning its own dispatch is a statement boundary
+# (design/STRICT-FORWARD-BARRIER.0.md): the waiting call is STRANDED. An
+# Integer slot never plans the word, which is why the same shape above is
+# a miss instead. A word's call and a value's call strand alike.
+run fn( n Any Any [ n ] ) negq 5	ERROR:signature_error	the function word strands the waiting call
+run 3 fn( n Any Any [ n ] ) negq 5	ERROR:signature_error	even with an argument beneath: the plan had already chosen the word
+run fn( n Any Any [ n ] ) zzz	ERROR:undefined_word	an unbound name planned the same way is reported by name
+run def inc fn( n Any Any [ ] ) ; inc sumq	ERROR:signature_error	the same for a function called by its WORD
+run def inc fn( n Any Any [ ] ) ; 5 inc sumq	ERROR:signature_error	with an argument beneath
+run def inc fn( n Any Any [ ] ) ; inc inc	ERROR:signature_error	when the word in the window is the function itself
+run def inc fn( n Any Any [ ] ) ; inc zzz	ERROR:undefined_word	and for an unbound name
+run def inc fn( n Any Any [ n ] ) ; inc depthq	ERROR:signature_error	a word of no arguments is a function word like any other
+run def inc fn( n Any Any [ n ] ) ; inc __pa	ERROR:signature_error	an engine-internal `__` word is not a boundary, but it is not an argument either
+run def inc fn( n Any Any [ n ] ) ; 1 inc __pa	1	so the call takes what the stack holds
+run def inc fn( n Any Any [ n ] ) ; inc ( )	ERROR:no_value_error	a VOID group in the window is blamed by name, as for a native word
+
+# THE PAREN RE-STEP RULE. A group's results are re-stepped where the group
+# stood — except that a group which collapses to exactly ONE value, a
+# function, PLACES it: the pointer steps past, and it is not called on
+# what stands outside. With a second survivor the rewind lands on the
+# leading value and steps it as usual.
+run ( fn( n Any Any [ n ] ) ) 5	fn [[n:Any][Any][n]] 5	one survivor, a function: placed, and the 5 is not its argument
+run 1 ( fn( n Any Any [ n ] ) )	1 fn [[n:Any][Any][n]]	nor is the 1 beneath
+run ( ( fn( n Any Any [ n ] ) ) ) 5	fn [[n:Any][Any][n]] 5	each paren places it again
+run ( fn( n Any Any [ n ] ) ) ( 1 )	fn [[n:Any][Any][n]] 1	a following group is no different from a following value
+run ( ( fn( n Any Any [ n ] ) ) 5 )	5	two survivors in the OUTER group: it is called there
+run ( 1 ( fn( n Any Any [ n ] ) ) )	1	whichever side the operand is on
+run bothq 1 ( fn( n Any Any [ n ] ) )	fn [[n:Any][Any][n]]	a group in a forward window hands the function to the waiting word
+run p( fn( n Any Any [ n ] ) ) 5	fn [[n:Any][Any][n]] 5	a paren-expression value places it the same way
+
+# --- the call FRAME ------------------------------------------------------
+# A boru-bodied call runs in a frame: on the tape, the paren group
+# `(frame-open) body __DC [__RC] )`. Two things happen at its edges.
+#
+# ON THE WAY IN, a pending container argument is a PROGRAM and runs before
+# it is bound — in the caller's scope, as a native word's argument does —
+# and a list is then bound quoted, so the body reads it as data.
+run def inc fn( n Any Any [ n ] ) ; inc [ addq 1 2 ]	(quote [3])	an argument list is evaluated, THEN bound quoted
+run def inc fn( n Any Any [ n ] ) ; [ addq 1 2 ] inc	(quote [3])	from the stack as well
+run def inc fn( n Any Any [ n ] ) ; inc [ [ addq 1 2 ] ]	(quote [[3]])	at any depth
+run def inc fn( n Any Any [ n ] ) ; inc [ ]	(quote [])	an empty list is its own evaluation
+run def inc fn( n Any Any [ n ] ) ; inc { a: [ addq 1 2 ] }	{a:[3]}	a map argument's members run the same way
+run def inc fn( n Any Any [ n ] ) ; inc [ boomq 1 ]	ERROR:fixture_boom	so a fault in the argument surfaces before the body runs
+run def inc fn( n Any Any [ n ] ) ; inc [ zzz ]	ERROR:undefined_word	an unbound name in it included
+run def inc fn( n Any Any [ n ] ) ; def n 9 ; inc [ n ]	(quote [9])	in the CALLER's scope: the `n` it reads is the caller's, not the parameter
+run def inc fn( n Any Any [ n ] ) ; inc [ n ]	ERROR:undefined_word	and with no such binding the name is simply unbound
+run def inc fn( n Integer Integer [ n ] ) ; inc [ addq 1 2 ]	ERROR:signature_error	the list is still a List: it does not fit an Integer parameter
+run fn( n Any Any [ n ] ) [ addq 1 2 ]	(quote [3])	a function VALUE's call binds the same way
+run [ addq 1 2 ] fn( n Any Any [ n ] )	(quote [3])	from the stack
+run fn( n Any Any [ n ] ) [ boomq 1 ]	ERROR:fixture_boom	and faults the same way
+run def inc fn( n Integer Any [ depthq ] ) ; 5 6 inc 1	5 6 0	the frame seals the stack beneath: the body sees none of the caller's values
+
+# ON THE WAY OUT, the RETURN CHECK. A signature that declares returns is a
+# contract on what its body leaves: exactly that many values, each a
+# member of its declared type — the question the parameter boundary asks,
+# asked again at the other end. Anything else is a `type_error` raised as
+# the frame closes.
+run def inc fn( n Any Integer [ n ] ) ; inc 'x'	ERROR:type_error	a String under a declared Integer return
+run def inc fn( n Any Integer [ n ] ) ; inc 5	5	a member passes
+run def inc fn( n Any Integer [ n ] ) ; 'x' inc	ERROR:type_error	the stack call form
+run def inc fn( n Any Integer [ n ] ) ; ( inc 'x' )	ERROR:type_error	in a paren group
+run def inc fn( n Any Integer [ n ] ) ; [ inc 'x' ]	ERROR:type_error	in a list literal
+run def inc fn( n Any Integer [ n ] ) ; { a: p( inc 'x' ) }	ERROR:type_error	in a map member
+run def inc fn( n Any Integer [ n ] ) ; boomq ( inc 'x' )	ERROR:type_error	before the word waiting on its result runs
+run def inc fn( n Any Integer [ n ] ) ; inc ( inc 'x' )	ERROR:type_error	and before an outer call of the same function
+run def inc fn( n Any Integer [ n ] ) ; inc Integer	Integer	the type literal is a member of its own type
+run def inc fn( n Any Integer [ n ] ) ; inc String	ERROR:type_error	another type's literal is not
+run def inc fn( n Any Integer [ n ] ) ; inc none	ERROR:type_error	nor is the absent value
+run def inc fn( n Any String [ n ] ) ; inc 'x'	'x'	each declared type admits its own
+run def inc fn( n Any String [ n ] ) ; inc 5	ERROR:type_error	and refuses the rest
+run def inc fn( n Any Boolean [ n ] ) ; inc 1	ERROR:type_error	an Integer is not a Boolean
+run def inc fn( n Any List [ n ] ) ; inc [ 1 2 ]	(quote [1 2])	a list passes a List return, still quoted
+run def inc fn( n Any List [ n ] ) ; inc { a: 1 }	ERROR:type_error	a map does not
+run def inc fn( n Any Map [ n ] ) ; inc { a: 1 }	{a:1}	and passes a Map one
+run def inc fn( n Any None [ n ] ) ; inc none	none	`none` is the member of None
+run def inc fn( n Any None [ n ] ) ; inc 5	ERROR:type_error	and nothing else is
+run def inc fn( n Any Any [ n ] ) ; inc none	none	an Any return admits whatever ONE value the body leaves
+run fn( n Any Integer [ n ] ) 'x'	ERROR:type_error	a function VALUE's call runs in the same frame
+run 'x' fn( n Any Integer [ n ] )	ERROR:type_error	from the stack
+run [ fn( n Any Integer [ n ] ) 'x' ]	ERROR:type_error	and in a list literal
+
+# The COUNT is checked first, and a declared return is never satisfied by
+# a different number of values — `Any` included.
+run def inc fn( n Any Any [ ] ) ; inc 5	ERROR:type_error	a body that leaves nothing under one declared return
+run def inc fn( n Any Any [ n n ] ) ; inc 5	ERROR:type_error	or two
+run def inc fn( n Any Any [ dupq n ] ) ; inc 5	ERROR:type_error	however they came to be there
+run def inc fn( n Any Any [ ( n n ) ] ) ; inc 5	ERROR:type_error	a group's two results are two values
+run def inc fn( n Any Any [ ( ) ] ) ; inc 5	ERROR:type_error	and an empty group's none
+run def inc fn( n Any Any [ ; ] ) ; inc 5	ERROR:type_error	`end` is not a value
+run def inc fn( n Any Any [ n ; ] ) ; inc 5	5	nor does it count against one that is there
+run def inc fn( n Any Any [ [ n n ] ] ) ; inc 5	[5 5]	a LIST of two is one value
+run def inc fn( n Any Integer [ pairq n ] ) ; inc 5	ERROR:type_error	two Integers are not an Integer
+run fn( n Any Any [ ] ) 5	ERROR:type_error	a function value's call is held to the count too
+run fn( n Any Integer [ n n ] ) 5	ERROR:type_error	in both directions
+
+# What is checked is the frame's RESIDUAL — after the pending containers
+# the body left have been evaluated, with the parameters still bound.
+run def inc fn( n Any List [ [ n ] ] ) ; inc 5	[5]	the list the body leaves is evaluated in the frame, then checked
+run def inc fn( n Any Integer [ [ n ] ] ) ; inc 5	ERROR:type_error	so a list is a List there, not the Integer inside it
+run def inc fn( n Any Map [ { a: n } ] ) ; inc 5	{a:5}	a map likewise
+run def inc fn( n Any Integer [ addq n 1 ] ) ; inc 5	6	a computed result is checked as computed
+run def inc fn( n Any Integer [ addq n 1 ] ) ; inc 'x'	ERROR:signature_error	and a fault in the body is the body's, not the check's
+run def inc fn( n Any Integer [ boomq n ] ) ; inc 5	ERROR:fixture_boom	whatever the fault
+run def inc fn( n Any Integer [ zzz ] ) ; inc 5	ERROR:undefined_word	an unbound name in the body is reported as that
+run def f fn( n Integer Integer [ addq n 1 ] ) ; def g fn( n Integer Integer [ f n ] ) ; g 5	6	a call inside a body runs in a frame of its own, checked on its own
 
 # An Integer is a signed 64-bit integer (REFERENCE.md:84), so the fixture
 # arithmetic WRAPS. The TypeScript fixture computed in bigint and handed
@@ -464,16 +730,216 @@ run negq -9223372036854775808	-9223372036854775808	and the minimum is its own ne
 
 # --- `name/v`: the bound VALUE, never a call --------------------------------
 # A bare function word calls; `/v` is how the function is named as a value
-# (ADR-011). The value is collected by a waiting word like any literal and
-# is otherwise PLACED — the pointer steps past it. What happens to a placed
-# function afterwards is the ordinary rule for a function value: it is
-# called where something re-steps it. Most of this surface is in
-# divergent.tsv, because core/ts does not read the modifier at all.
-run ( negq/v 5 )	-5	a group holding a function value and an operand is re-stepped when it collapses, and the value is called there
-run ( 5 negq/v )	-5	with the operand beneath it, likewise
+# (ADR-011). For a function binding it suppresses the call, and for any
+# other binding it is the identity, so one spelling reads a name whose kind
+# is not known. A word's function value is its signatures as authored —
+# parameter names and types, declared returns — and no body.
+run tyq/v	fn [[t:Any][Any][]]	a word's function, as a value
+run depthq/v	fn [[][][]]	a word of no parameters and no declared returns
+run negq/v	fn [[a:Integer][Integer][]]	a typed word: parameter and return types are written by their leaf names
+run addq/v	fn [[a:Integer b:Integer][Integer][]]	every parameter, in signature order
+run def f fn( n Integer Integer [ addq n 1 ] ) ; f/v	fn [[n:Integer][Integer][addq n 1]]	a typed boru-bodied function, body and all
+run def inc fn( n Any Any [ n ] ) ; inc/v	fn [[n:Any][Any][n]]	a boru-bodied function likewise, body and all
 run def x 7 ; x/v	7	/v on a plain binding is the bound value
+run def x 5 ; negq x/v	-5	which fills a slot exactly as the bare name would
 run nosuchword/v	ERROR:undefined_word	/v on an unbound name is an error, not an atom
 run dupq x/v	ERROR:undefined_word	and the same inside a forward window
+run true/v	ERROR:undefined_word	a keyword is not a binding
+run Integer/v	ERROR:undefined_word	nor is a builtin type name
+
+# The reference is PLACED: the pointer steps past it, so nothing around it
+# is its argument — not even an argument that would fit.
+run tyq/v 'x'	fn [[t:Any][Any][]] 'x'	the 'x' after it is not an argument
+run 'x' tyq/v	'x' fn [[t:Any][Any][]]	nor is the one beneath
+run tyq/v Integer	fn [[t:Any][Any][]] Integer	even a type, which `tyq` would have taken
+run Integer tyq/v	Integer fn [[t:Any][Any][]]	from either side
+run tyq/v tyq/v	fn [[t:Any][Any][]] fn [[t:Any][Any][]]	two references are two values
+run 1 2 depthq/v	1 2 fn [[][][]]	the stack a bare `depthq` would have counted is untouched
+run def inc fn( n Any Any [ n ] ) ; inc/v 5	fn [[n:Any][Any][n]] 5	a boru-bodied function is placed the same way
+run tyq/sv Integer	fn [[t:Any][Any][]] Integer	the arity and the s/f modifiers written beside `v` are not read: a reference is a reference
+run Integer tyq/fv	Integer fn [[t:Any][Any][]]	whichever is written
+run tyq/2v	fn [[t:Any][Any][]]	an arity the word does not have included
+run negq/v 5	fn [[a:Integer][Integer][]] 5	an Integer after a reference to `negq` is not negated
+run 5 negq/v	5 fn [[a:Integer][Integer][]]	nor is the one beneath
+run negq/sv 5	fn [[a:Integer][Integer][]] 5	with /s written beside the v
+run 5 negq/sv	5 fn [[a:Integer][Integer][]]	which reads no stack
+run negq/2v 5	fn [[a:Integer][Integer][]] 5	or with an arity
+run addq/v 1 2	fn [[a:Integer b:Integer][Integer][]] 1 2	a two-argument word's reference takes neither operand
+run 1 addq/v 2	1 fn [[a:Integer b:Integer][Integer][]] 2	from either side
+run [ tyq/v ]	[fn [[t:Any][Any][]]]	in a list literal
+run [ tyq/v Integer ]	[fn [[t:Any][Any][]] Integer]	where it is placed too
+run [ negq/v 5 ]	[fn [[a:Integer][Integer][]] 5]	beside an operand the bare word would have taken
+run [ 5 negq/v ]	[5 fn [[a:Integer][Integer][]]]	from either side
+run { a: negq/v }	{a:fn [[a:Integer][Integer][]]}	a typed word's reference as a map member
+run { a: tyq/v }	{a:fn [[t:Any][Any][]]}	as a map member
+run { a: [ tyq/v Integer ] }	{a:[fn [[t:Any][Any][]] Integer]}	and in a member's list
+
+# It is COLLECTED by a waiting word like any literal, and it is read before
+# any capture: a `/q` name slot is handed the value, not the name.
+run bothq 7 tyq/v	fn [[t:Any][Any][]]	collected: bothq hands back its second operand
+run bothq tyq/v 7	7	in the first slot as well
+run 7 bothq tyq/v	7	and beside an operand from the stack
+run bothq tyq/v tyq/v	fn [[t:Any][Any][]]	twice over
+run boomq tyq/v	ERROR:fixture_boom	it reaches the handler like any argument
+run boomq negq/v	ERROR:fixture_boom	whatever the function
+run bothq negq/v 1	1	and the word goes on collecting after it
+run bothq 1 negq/v	fn [[a:Integer][Integer][]]	handed back by the word with nothing beside it to be called on, it is left as the value
+run bothq 1 negq/v 5	-5	and with an operand after it, it is called
+run 5 bothq 1 negq/v	-5	or one beneath
+run tyq tyq/v	fn [[t:Any][Any][]]	a function is a type, so it fills a type-arg slot
+run addq 1 negq/v	ERROR:signature_error	but not an Integer one
+run qanyq tyq/v	fn [[t:Any][Any][]]	a /q slot is handed the VALUE: the reference is read before the name is captured
+run def x 5 ; qanyq x/v	5	for a plain binding too
+run def x 5 ; undef x/v ; x	ERROR:signature_error	so `undef x/v` is not `undef x` — a 5 is no name, and x stays bound
+run bothq __pa tyq/v 7	7	arriving at a collection that is already parked, it is collected like any value
+run bothq __pa 7 tyq/v	fn [[t:Any][Any][]]	in whichever slot is next
+
+# What RE-STEPS a placed function calls it, by the ordinary rule for a
+# function value: a group with a second survivor, a word's result.
+run ( negq/v 5 )	-5	a group holding a function value and an operand is re-stepped when it collapses, and the value is called there
+run ( 5 negq/v )	-5	with the operand beneath it, likewise
+run ( tyq/v ) Integer	fn [[t:Any][Any][]] Integer	alone in its group it is placed again (the paren re-step rule)
+run ( ( tyq/v ) Integer )	Integer	and called one paren out
+run dupq tyq/v	fn [[t:Any][Any][]]	two copies handed back: the first is called on the second, which is a type
+run ( addq/v 1 2 )	3	a two-argument word's value, both arguments after it
+run ( 1 addq/v 2 )	3	split across it
+run ( 1 2 addq/v )	3	or both beneath
+run ( 1 negq/v ) 5	1 -5	LAST in its group, it is called on what follows the group, not on what it left behind it
+run ( 1 2 tyq/v ) Integer	1 2 Integer	whatever stands before it in the group
+run ( Integer tyq/v ) true	Integer true	though with nothing that fits after, it takes the value beneath
+run ( 1 2 sumq/v )	3	a stack-form word's value reads the stack
+run ( patq/v 7 )	1	and a pattern still narrows
+run dupq depthq/v	0 1	a full-stack word's value: each copy runs in turn over what is there
+run dupq __pa/v		and a word that leaves nothing leaves nothing
+run def inc fn( n Any Any [ n ] ) ; ( inc/v 5 )	5	a boru-bodied function's value, called in a group
+run def inc fn( n Any Any [ n ] ) ; ( inc/v 5 ) 6	5 6	and only on what is in the group
+
+# A value that is called and matches nothing is the failed call a function
+# value's always is: `uncalled_function`.
+run ( 'x' tyq/v )	ERROR:uncalled_function	a String is not a type
+run ( tyq/v 'x' )	ERROR:uncalled_function	from either side
+run bothq 7 tyq/v 2	ERROR:uncalled_function	handed back by a word and then met by an Integer
+run def x 5 ; ( tyq/v x )	ERROR:uncalled_function	a bound name is judged by its value
+run dupq negq/v	ERROR:uncalled_function	the second copy is no Integer
+run ( patq/v 8 )	ERROR:uncalled_function	the pattern refuses
+run ( sumq/v 1 2 )	ERROR:uncalled_function	a stack-form word's value does not read forward
+run ( 1 2 tyq/v ) true	ERROR:uncalled_function	a group's trailing function is called on what follows the group, and `true` is no type
+run ( 1 'a' negq/v ) true	ERROR:uncalled_function	nor an Integer — and the 'a' beneath is not one either
+run ( 1 2 tyq/v ) ; Integer	ERROR:uncalled_function	with `end` after the group there is nothing forward, and an Integer beneath is no type
+
+# A NAME bound to a function calls it — a parameter handed a reference is
+# a function binding like any other, whichever kind of function it holds.
+run def inc fn( n Any Any [ n 5 ] ) ; inc negq/v	-5	the body's `n` is negq, called on the 5
+run def inc fn( n Any Any [ 5 n ] ) ; inc negq/v	-5	from the stack as well
+run def inc fn( n Any Any [ n ] ) ; inc negq/v	ERROR:signature_error	and with nothing to call it on, the call fails as `negq` alone would
+run def inc fn( n Any Any [ n ] ) ; dupq inc/v	ERROR:signature_error	a boru-bodied one handed to itself: the inner `n` is called with nothing
+run fn( n Any Any [ n 5 ] ) negq/v	-5	the same through a function VALUE's call
+
+# A name defined TWICE dispatches through both definitions — by its word
+# and by its reference alike — the more specific overload first.
+run def f fn( n Integer Integer [ n ] ) ; def f fn( n String String [ n ] ) ; f 5	5	the older definition's overload is still the name's
+run def f fn( n Integer Integer [ n ] ) ; def f fn( n String String [ n ] ) ; f 'a'	'a'	beside the newer one's
+run def f fn( n Integer Integer [ n ] ) ; def f fn( n String String [ n ] ) ; f true	ERROR:signature_error	and what neither takes is a miss
+run def f fn( n Integer Integer [ n ] ) ; def f fn( n String String [ n ] ) ; ( f/v 5 )	5	the reference carries both
+run def f fn( n Integer Integer [ n ] ) ; def f fn( n String String [ n ] ) ; ( f/v 'a' )	'a'	in either order
+run def f fn( n Integer Integer [ n ] ) ; def f fn( n String String [ n ] ) ; f/v	fn [[n:String][String][n] [n:Integer][Integer][n]]	NUR391, as the kernel has it: the reference is ONE function built from both definitions, the newer first
+run def f fn( n Integer Integer [ n ] ) ; def f fn( n String String [ n ] ) ; f/v 5	fn [[n:String][String][n] [n:Integer][Integer][n]] 5	and it is placed like any reference
+run def f fn( n Any Integer [ 1 ] ) ; def f fn( n Integer Integer [ 2 ] ) ; f 5	2	the more specific overload answers first
+run def f fn( n Integer Integer [ 1 ] ) ; def f fn( n Integer Integer [ 2 ] ) ; f 5	2	and of two alike, the newer
+run def f fn( n Integer Integer [ n ] ) ; def f 7 ; f	7	a VALUE bound over a function simply shadows it
+run def f fn( n Integer Integer [ n ] ) ; def f 7 ; f/v	7	for the reference too
+
+# --- `/u`: the bound function with its argument order reversed ---------------
+# `f/u a b c` is `f c b a`. The word resolves to its function and is wrapped:
+# every signature's parameters reversed and all of them collectable forward,
+# whatever the original's barrier; the wrapper re-dispatches the original, in
+# a group of its own, with what it collected reversed. `bothq` answers its
+# SECOND argument, so `bothq 1 'a'` is 'a' and `bothq/u 1 'a'` is 1. The
+# wrapper is an ordinary all-forward function: its operands split by the one
+# rule like any other's. A parameter keeps its type, its pattern and its /q;
+# a type-arg slot is the original's to enforce, on the re-dispatch — which is
+# a function VALUE's dispatch, so a refusal there is uncalled_function.
+run negq/u 5	-5
+run 5 negq/u	-5
+run bothq/u 1 'a'	1
+run bothq/u 'a' 1	'a'
+run 1 bothq/u 'a'	'a'
+run 1 'a' bothq/u	'a'
+run sumq/u 1 2	3
+run pairq/u 1 2	1 1 2
+run ( bothq/u 1 'a' )	1
+run [ bothq/u 1 'a' ]	[1]
+run bothq/u ( 1 ) 'a'	1
+run bothq/u [q a b ] 'x'	[a b]
+run def f fn( n Integer Integer [ addq n 1 ] ) ; f/u 5	6
+run def f fn( n Integer Integer [ addq n 1 ] ) ; 5 f/u	6
+run patq/u 7	1
+run patq/u 2	ERROR:uncalled_function
+run qanyq/u [ addq 1 2 ]	[3]
+run tyq/u Integer	Integer
+run tyq/u 5	ERROR:uncalled_function
+run boomq/u 1	ERROR:fixture_boom
+run depthq/u	0
+run addq/u 1	ERROR:uncalled_function
+run 1 addq/u	ERROR:uncalled_function
+run bothq/u 1 ; 2	ERROR:uncalled_function
+run bothq/u ; 1 2	fn [[b:Any a:Any][Any][]] 1 2
+run addq/u	fn [[b:Integer a:Integer][Integer][]]	with nothing at all beside it the wrapper is left as a value: both parameters, reversed
+run negq/u	fn [[a:Integer][Integer][]]	a one-parameter word's wrapper reads as the word's own function
+run sumq/u	fn [[b:Integer a:Integer][Integer][]]	and a stack-form word's is all-forward like the rest
+
+# `/uv` is that wrapper as a VALUE: placed, not called. The arity and the
+# s/f modifiers written beside `u` or `v` are not read.
+run negq/uv	fn [[a:Integer][Integer][]]	the wrapper of a one-parameter word
+run negq/uv 5	fn [[a:Integer][Integer][]] 5	placed: the 5 after it is not its argument
+run 5 negq/uv	5 fn [[a:Integer][Integer][]]	nor is the one beneath
+run addq/uv	fn [[b:Integer a:Integer][Integer][]]	two parameters, reversed
+run sumq/uv	fn [[b:Integer a:Integer][Integer][]]	a stack-form word's wrapper is the same all-forward function
+run addq/suv	fn [[b:Integer a:Integer][Integer][]]	with /s written beside it
+run addq/2uv	fn [[b:Integer a:Integer][Integer][]]	or an arity
+run def f fn( n Integer Integer [ addq n 1 ] ) ; f/uv	fn [[n:Integer][Integer][]]	a boru-bodied function's wrapper carries no body: it re-dispatches the original
+run [ negq/uv ]	[fn [[a:Integer][Integer][]]]	in a list
+run [ negq/uv 5 ]	[fn [[a:Integer][Integer][]] 5]	where it is placed too
+run { a: negq/uv }	{a:fn [[a:Integer][Integer][]]}	as a map member
+run ( negq/uv ) 5	fn [[a:Integer][Integer][]] 5	alone in its group it is placed again (the paren re-step rule)
+run ( negq/uv 5 )	-5	and with an operand in the group it is called there
+run addq/2u 1 2	3
+run addq/su 1 2	3
+run 1 2 addq/fu	3
+
+# Only a FUNCTION has an argument order to reverse: `/u` on a name bound to
+# anything else is illegal_ref — a root type included (`def x None ; x/u`
+# dereferenced nil building that error, and surfaced as internal_error).
+run def x 5 ; x/u	ERROR:illegal_ref
+run def x 5 ; x/uv	ERROR:illegal_ref
+run def x None ; x/u	ERROR:illegal_ref
+run def x Any ; x/u	ERROR:illegal_ref
+run def x Integer ; x/u	ERROR:illegal_ref
+
+# NUR390, pinned as the kernel has it: a `/v` value ARRIVES at a word that is
+# collecting, a `/uv` value does not — it is left behind the pointer, so the
+# collection is stranded, or (the last row) silently takes it from the stack
+# in the other slot.
+run bothq 1 negq/uv	ERROR:signature_error
+run boomq negq/uv	ERROR:signature_error
+run bothq negq/uv 1	fn [[a:Integer][Integer][]]	passed over, then taken all the same: the collection takes the 1, and the wrapper left behind it becomes the second operand
+
+# The wrapper is a function VALUE like any other once it exists: placed by
+# `/uv`, called where something re-steps it, and collected by a waiting
+# word only by the route NUR390 leaves it.
+run ( bothq/uv 1 'a' )	1	a group re-steps the placed wrapper, which is then called: reversed, it answers the first
+run ( 1 'a' bothq/uv )	'a'	with both operands beneath it
+run tyq bothq/uv	ERROR:signature_error	the wrapper is a function, so it fills a type-arg slot — but it never arrives: tyq is stranded
+run bothq/u ( bothq/u 1 2 ) 3	1	a reversed call nests through a group
+run bothq/u bothq/u 1 2	ERROR:signature_error	and not by adjacency: `/u` alone is a function word, and a barrier
+run boomq bothq/u 1 2	ERROR:signature_error	for a waiting word as much as for itself
+run nosuchword/u	ERROR:undefined_word	an unbound name is undefined, as for `/v`
+run nosuchword/uv	ERROR:undefined_word	in either form
+run true/u	ERROR:undefined_word	a keyword is not a binding
+run Integer/u	ERROR:undefined_word	nor is a builtin type name
+run def inc fn( n Any Any [ n ] ) ; inc/u 5	5	a boru-bodied function of one parameter reverses to itself
+run def inc fn( n Any Any [ n ] ) ; ( inc/uv 5 )	5	and its wrapper is called like any function value
+run def inc fn( n Any Any [ n ] ) ; inc/u 'x' 5	'x' 5	with what it has no room for left alone
 
 # --- a refused collection never re-plans itself (NUR388) --------------------
 # A function VALUE whose first forward argument is refused at arrival is
@@ -486,7 +952,6 @@ run ( Integer tyq/v 'x' )	Integer 'x'	and with a type beneath it, it takes that 
 
 # --- `/u` and `/uv` name a FUNCTION -------------------------------------------
 # A name bound to nothing is undefined, whatever modifier is written on it.
-# (What `/u` does to a function is in divergent.tsv until core/ts reads it.)
 run nosuch/u	ERROR:undefined_word
 run nosuch/uv	ERROR:undefined_word
 
@@ -498,11 +963,17 @@ run nosuch/uv	ERROR:undefined_word
 run def n 50 ; def f fn( n Integer Integer [ addq n 1 ] ) ; f 5 ; n	6 50
 run def n 50 ; def f fn( n Integer Integer [ addq n 1 ] ) ; f n	51
 
-# --- an unmatched `(` ---------------------------------------------------------
-# At the top level and in a container literal an open paren with no close is
-# refused. (In a loop's body and a function's it is not — NUR392; those rows
-# are in divergent.tsv.)
-run (	ERROR:syntax_error
-run 1 (	ERROR:syntax_error
-run [ ( ]	ERROR:syntax_error
-run { a: ( }	ERROR:syntax_error
+# --- a function a FRAME hands back alone (NUR396, pinned as the kernel has it) -
+# A named function standing with nothing it can take is a value: at the top
+# level, in a group, as a native's result. As a function BODY's only result it
+# is refused as an uncalled call — the frame's own cleanup marker, which
+# follows it on the tape, is counted as an argument it could have taken. A
+# `/v` reference in the same place is delivered, not dispatched, and is fine;
+# with a value beneath it the function is simply called on that value.
+run fn( m Any Any [ m ] )	fn [[m:Any][Any][m]]
+run ( fn( m Any Any [ m ] ) )	fn [[m:Any][Any][m]]
+run bothq 1 fn( m Any Any [ m ] )	fn [[m:Any][Any][m]]
+run def mk fn( n Any Any [ fn( m Any Any [ m ] ) ] ) ; mk 5	ERROR:uncalled_function
+run def mk fn( n Any Any [ fn( m Any Any [ m ] ) ] ) ; bothq 1 ( mk 5 )	ERROR:uncalled_function
+run def mk fn( n Any Any [ negq/v ] ) ; mk 5	fn [[a:Integer][Integer][]]
+run def mk fn( n Any Any [ 7 fn( m Any Any [ m ] ) ] ) ; mk 5	7

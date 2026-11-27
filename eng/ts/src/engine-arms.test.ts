@@ -47,7 +47,11 @@ describe('word special forms', () => {
     registerSpecWords(r)
     assert.equal(renderStack(new Engine(r).run([newWord('none')])), 'none')
   })
-  it('a programmatic unmatched open paren refuses in the scanner', () => {
+  // The pointer walks past an unmatched `(` — it is a scan boundary, as in
+  // core/go — and the run refuses it when it ENDS with the paren still
+  // unmatched. (This was titled "refuses in the scanner": the refusal is
+  // the same, the moment is the end of the run.)
+  it('a programmatic unmatched open paren is refused when the run ends', () => {
     const r = new Registry()
     registerSpecWords(r)
     assert.throws(

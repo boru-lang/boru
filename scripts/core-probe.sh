@@ -30,11 +30,12 @@ trap 'rm -rf "$tmp"' EXIT
     "$repo/scripts/core-probe.ts" "$src_file" > "$tmp/ts.txt" ) || {
   echo "ts probe failed" >&2; exit 1; }
 
+# awk, not `read`: a tab is IFS WHITESPACE to the shell, so `read` folds two
+# adjacent tabs into one and an EMPTY answer shifts the columns — a row where
+# one engine rendered nothing printed the other's answer in its place, and
+# could read as AGREE.
 paste -d'\t' "$src_file" "$tmp/go.txt" "$tmp/ts.txt" |
-  while IFS=$'\t' read -r expr go ts; do
-    if [ "$go" = "$ts" ]; then
-      printf 'AGREE\t%s\t%s\n' "$expr" "$go"
-    else
-      printf 'DIFFER\t%s\t%s\t%s\n' "$expr" "$go" "$ts"
-    fi
-  done
+  awk -F'\t' '{
+    if ($2 == $3) printf "AGREE\t%s\t%s\n", $1, $2
+    else          printf "DIFFER\t%s\t%s\t%s\n", $1, $2, $3
+  }'

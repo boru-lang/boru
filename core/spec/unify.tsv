@@ -233,10 +233,33 @@ run unifyq d( { a: 1 } ) { a: String }	false	the shape refuses the key
 run unifyq d( { a: 1 } ) { b: 2 }	false	the value lacks the key
 
 # --- a FUNCTION is equal only to itself ---------------------------------------
-# Functions are compared by identity, not by text: the same function written
-# twice is two values. (The rows that need a reference — one binding read
-# twice IS one function — are in divergent.tsv until core/ts reads /v.)
-run unifyq fn( n Integer Integer [ n ] ) fn( n Integer Integer [ n ] )	false
+# Functions are compared by IDENTITY, not by text. Two functions are the
+# same value exactly when they are the same function: the same text written
+# twice is two values, and one binding read twice — `name/v` — is one.
+# Identity survives being passed and returned.
+run unifyq fn( n Integer Integer [ n ] ) fn( n Integer Integer [ n ] )	false	the same text written twice is two functions
+run unifyq negq/v negq/v	true	one word read twice is one function
+run unifyq negq/v addq/v	false	two words are two
+run def f fn( n Integer Integer [ n ] ) ; unifyq f/v f/v	true	one def-bound function read twice is one
+run def f fn( n Integer Integer [ n ] ) ; def g fn( n Integer Integer [ n ] ) ; unifyq f/v g/v	false	two bindings of the same text are two
+run def f fn( n Integer Integer [ n ] ) ; unifyq f/v fn( n Integer Integer [ n ] )	false	a binding and the same text written beside it are two
+run unifyq [ negq/v ] [ negq/v ]	true	identity holds inside a list
+run unifyq [ negq/v ] [ addq/v ]	false	and tells two lists apart
+run unifyq ( bothq 1 negq/v ) negq/v	true	a function handed back by a word is still that function
+run unifyq ( bothq 1 negq/v ) addq/v	false	and still not another
+run unifyq negq/v Function	true	a function is a Function
+run unifyq negq/v Type	true	and a type
+run unifyq negq/v Any	true	and anything is Any
+run unifyq negq/v 5	false	but it is not an Integer
+
+# NUR391, pinned as the kernel has it: a name with TWO definitions has no
+# identity of its own — a reference to it is built from both, and is a new
+# function at every read, so it does not unify with itself.
+run def f fn( n Integer Integer [ n ] ) ; def f fn( n String String [ n ] ) ; unifyq f/v f/v	false	as the kernel has it: a twice-defined name is not equal to itself
+
+# A usurp wrapper (`name/uv`) is a NEW function every time one is made.
+run unifyq [ negq/uv ] [ negq/uv ]	false	two wrappers of one word are two functions
+run unifyq negq/uv negq/uv	ERROR:signature_error	the wrapper is placed without arriving, so unifyq is stranded
 
 # === THE VALUE HALF ===========================================================
 # `meetq a b` is the unified value. Every rule above is restated here as the
@@ -366,3 +389,18 @@ run meetq d( ) Never	Never
 run meetq Never d( )	Never
 run meetq d( ) Any	ERROR:fixture_no_meet
 run meetq d( ) 5	ERROR:fixture_no_meet
+
+# --- functions -------------------------------------------------------------------
+# A function meets only ITSELF, and the meet is that function; against a
+# type it fits, the meet is the function too.
+run meetq negq/v negq/v	fn [[a:Integer][Integer][]]	one word read twice is one function, and its own meet
+run meetq negq/v addq/v	ERROR:fixture_no_meet	two functions have none
+run meetq fn( n Integer Integer [ n ] ) fn( n Integer Integer [ n ] )	ERROR:fixture_no_meet	nor has the same text written twice
+run def f fn( n Integer Integer [ n ] ) ; meetq f/v f/v	fn [[n:Integer][Integer][n]]	a def-bound function, body and all
+run meetq negq/v Function	fn [[a:Integer][Integer][]]	against its type, the function
+run meetq Function negq/v	fn [[a:Integer][Integer][]]	from either side
+run meetq negq/v Any	fn [[a:Integer][Integer][]]	and against Any
+run meetq negq/v 5	ERROR:fixture_no_meet	but it is no Integer
+run meetq [ negq/v ] [ negq/v ]	[fn [[a:Integer][Integer][]]]	inside a list
+run meetq [ negq/v ] [ addq/v ]	ERROR:fixture_no_meet	where two still have none
+run def f fn( n Integer Integer [ n ] ) ; def f fn( n String String [ n ] ) ; meetq f/v f/v	ERROR:fixture_no_meet	NUR391, as the kernel has it: a twice-defined name does not meet itself

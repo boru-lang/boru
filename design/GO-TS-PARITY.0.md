@@ -385,6 +385,16 @@ Three things from it are worth carrying even if the tables are never read:
   `do [ … ] error [ ]` are both absent from `basic/spec` because Go's
   `InvokeBody` and the TS sub-engine disagree about an empty body under
   the fixture registry. One open question, two rows waiting on it.
+- **A captured reference to a registered word sees later registrations**
+  (found in review of the engine port, 2026-11-27). core/ts's function
+  payload for a native word holds the word's dispatch table by reference
+  (`Registry.nativeFn`), so a reference captured before the host registers
+  another overload dispatches through the table as it is NOW: register
+  `f(Integer)`, capture `f/v`, register `f(String)`, and the old reference
+  takes a String, where core/go's captured value keeps the signatures it
+  was captured with. No corpus notation reaches it (a row cannot register
+  mid-run) and no shipped program does; the fix is a table that is copied,
+  not mutated, when a registration adds to it.
 - NUR059: canon still renders sugar tags, `/r` and `/N` word modifiers,
   and paren groups in debug spelling. Both engines agree, so it is render
   quality rather than parity — pinned by corpus rows so a one-sided fix

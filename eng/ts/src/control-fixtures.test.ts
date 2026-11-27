@@ -461,7 +461,6 @@ const ROWS: Array<[input: string, want: string]> = [
   ['if false [42]', ''], // 2-arg if (no else), condition false
   ['for 2 [dupq 1]', '1 1 1 1'], // loop body leaves two values per iteration
   ['for 2 [i] addq 1 2', '0 1 3'], // loop followed by a call
-  ['def f fn [[n:Integer] [Integer] [dupq n]] f 5', '5 5'], // fn body leaves more than its declared return
   ['def k 100 applyq (fn [[n:Integer] [Integer] [addq n k]]) 5', '105'], // fn body reads an enclosing def
 ]
 
@@ -470,6 +469,12 @@ const ERROR_ROWS: Array<[input: string, code: string]> = [
   ['trapq 5', 'trap_error'],
   ['addq 1 2 trapq', 'trap_error'], // the call before it runs first
   ['if true [trapq 5] [9]', 'trap_error'], // raised inside the taken arm
+  // A fn body that leaves more than its declared return fails the call
+  // frame's RETURN CHECK, as it does in core/go. This row sat among the
+  // value rows as `5 5` while core/ts ran no check at all — a per-engine
+  // pin of the gap, which core/spec/dispatch.tsv ("the call FRAME") now
+  // holds both engines to.
+  ['def f fn [[n:Integer] [Integer] [dupq n]] f 5', 'type_error'],
 ]
 
 describe('interpreter pins (hand-built control fixtures)', () => {
