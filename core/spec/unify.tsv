@@ -136,8 +136,39 @@ run unifyq Node d( 0 )	false
 run unifyq d( ) Scalar	false
 run unifyq d( ) Node	false
 run unifyq d( 0 ) Any	true
-run unifyq d( ) Any	true
 
-# An EMPTY disjunct has no alternative to match, so it unifies with
-# nothing but `Any` — itself included (NUR386).
-run unifyq d( ) d( )	false
+# --- a DISJUNCT against a DISJUNCT -------------------------------------------
+# The meet of two disjuncts is the disjunct of the pairwise meets of their
+# alternatives; no pair unifying is no meet. (The kernel used to answer the
+# FIRST alternative that matched — `Integer` for `Integer tor String`
+# against itself — NUR386.) The rows below are the pairs with no meet, which
+# both ports already refuse; the pairs that DO meet are in divergent.tsv,
+# because core/ts's unifier has no disjunct arm at all.
+#
+# The EMPTY disjunct denotes the empty set, so it is `Never`: it meets
+# `Never` and another empty disjunct, and nothing else.
+run unifyq d( ) d( 5 )	false
+run unifyq d( 5 ) d( )	false
+run unifyq d( 5 6 ) d( 7 8 )	false
+run unifyq d( Integer String ) d( true none )	false
+run unifyq [q d( 5 6 ) ] [q d( 7 8 ) ]	false
+# Two map alternatives are two open patterns: a key both name must unify.
+run unifyq d( { a: 1 } ) d( { a: 2 } )	false
+run unifyq d( { a: 1 } ) d( 1 2 )	false
+# Reordered alternatives are one disjunct, as a typed container's child too.
+run unifyq [: d( Integer String ) ] [: d( String Integer ) ]	true
+
+# --- a DISJUNCT against a TYPE ------------------------------------------------
+# The same rule with a set of one on the other side: a type against a
+# disjunct meets EVERY alternative (`Integer` against `5 tor 6` is
+# `5 tor 6`, where the kernel answered `5`), and a type no alternative
+# meets has no meet. A list or a map HOLDING a type is a shape, not a
+# value, and is treated the same way; a map alternative stays an open
+# pattern against it — the shape must carry the keys the pattern names.
+run unifyq d( 5 6 ) String	false
+run unifyq d( [q 5 ] [q 6 ] ) [q String ]	false
+run unifyq d( Integer String ) [: Integer ]	false
+run unifyq d( 5 6 ) [q d( 5 ) ]	false
+run unifyq d( { a: 1 } ) { b: Integer }	false
+run unifyq d( { a: 1 } ) { a: String }	false
+run unifyq d( { a: 1 } ) { b: 2 }	false

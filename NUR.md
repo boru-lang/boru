@@ -117,7 +117,6 @@ list only by becoming **Resolved** (the record is then deleted) or
 | [NUR382](#nur382) | A FILE-module fn whose `each` callback forward-applies its `Function` param to another param raises `signature_error` compiled; the interpreter answers (loud) | downstream: the voxgig-boru interpreter-entry pass (found 2026-10-02, recorded 2026-10-05) |
 | [NUR383](#nur383) | A module-made closure bound by a program-level `def` and read by `/v` in a property body fails the property compiled (`undefined word: q`); the interpreter passes it (loud) | downstream: voxgig-boru/sort (found 2026-10-02, recorded 2026-10-05) |
 | [NUR384](#nur384) | A name a fn-body `unpack` binds for the FIRST time stays bound past the call interpreted and is undefined compiled (loud on the VM's side; a rebound outer name agrees on both lanes) | the interpreter fn-kind inlining pass (2026-10-08) |
-| [NUR386](#nur386) | The kernel's `Unify` of two disjuncts answers their first matching alternative, not their meet (`tand` answers the disjunct); the empty disjunct unifies with neither itself nor `Never` | the Lean core specification, `Theorems/UnifyOrder.lean` (2026-11-27) |
 
 Pending records normally use a compact form (rule / divergence /
 evidence / documentation status, plus a proposed verdict where one is
@@ -1515,45 +1514,5 @@ the call.
 **Proposed verdict:** the pinned discipline is the whole unpack set binding
 past the call, so resolve by fix on the VM's side — or narrow the discipline
 on both lanes together.
-
----
-
-## NUR386 — the kernel's `Unify` of two disjuncts is their first alternative, not their meet {#nur386}
-
-**Status:** Pending · **Recorded:** 2026-11-27 · measured on core/go (`UnifyR`) and through `boru do` · the VALUE half only; the predicate is right
-
-**Rule:** one unifier — the meet of two values has one answer, and `v` unified
-with `v` is `v`.
-
-**Divergence:** `unifyDisjunct` (core/go/unify_disjunct.go) returns the
-result of the first alternative that unifies with the other side. When the
-other side is itself a disjunct that result is one alternative, so the meet
-of a disjunct with itself is its first member, where `tand` — which goes
-through `TandValues` — answers the disjunct:
-
-```
-UnifyR(Integer tor String, Integer tor String)   Integer
-UnifyR(5 tor 6, 5 tor 6)                         5
-boru do '(Integer tor String) tand (Integer tor String)'    Integer tor String
-```
-
-The same walk gives the EMPTY disjunct no alternative to match, so it
-unifies with nothing but `Any` — not with itself, and not with `Never`,
-though both denote the empty set and `Never` unifies with `Never`:
-
-```
-run unifyq d( ) d( )      false        (pinned in core/spec/unify.tsv)
-UnifyR(d(), Never)        fails
-UnifyR(Never, Never)      Never
-```
-
-Pinned as the kernel has it by the Lean specification
-(`spec/Boru/Core/Theorems/UnifyOrder.lean`:
-`disjunct_meet_is_first_alternative`,
-`unifies_refl_except_empty_disjunct`).
-
-**Proposed verdict:** resolve by fix — a disjunct against a disjunct is the
-disjunct of the pairwise meets (what `TandValues` already computes), and the
-empty disjunct folds as `Never`.
 
 ---

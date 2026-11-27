@@ -36,19 +36,28 @@ theorem unifies_symm :
     (sample.all fun a => sample.all fun b => unifies a b == unifies b a) = true := by
   native_decide
 
-/-- Every value unifies with itself — except the EMPTY disjunct, which
-    has no alternative to match and so unifies with nothing, itself
-    included. -/
-theorem unifies_refl_except_empty_disjunct :
-    (sample.all fun a => unifies a a == !(a == Value.disjunct [])) = true := by
+/-- The empty disjunct denotes the empty set: to the unifier it is
+    `Never`. -/
+def isNever (v : Value) : Bool := v == Value.typeLit "Never" || v == Value.disjunct []
+
+/-- What a value's meet with itself is: the value — a disjunct in its
+    reduced form, where no alternative is `Never` and one alternative is
+    just that alternative. -/
+def reduced : Value → Value
+  | .disjunct [] => .typeLit "Never"
+  | .disjunct [v] => v
+  | v => v
+
+/-- Unification is IDEMPOTENT: every value unifies with itself, and the
+    meet is the value. -/
+theorem unify_idem :
+    (sample.all fun a => unify a a == some (reduced (resolveWordsDeep a))) = true := by
   native_decide
 
-/-- `Any` unifies with everything but `Never` and `Absent`. (The empty
-    disjunct, which unifies with nothing else, does unify with `Any`:
-    `Any` keeps the disjunct whole.) -/
+/-- `Any` unifies with everything but `Never` and `Absent`. -/
 theorem any_unifies :
     (sample.all fun a =>
-      unifies (.typeLit "Any") a == !(a == Value.typeLit "Never" || a == Value.typeLit "Absent")) = true := by
+      unifies (.typeLit "Any") a == !(isNever a || a == Value.typeLit "Absent")) = true := by
   native_decide
 
 /-- The degenerate roots unify only with themselves — `Never` with
@@ -57,11 +66,19 @@ theorem any_unifies :
     requires its value to be PRESENT. -/
 theorem roots_unify_only_with_themselves :
     (sample.all fun a =>
-      (unifies (.typeLit "Never") a == (a == Value.typeLit "Never"))
+      (unifies (.typeLit "Never") a == isNever a)
         && (unifies (.typeLit "Absent") a == (a == Value.typeLit "Absent"))
         && (unifies .none a == (a == Value.none || a == Value.typeLit "None" || a == Value.typeLit "Any"))
         && (unifies (.typeLit "None") a
               == (a == Value.none || a == Value.typeLit "None" || a == Value.typeLit "Any"))) = true := by
+  native_decide
+
+/-- THE EMPTY DISJUNCT IS `Never`: against every value it answers as
+    `Never` does, on either side. -/
+theorem empty_disjunct_is_never :
+    (sample.all fun a =>
+      unify (.disjunct []) a == unify (.typeLit "Never") a
+        && unify a (.disjunct []) == unify a (.typeLit "Never")) = true := by
   native_decide
 
 /-- A type literal unifies with a concrete scalar exactly when the
@@ -80,14 +97,65 @@ theorem maps_unify_closed :
       && !unifies (.map [("a", .int 1), ("b", .int 2)] false) (.map [("a", .int 1)] false)) = true := by
   native_decide
 
-/-- THE MEET OF TWO DISJUNCTS IS NOT THEIR MEET. Unifying a disjunct with
-    a disjunct returns the first alternative that matches — `Integer`
-    for `Integer tor String` against itself — where the meet is the
-    disjunct. The predicate is unaffected; only the value is. Pinned here
-    because it is what the kernel does (NUR386), not because it is right. -/
-theorem disjunct_meet_is_first_alternative :
-    ((unify (.disjunct [.typeLit TInteger, .typeLit TString])
-            (.disjunct [.typeLit TInteger, .typeLit TString])).map canon == some "Integer") = true := by
+/-- THE MEET OF TWO DISJUNCTS IS THE DISJUNCT OF THE PAIRWISE MEETS of
+    their alternatives: a disjunct against itself is itself, the order
+    the alternatives were written in decides nothing, one surviving meet
+    is that value, and no pair unifying is no meet. -/
+theorem disjunct_meet_is_pairwise :
+    let meet (a b : List Value) := (unify (.disjunct a) (.disjunct b)).map canon
+    (meet [.typeLit TInteger, .typeLit TString] [.typeLit TInteger, .typeLit TString] == some "Integer tor String"
+      && meet [.typeLit TString, .typeLit TInteger] [.typeLit TInteger, .typeLit TString] == some "Integer tor String"
+      && meet [.int 5, .int 6] [.int 5, .int 6] == some "5 tor 6"
+      && meet [.int 5, .int 6] [.int 6, .int 7] == some "6"
+      && meet [.typeLit TInteger, .typeLit TString] [.int 5, .int 6] == some "5 tor 6"
+      && meet [.typeLit "Scalar/Number", .typeLit TString] [.typeLit TInteger, .typeLit "Scalar/Number"]
+           == some "Number"
+      && meet [.int 5, .int 6] [.int 7, .typeLit TString] == none) = true := by
+  native_decide
+
+/-- A TYPE AGAINST A DISJUNCT NARROWS EVERY ALTERNATIVE, not the first:
+    `Integer` against `5 tor 6` is `5 tor 6`, `Scalar` against
+    `Integer tor String` is the whole disjunct. A VALUE against a
+    disjunct is that value. -/
+theorem disjunct_meet_distributes :
+    let meet (a : List Value) (b : Value) := (unify (.disjunct a) b).map canon
+    (meet [.int 5, .int 6] (.typeLit TInteger) == some "5 tor 6"
+      && (unify (.typeLit TInteger) (.disjunct [.int 5, .int 6])).map canon == some "5 tor 6"
+      && meet [.typeLit TInteger, .typeLit TString] (.typeLit "Scalar") == some "Integer tor String"
+      && meet [.typeLit TInteger, .typeLit TString] (.typeLit "Scalar/Number") == some "Integer"
+      && meet [.list [.int 5] false, .list [.int 6] false] (.list [.typeLit TInteger] false) == some "[5] tor [6]"
+      && meet [.typeLit TInteger, .typeLit TString] (.int 5) == some "5"
+      && meet [.int 5, .int 6] (.int 6) == some "6"
+      && meet [.int 5, .int 6] (.typeLit TString) == none) = true := by
+  native_decide
+
+/-- A map alternative is an open PATTERN. It admits a map VALUE carrying
+    its keys and answers the value, extra keys and all; it narrows a map
+    SHAPE carrying them, key by key; a map lacking a key it names is
+    refused either way. -/
+theorem map_alternative_against_value_and_shape :
+    let m (es : List (String × Value)) : Value := .map es false
+    let meet (a : List Value) (b : Value) := (unify (.disjunct a) b).map canon
+    (meet [m [("a", .int 1)], m [("a", .int 2)]] (m [("a", .int 1), ("b", .int 2)]) == some "{a:1 b:2}"
+      && meet [m [("a", .int 1)]] (m [("b", .int 2)]) == none
+      && meet [m [("a", .int 1)], m [("a", .int 2)]] (m [("a", .typeLit TInteger)]) == some "{a:1} tor {a:2}"
+      && meet [m [("a", .int 1)]] (m [("a", .typeLit TInteger), ("b", .typeLit TString)])
+           == some "{a:1 b:String}"
+      && meet [m [("a", .int 1)]] (m [("b", .typeLit TInteger)]) == none
+      && meet [m [("a", .int 1)]] (m [("a", .typeLit TString)]) == none) = true := by
+  native_decide
+
+/-- Two map alternatives are two open PATTERNS: their meet is the pattern
+    carrying the keys of either, whichever side each is on — where a
+    plain map against a plain map unifies closed (`maps_unify_closed`). -/
+theorem map_alternatives_meet_as_patterns :
+    let m (es : List (String × Value)) : Value := .map es false
+    let meet (a b : Value) := (unify (.disjunct [a]) (.disjunct [b])).map canon
+    (meet (m [("a", .int 1)]) (m [("a", .int 1), ("b", .int 2)]) == some "{a:1 b:2}"
+      && meet (m [("a", .int 1), ("b", .int 2)]) (m [("a", .int 1)]) == some "{a:1 b:2}"
+      && meet (m [("a", .int 1)]) (m [("b", .int 2)]) == some "{a:1 b:2}"
+      && meet (m [("a", .typeLit TInteger)]) (m [("a", .int 3)]) == some "{a:3}"
+      && meet (m [("a", .int 1)]) (m [("a", .int 2)]) == none) = true := by
   native_decide
 
 /-! ## `Type` -/

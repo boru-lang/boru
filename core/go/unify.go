@@ -267,21 +267,6 @@ func unifyResolvedPredicate(def *Type, candidate Value, r *Registry) (Value, *Un
 	return pu.Unify(candidate, NewTypeLiteral(def), r)
 }
 
-// unifyDisjunctR is the Registry-aware disjunct walk. Tries each
-// alternative via unifyInner with r so predicate-fn alternatives are
-// evaluated correctly.
-func unifyDisjunctR(disj DisjunctInfo, val Value, r *Registry) (Value, *UnifyError) {
-	if !IsConcrete(&val) && Shape(val) == ShapeAny {
-		return NewDisjunct(disj.Alternatives), nil
-	}
-	for _, alt := range disj.Alternatives {
-		if unified, err := unifyInner(alt, val, r); err == nil {
-			return unified, nil
-		}
-	}
-	return Value{}, unifyFail("no disjunct alternative matched", NewDisjunct(disj.Alternatives), val)
-}
-
 // unifyInner is the post-resolution dispatcher. All recursive calls
 // inside the family handlers use this entry so ResolveWordsDeep runs
 // exactly once per top-level call.
@@ -320,13 +305,13 @@ func unifyInner(a, b Value, r *Registry) (Value, *UnifyError) {
 		if IsDisjunct(&a) {
 			disj, _ := AsDisjunct(a)
 			if disjunctHasPredicate(disj) {
-				return unifyDisjunctR(disj, b, r)
+				return unifyDisjunct(disj, b, r)
 			}
 		}
 		if IsDisjunct(&b) {
 			disj, _ := AsDisjunct(b)
 			if disjunctHasPredicate(disj) {
-				return unifyDisjunctR(disj, a, r)
+				return unifyDisjunct(disj, a, r)
 			}
 		}
 	}

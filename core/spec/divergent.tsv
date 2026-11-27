@@ -129,6 +129,34 @@ run unifyq {: Integer a: 1 } {: Integer a: 1 }	true	false	DATA: core/ts unifiesV
 run unifyq [: d( Integer String ) ] [q 1 'a' ]	true	false	DATA: core/ts unifiesValue has NO disjunct arm — the disjunct logic lives only in isValueOfType, not in the symmetric unifier.
 run unifyq d( 0 ) Type	false	true	DATA: core/ts unifiesValue has NO disjunct arm, and its fallback admits the `Type` root literal against the disjunct value; Go walks the alternatives and none is a Type.
 run unifyq d( 0 ) Scalar	true	false	DATA: core/ts unifiesValue has NO disjunct arm — the disjunct logic lives only in isValueOfType, not in the symmetric unifier.
+run unifyq d( Integer String ) d( Integer String )	true	false	DATA: core/ts unifiesValue has NO disjunct arm — the disjunct logic lives only in isValueOfType, not in the symmetric unifier.
+run unifyq d( 5 6 ) d( 6 7 )	true	false	DATA: core/ts unifiesValue has NO disjunct arm — the disjunct logic lives only in isValueOfType, not in the symmetric unifier.
+run unifyq d( Integer String ) d( 5 'a' )	true	false	DATA: core/ts unifiesValue has NO disjunct arm — the disjunct logic lives only in isValueOfType, not in the symmetric unifier.
+run unifyq d( d( 5 6 ) String ) d( 5 6 )	true	false	DATA: core/ts unifiesValue has NO disjunct arm — the disjunct logic lives only in isValueOfType, not in the symmetric unifier.
+run unifyq [q d( 5 6 ) ] [q d( 6 7 ) ]	true	false	DATA: core/ts unifiesValue has NO disjunct arm — the disjunct logic lives only in isValueOfType, not in the symmetric unifier.
+run unifyq [: d( Integer String ) ] [: d( Boolean ) ]	false	true	DATA: core/ts unifiesValue has no typed-LIST arm and NO disjunct arm — two child constraints with no alternative in common pass its fallback.
+run unifyq d( { a: 1 } ) d( { a: 1 b: 2 } )	true	false	DATA: two map alternatives are two open patterns and meet as the merged pattern, whichever side each is on; core/ts unifiesValue has NO disjunct arm.
+run unifyq d( { a: 1 b: 2 } ) d( { a: 1 } )	true	false	DATA: two map alternatives are two open patterns and meet as the merged pattern, whichever side each is on; core/ts unifiesValue has NO disjunct arm.
+run unifyq d( { a: 1 } ) d( { b: 2 } )	true	false	DATA: two map alternatives are two open patterns and meet as the merged pattern, whichever side each is on; core/ts unifiesValue has NO disjunct arm.
+run unifyq d( { a: Integer } ) d( { a: 3 } )	true	false	DATA: two map alternatives are two open patterns and meet as the merged pattern, whichever side each is on; core/ts unifiesValue has NO disjunct arm.
+run unifyq d( ) d( )	true	false	DATA: the empty disjunct is `Never`, which unifies with itself; core/ts unifiesValue has NO disjunct arm and compares the two payloads by identity.
+run unifyq d( ) Never	true	false	DATA: the empty disjunct is `Never`; core/ts unifiesValue has NO disjunct arm.
+run unifyq Never d( )	true	false	DATA: the empty disjunct is `Never`; core/ts unifiesValue has NO disjunct arm.
+run unifyq { a: d( ) } { a: Never }	true	false	DATA: the empty disjunct is `Never` wherever it stands; core/ts unifiesValue has NO disjunct arm.
+run unifyq d( ) Any	false	true	DATA: the empty disjunct is `Never`, and `Never` unifies only with `Never` — not with `Any`; core/ts admits any payload-free partner.
+run unifyq Any d( )	false	true	DATA: the empty disjunct is `Never`, and `Never` unifies only with `Never` — not with `Any`; core/ts admits any payload-free partner.
+run unifyq d( 5 6 ) Integer	true	false	DATA: core/ts unifiesValue has NO disjunct arm — the disjunct logic lives only in isValueOfType, not in the symmetric unifier.
+run unifyq Integer d( 5 6 )	true	false	DATA: core/ts unifiesValue has NO disjunct arm — the disjunct logic lives only in isValueOfType, not in the symmetric unifier.
+run unifyq d( Integer String ) Scalar	true	false	DATA: core/ts unifiesValue has NO disjunct arm — the disjunct logic lives only in isValueOfType, not in the symmetric unifier.
+run unifyq d( Integer String ) Number	true	false	DATA: core/ts unifiesValue has NO disjunct arm — the disjunct logic lives only in isValueOfType, not in the symmetric unifier.
+run unifyq d( [q 5 ] [q 6 ] ) [q Integer ]	true	false	DATA: core/ts unifiesValue has NO disjunct arm — the disjunct logic lives only in isValueOfType, not in the symmetric unifier.
+run unifyq d( [q 5 ] [q 'a' ] ) [: Integer ]	true	false	DATA: core/ts unifiesValue has NO disjunct arm — the disjunct logic lives only in isValueOfType, not in the symmetric unifier.
+run unifyq d( [q 5 ] ) [q d( 5 6 ) ]	true	false	DATA: core/ts unifiesValue has NO disjunct arm — the disjunct logic lives only in isValueOfType, not in the symmetric unifier.
+run unifyq d( { a: 1 } { a: 2 } ) { a: 1 b: 2 }	true	false	DATA: a map alternative is an open pattern against a map value and against a map shape alike; core/ts unifiesValue has NO disjunct arm.
+run unifyq d( { a: 1 } { a: 2 } ) { a: Integer }	true	false	DATA: a map alternative is an open pattern against a map value and against a map shape alike; core/ts unifiesValue has NO disjunct arm.
+run unifyq d( { a: 1 } ) { a: Integer b: String }	true	false	DATA: a map alternative is an open pattern against a map value and against a map shape alike; core/ts unifiesValue has NO disjunct arm.
+run unifyq { a: Integer } d( { a: 1 } )	true	false	DATA: a map alternative is an open pattern against a map value and against a map shape alike; core/ts unifiesValue has NO disjunct arm.
+run unifyq d( { a: [q 1 ] } ) { a: [q Integer ] }	true	false	DATA: a map alternative is an open pattern against a map value and against a map shape alike; core/ts unifiesValue has NO disjunct arm.
 run def inc fn( n Any Integer [ n ] ) ; inc 'x'	ERROR:type_error	'x'	DATA: core/ts does not run the call frame's return check, so a body that leaves a String under a declared Integer return is not refused.
 run fn( n Integer Integer [ addq n 1 ] ) 5	6	fn [[n:Scalar/Number/Integer][Scalar/Number/Integer][addq n 1]] 5	DATA: core/ts never dispatches a function VALUE standing in the program — it is left as data — where Go calls it as its word would (and refuses a named one that matches nothing: uncalled_function).
 run 5 fn( n Integer Integer [ addq n 1 ] )	6	5 fn [[n:Scalar/Number/Integer][Scalar/Number/Integer][addq n 1]]	DATA: core/ts never dispatches a function VALUE standing in the program — it is left as data — where Go calls it as its word would (and refuses a named one that matches nothing: uncalled_function).

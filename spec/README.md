@@ -84,9 +84,11 @@ drawn. (The one difference there was — `core/go` rendered an open-paren
 marker as nothing, which `core/spec/divergent.tsv` had adjudicated against
 it — was fixed in the kernel.)
 
-Behaviour the model reproduces because the kernel has it, not because it
-is right, is recorded in [NUR.md](../NUR.md) (NUR385–NUR388) and marked
-where it is modelled.
+Four kernel defects were first written down here — the model reproduced
+them because the kernel had them, and each was recorded in
+[NUR.md](../NUR.md) (NUR385–NUR388). All four are fixed in the kernel and
+the records closed: the model now states the rule, and the rows that pin
+each fix are in `core/spec` under the record's number.
 
 ## Toolchain
 

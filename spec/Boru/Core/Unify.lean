@@ -71,6 +71,25 @@ def isPlainMap : Value → Bool | .map _ _ => true | _ => false
 
 end Value
 
+mutual
+/-- A VALUE through and through (core/go/unify_disjunct.go
+    `isPlainValue`): not a type — a type literal, a typed container, a
+    disjunct, a function — and, for a list or a map, holding only such
+    values. `[1 2]` is one; `[Integer]` and `[: Integer ]` are not. -/
+def Value.isPlain : Value → Bool
+  | .typeLit _ | .typedList _ _ | .typedMap _ _ | .disjunct _ | .fn _ _ => false
+  | .list elems _ => allPlain elems
+  | .map entries _ => allPlainEntries entries
+  | .quoted v => v.isPlain
+  | _ => true
+def allPlain : List Value → Bool
+  | [] => true
+  | v :: vs => v.isPlain && allPlain vs
+def allPlainEntries : List (String × Value) → Bool
+  | [] => true
+  | (_, v) :: es => v.isPlain && allPlainEntries es
+end
+
 /-- `Any` and the degenerate roots fold a pair before any structural arm:
     a root unifies only with itself (None also with `Any`). -/
 private def foldDegen (isRoot : Value → Bool) (ruling other : Value) : Option Value :=
@@ -147,14 +166,43 @@ def unifyInner : Nat → Value → Value → Option Value
               | _, _ => none
           else unifySameOrSubtype a b
 
-/-- A disjunct against a value: `Any` leaves the disjunct; otherwise the
-    first alternative that unifies wins. A plain-map alternative against a
-    plain map unifies OPENLY — the value may carry more keys. -/
+/-- A disjunct against a value (core/go/unify_disjunct.go `unifyDisjunct`).
+    ONE rule: the meet is the disjunct of the meets of its alternatives
+    with that value.
+
+      * The EMPTY disjunct denotes the empty set: it is `Never`, and the
+        pair is settled as `Never` against the other side.
+      * `Any` leaves the disjunct whole.
+      * Against another DISJUNCT, or against a TYPE — anything that is
+        not a value through and through — every alternative's meet is
+        gathered and reduced to its canonical alternatives: nothing if no
+        pair unifies, the one meet itself if one survives.
+      * Against a VALUE every alternative that admits it answers that same
+        value, so the first one that does is the answer.
+
+    A map alternative is an open PATTERN: it admits a map value carrying
+    its keys (`openUnifyEntries`), narrows a map shape carrying them
+    (`narrowShape`), and meets another pattern as the two merged
+    (`mergePatterns`). -/
 def unifyDisjunct : Nat → List Value → Value → Option Value
   | 0, _, _ => none
   | fuel + 1, alts, val =>
-    if val.isAnyShape then some (.disjunct alts)
-    else unifyAlts fuel alts val
+    if alts.isEmpty then unifyInner fuel (.typeLit TNever) val
+    else if val.isAnyShape then some (.disjunct alts)
+    else
+      -- the others: a second disjunct's alternatives (patterns, where
+      -- they are maps), or the one type standing against the disjunct
+      let others : Option (Bool × List Value) :=
+        match val with
+        | .disjunct os => some (true, os)
+        | v => if v.isPlain then none else some (false, [v])
+      match others with
+      | none => unifyAlts fuel alts val
+      | some (patterns, os) =>
+        match simplifyDisjunctAlts (meetsOfAll fuel patterns alts os) with
+        | [] => none
+        | [v] => some v
+        | vs => some (.disjunct vs)
 
 def unifyAlts : Nat → List Value → Value → Option Value
   | 0, _, _ => none
@@ -167,6 +215,79 @@ def unifyAlts : Nat → List Value → Value → Option Value
       match unifyInner fuel alt val with
       | some u => some u
       | none => unifyAlts fuel rest val
+
+/-- Every alternative of the disjunct against every one of the others:
+    the meets that exist, in pair order. `patterns` says the others are a
+    second disjunct's alternatives rather than the one type standing
+    against the disjunct. -/
+def meetsOfAll : Nat → Bool → List Value → List Value → List Value
+  | 0, _, _, _ => []
+  | _ + 1, _, [], _ => []
+  | fuel + 1, patterns, a :: as, bs => meetsOfOne fuel patterns a bs ++ meetsOfAll fuel patterns as bs
+
+/-- One alternative against each of the others. A map alternative meets
+    another map alternative as one merged pattern, and a map shape by
+    narrowing it; a meet that is itself a disjunct contributes its
+    alternatives. -/
+def meetsOfOne : Nat → Bool → Value → List Value → List Value
+  | 0, _, _, _ => []
+  | _ + 1, _, _, [] => []
+  | fuel + 1, patterns, a, b :: bs =>
+    let here : List Value :=
+      match a, b with
+      | .map ea _, .map eb _ =>
+        (match (if patterns then mergePatterns fuel ea eb else narrowShape fuel ea eb) with
+         | some m => [m]
+         | none => [])
+      | _, _ =>
+        match unifyInner fuel a b with
+        | some (.disjunct inner) => inner
+        | some m => [m]
+        | none => []
+    here ++ meetsOfOne fuel patterns a bs
+
+/-- A map alternative against a map SHAPE — a map that is not a value
+    through and through (`narrowMapShape`). The test is the open one a
+    map value takes: every key the pattern names must unify with the
+    shape's, a key the shape lacks standing as `Absent`. The answer is the
+    shape with each of those keys narrowed to the meet of the two. -/
+def narrowShape : Nat → List (String × Value) → List (String × Value) → Option Value
+  | 0, _, _ => none
+  | fuel + 1, pattern, shape =>
+    (narrowKeys fuel pattern shape).map fun narrowed =>
+      .map (shape.map fun (k, v) => (k, (narrowed.lookup k).getD v)) false
+
+def narrowKeys : Nat → List (String × Value) → List (String × Value) → Option (List (String × Value))
+  | 0, _, _ => none
+  | _ + 1, [], _ => some []
+  | fuel + 1, (k, pv) :: rest, shape =>
+    let sv := (shape.lookup k).getD (.typeLit TAbsent)
+    match unifyInner fuel (resolveWordsDeep pv) (resolveWordsDeep sv), narrowKeys fuel rest shape with
+    | some m, some ms => if (shape.lookup k).isSome then some ((k, m) :: ms) else some ms
+    | _, _ => none
+
+/-- The meet of two map alternatives (`mergeMapPatterns`). Each admits any
+    map carrying its keys, so both admit the maps carrying the keys of
+    either: every key of the left, a shared key holding the meet of its
+    two values, then the right's extra keys. A shared key whose values do
+    not unify leaves no map both admit. -/
+def mergePatterns : Nat → List (String × Value) → List (String × Value) → Option Value
+  | 0, _, _ => none
+  | fuel + 1, ea, eb =>
+    (mergeShared fuel ea eb).map fun l =>
+      .map (l ++ eb.filter (fun (k, _) => (ea.lookup k).isNone)) false
+
+def mergeShared : Nat → List (String × Value) → List (String × Value) → Option (List (String × Value))
+  | 0, _, _ => none
+  | _ + 1, [], _ => some []
+  | fuel + 1, (k, av) :: rest, other =>
+    let here : Option Value :=
+      match other.lookup k with
+      | some bv => unifyInner fuel (resolveWordsDeep av) (resolveWordsDeep bv)
+      | none => some av
+    match here, mergeShared fuel rest other with
+    | some u, some us => some ((k, u) :: us)
+    | _, _ => none
 
 /-- Open map unification: every key the pattern names must unify, a key
     the candidate lacks standing as `Absent`; extra candidate keys pass. -/
