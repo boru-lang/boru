@@ -1132,6 +1132,39 @@ func ResolveWordValue(v Value) Value {
 // alternative is a covering type literal. Two concrete values of the
 // same type are both kept — each one is a distinct piece of
 // information that the type literal couldn't replace.
+// disjunctAltsCanonical reports whether alts is already exactly what
+// SimplifyDisjunctAlts would return — nothing to drop and nothing out of
+// order — without building the result. It asks the same questions in the
+// same terms, so the two cannot drift apart silently: the unit test runs
+// every case through both.
+func disjunctAltsCanonical(alts []Value) bool {
+	for i := range alts {
+		ti := ValueType(alts[i])
+		if ti.Equal(TNever) {
+			return false
+		}
+		for j := range alts {
+			if i == j {
+				continue
+			}
+			tj := ValueType(alts[j])
+			if tj.Equal(ti) {
+				if j < i && ValuesEqual(alts[j], alts[i]) {
+					return false // a repeat of an earlier alternative
+				}
+				continue
+			}
+			if ti.ConformsTo(tj) && IsBareTypeNode(&alts[j]) && (IsBareTypeNode(&alts[i]) || IsConcrete(&alts[i])) {
+				return false // absorbed by a wider bare type
+			}
+		}
+		if i > 0 && disjunctAltLess(alts[i], alts[i-1]) {
+			return false // out of order
+		}
+	}
+	return true
+}
+
 func SimplifyDisjunctAlts(alts []Value) []Value {
 	// First pass: drop Never.
 	live := make([]Value, 0, len(alts))

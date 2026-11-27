@@ -107,33 +107,35 @@ def findCloseAfter (tape : List Value) (openIdx : Nat) : Option Nat :=
   let rec go : List Value → Nat → Nat → Option Nat
     | [], _, _ => none
     | .openParen :: rest, i, depth => go rest (i + 1) (depth + 1)
+    | .frameOpen :: rest, i, depth => go rest (i + 1) (depth + 1)
     | .closeParen :: rest, i, depth => if depth == 0 then some i else go rest (i + 1) (depth - 1)
     | _ :: rest, i, depth => go rest (i + 1) depth
   go (tape.drop (openIdx + 1)) (openIdx + 1) 0
+
+/-- The nearest call-frame open before `i`. Frames collapse innermost
+    first, so when a frame's cleanup marker is reached the nearest frame
+    open is its own. -/
+def frameOpenBefore (tape : List Value) : Nat → Option Nat
+  | 0 => none
+  | i + 1 =>
+    match tape[i]? with
+    | some .frameOpen => some i
+    | _ => frameOpenBefore tape i
 
 /-- The nearest open paren before `i`. -/
 def openBefore (tape : List Value) : Nat → Option Nat
   | 0 => none
   | i + 1 =>
     match tape[i]? with
-    | some .openParen => some i
+    | some .openParen | some .frameOpen => some i
     | _ => openBefore tape i
-
-/-- The overloads a parked forward is collecting for: those of the
-    function VALUE standing at its index, or of the word there. -/
-def forwardSigs? (tape : List Value) (defs : Defs) (f : ForwardInfo) : Option (List Sig) :=
-  match tape[f.funcIndex]? with
-  | some (.fn _ sigs) => some sigs
-  | _ => defs.lookup? f.funcName
 
 /-- Is a parked forward's NEXT slot a name-capturing (`/q`) one. -/
 def pendingQuoteSlot (tape : List Value) (defs : Defs) (ptr : Nat) : Bool :=
   match pendingForwardIdx tape ptr with
   | some i =>
     match tape[i]? with
-    | some (.forward f) =>
-      ((forwardSigs? tape defs f).bind (·[f.sigIdx]?)).any fun s =>
-        f.collected < s.arity && s.isQuote f.collected
+    | some (.forward f s) => f.collected < s.arity && s.isQuote f.collected
     | _ => false
   | none => false
 
@@ -143,14 +145,13 @@ def pendingCollecting (tape : List Value) (defs : Defs) (ptr : Nat) : Bool :=
   match pendingForwardIdx tape ptr with
   | some i =>
     match tape[i]? with
-    | some (.forward f) =>
-      ((forwardSigs? tape defs f).bind (·[f.sigIdx]?)).any fun s => f.collected < s.arity
+    | some (.forward f s) => f.collected < s.arity
     | _ => false
   | none => false
 
 /-- A token no forward scan walks past. -/
 def scanBoundary : Value → Bool
-  | .forward _ | .defCleanup _ | .returnCheck _ | .endMark | .closeParen => true
+  | .forward _ _ | .defCleanup _ | .returnCheck _ | .endMark | .closeParen => true
   | _ => false
 
 /-- Resolve a parked forward that will get no more forward arguments
@@ -192,7 +193,7 @@ def commitBarrierForward (e : Engine) : Option Engine :=
   | none => none
   | some fwdIdx =>
     match e.tape[fwdIdx]? with
-    | some (.forward f) =>
+    | some (.forward f _) =>
       let claimed := f.collected + f.stackArgs
       if claimed == 0 || f.funcIndex < claimed then none
       else match e.tape[f.funcIndex]? with
@@ -247,8 +248,8 @@ def stepToken (nat : Natives) : Nat → Engine → Except BoruError Engine
     match e.tok? e.ptr with
     | none => pure e
     | some (.word w) => stepWord nat fuel e w
-    | some (.forward _) => pure { e with ptr := e.ptr + 1 }
-    | some .openParen => pure { e with ptr := e.ptr + 1 }
+    | some (.forward _ _) => pure { e with ptr := e.ptr + 1 }
+    | some .openParen | some .frameOpen => pure { e with ptr := e.ptr + 1 }
     | some .closeParen => stepCloseParen nat fuel e
     | some .endMark => stepEnd nat fuel e
     | some (.returnCheck _) => pure { e with ptr := e.ptr + 1 }
@@ -332,10 +333,12 @@ def dispatchWord (nat : Natives) : Nat → Engine → WordInfo → Except BoruEr
             let stkCount := p.positions.length - fwdCount
             if fwdCount > 0 then
               -- park: the forward arguments are stepped, then collected
-              let fwd : ForwardInfo :=
-                { funcName := w.name, sigIdx := p.sigIdx, expected := fwdCount,
-                  stackArgs := stkCount, funcIndex := e.ptr }
-              pure { e with tape := insertAt e.tape (e.ptr + 1) (.forward fwd), ptr := e.ptr + 2 }
+              match sigs[p.sigIdx]? with
+              | some s =>
+                let fwd : ForwardInfo :=
+                  { funcName := w.name, expected := fwdCount, stackArgs := stkCount, funcIndex := e.ptr }
+                pure { e with tape := insertAt e.tape (e.ptr + 1) (.forward fwd s), ptr := e.ptr + 2 }
+              | none => Engine.err "internal_error" "plan names no signature"
             else
               match sigs[p.sigIdx]? with
               | some s => execMatch nat fuel e w.name s p.positions
@@ -375,7 +378,7 @@ def collectWalk (nat : Natives) :
       | some tok =>
         if scanBoundary tok then pure e
         else match tok with
-          | .openParen =>
+          | .openParen | .frameOpen =>
             if !consumes then pure e
             else do
               let e ← evalParenGroupAt nat fuel e scanIdx
@@ -414,22 +417,35 @@ def evalParenGroupAt (nat : Natives) : Nat → Engine → Nat → Except BoruErr
   | 0, _, _ => Engine.outOfFuel
   | fuel + 1, e, scanIdx => do
     let saved := e.ptr
-    let e ← groupLoop nat fuel { e with ptr := scanIdx + 1 } 1
+    let e ← groupLoop nat fuel { e with ptr := scanIdx + 1 } scanIdx 1
     pure { e with ptr := saved }
 
-def groupLoop (nat : Natives) : Nat → Engine → Nat → Except BoruError Engine
-  | 0, _, _ => Engine.outOfFuel
-  | fuel + 1, e, depth =>
+/-- The group opened at `scanIdx` ends at its own close — or, when it has
+    none, where the structure around it ends: the tape, the close of the
+    sealed region it stands in, or the cleanup marker of the call frame it
+    stands in. In those three cases the open is UNMATCHED and is left as
+    it is: a scan boundary. The enclosing structure's own close is never
+    taken for the group's. -/
+def groupLoop (nat : Natives) : Nat → Engine → Nat → Nat → Except BoruError Engine
+  | 0, _, _, _ => Engine.outOfFuel
+  | fuel + 1, e, scanIdx, depth =>
     if depth == 0 then pure e
     else match e.tok? e.ptr with
       | none => pure e
-      | some .openParen => groupLoop nat fuel { e with ptr := e.ptr + 1 } (depth + 1)
-      | some .closeParen => do
-        let e ← stepCloseParen nat fuel e
-        groupLoop nat fuel e (depth - 1)
+      | some .openParen | some .frameOpen => groupLoop nat fuel { e with ptr := e.ptr + 1 } scanIdx (depth + 1)
+      | some .closeParen =>
+        if e.sealed && e.ptr + 1 == e.tape.length then pure e
+        else do
+          let e ← stepCloseParen nat fuel e
+          groupLoop nat fuel e scanIdx (depth - 1)
+      | some (.defCleanup _) =>
+        if (frameOpenBefore e.tape e.ptr).any (· < scanIdx) then pure e
+        else do
+          let e ← stepToken nat fuel e
+          groupLoop nat fuel e scanIdx depth
       | some _ => do
         let e ← stepToken nat fuel e
-        groupLoop nat fuel e depth
+        groupLoop nat fuel e scanIdx depth
 
 /-- Step a value that is not a word: it is collected by the nearest
     parked forward if it fits that forward's next slot, and closes the
@@ -458,10 +474,7 @@ def stepLiteral (nat : Natives) : Nat → Engine → Except BoruError Engine
         | _ => pure { e with ptr := e.ptr + 1 }
       | some fwdIdx =>
         match e.tok? fwdIdx with
-        | some (.forward f) =>
-          match (forwardSigs? e.tape e.defs f).bind (·[f.sigIdx]?) with
-          | none => Engine.err "internal_error" "a parked forward names no signature"
-          | some s =>
+        | some (.forward f s) =>
             let next := f.collected
             let fits := sigArgMatches s next val
             -- a `/q` Atom slot takes a written word as its name
@@ -472,10 +485,20 @@ def stepLiteral (nat : Natives) : Nat → Engine → Except BoruError Engine
                 else (val, fits)
               | _ => (val, fits)
             if f.collected < f.expected && !fits then
-              -- the value does not fit: the collection ends here
+              -- the value does not fit: the collection ends here. A
+              -- function VALUE refused on its FIRST forward argument is
+              -- sealed to the stack for its re-step, as a word is rewritten
+              -- to `/s`: with nothing collected the tape is unchanged, and a
+              -- full re-plan would be the same plan, refused again.
+              let sealAt :=
+                if f.collected == 0 then
+                  (match e.tape[f.funcIndex]? with
+                   | some (.fn _ _) => some f.funcIndex
+                   | _ => e.sealAt)
+                else e.sealAt
               let tape := removeAt e.tape fwdIdx
               let funcIdx := if fwdIdx < f.funcIndex then f.funcIndex - 1 else f.funcIndex
-              pure (curryOrStack { e with tape := tape } funcIdx f.collected f.stackArgs)
+              pure (curryOrStack { e with tape := tape, sealAt := sealAt } funcIdx f.collected f.stackArgs)
             else
               -- collect: move the value to just before the waiting word
               let tape := removeAt e.tape valIdx
@@ -498,7 +521,7 @@ def stepLiteral (nat : Natives) : Nat → Engine → Except BoruError Engine
                               ptr := funcIdx, sealAt := sealAt }
               else
                 let f' := { f with collected := collected, funcIndex := funcIdx }
-                pure { e with tape := setAt tape fwdIdx (.forward f'), ptr := fwdIdx + 1 }
+                pure { e with tape := setAt tape fwdIdx (.forward f' s), ptr := fwdIdx + 1 }
         | _ => Engine.err "internal_error" "pending forward index is not a forward"
 
 /-- A function VALUE at the pointer dispatches as its word would: the
@@ -534,10 +557,12 @@ def dispatchFnValue (nat : Natives) : Nat → Engine → String → List Sig →
       let fwdCount := (p.positions.filter (· > e.ptr)).length
       let stkCount := p.positions.length - fwdCount
       if fwdCount > 0 then
-        let fwd : ForwardInfo :=
-          { funcName := name, sigIdx := p.sigIdx, expected := fwdCount,
-            stackArgs := stkCount, funcIndex := e.ptr }
-        pure { e with tape := insertAt e.tape (e.ptr + 1) (.forward fwd), ptr := e.ptr + 2 }
+        match sigs[p.sigIdx]? with
+        | some s =>
+          let fwd : ForwardInfo :=
+            { funcName := name, expected := fwdCount, stackArgs := stkCount, funcIndex := e.ptr }
+          pure { e with tape := insertAt e.tape (e.ptr + 1) (.forward fwd s), ptr := e.ptr + 2 }
+        | none => Engine.err "internal_error" "plan names no signature"
       else
         match sigs[p.sigIdx]? with
         | some s => execMatch nat fuel e name s p.positions
@@ -554,7 +579,7 @@ def stepEnd (_nat : Natives) : Nat → Engine → Except BoruError Engine
     | none => pure { e with tape := removeAt e.tape endIdx }
     | some fwdIdx =>
       match e.tok? fwdIdx with
-      | some (.forward f) =>
+      | some (.forward f _) =>
         let tape := removeAt (removeAt e.tape endIdx) fwdIdx
         let funcIdx := if fwdIdx < f.funcIndex then f.funcIndex - 1 else f.funcIndex
         pure (curryOrStack { e with tape := tape } funcIdx f.collected f.stackArgs)
@@ -569,6 +594,16 @@ def stepCloseParen (nat : Natives) : Nat → Engine → Except BoruError Engine
   | 0, _ => Engine.outOfFuel
   | fuel + 1, e =>
     let closeIdx := e.ptr
+    if e.sealed && closeIdx + 1 == e.tape.length then do
+      -- THE REGION'S OWN CLOSE — the last token of a sealed tape. It pairs
+      -- with the region's own open (cell 0), whatever stands between: an
+      -- unmatched `(` among the tokens does not take it. Collections still
+      -- parked are resolved, the pair is removed, and the residual is NOT
+      -- re-stepped.
+      let e ← regionForwards nat fuel e
+      let tape := removeAt (removeAt e.tape (e.tape.length - 1)) 0
+      pure { e with tape := tape, ptr := tape.length, sealed := false }
+    else
     match openBefore e.tape closeIdx with
     | none => Engine.err "syntax_error" "unmatched closing parenthesis"
     | some openIdx => do
@@ -577,13 +612,9 @@ def stepCloseParen (nat : Natives) : Nat → Engine → Except BoruError Engine
       | none => Engine.err "syntax_error" "unmatched closing parenthesis"
       | some closeIdx =>
         if e.sealed && openIdx == 0 then
-          -- the region's own close: it must be the last token, and the
-          -- residual is NOT re-stepped
-          if closeIdx + 1 != e.tape.length then
-            Engine.err "syntax_error" "unmatched closing parenthesis"
-          else
-            let tape := removeAt (removeAt e.tape closeIdx) openIdx
-            pure { e with tape := tape, ptr := tape.length, sealed := false }
+          -- a close that reaches the region's open without being the
+          -- region's own: a stray `)`
+          Engine.err "syntax_error" "unmatched closing parenthesis"
         else
         -- an EMPTY group: remember who stood before it
         let e :=
@@ -592,7 +623,7 @@ def stepCloseParen (nat : Natives) : Nat → Engine → Except BoruError Engine
             let names := ((e.tape.take openIdx).drop start).reverse.filterMap fun v =>
               match v with
               | .word vw => some vw.name
-              | .forward f => some f.funcName
+              | .forward f _ => some f.funcName
               | _ => none
             { e with voidGroups := e.voidGroups ++ names }
           else e
@@ -610,6 +641,35 @@ def stepCloseParen (nat : Natives) : Nat → Engine → Except BoruError Engine
             else 0
           pure { e with tape := tape, ptr := openIdx + park }
 
+/-- Resolve every collection still parked in a sealed region when its
+    close is reached, stepping what each resolution leaves before it. -/
+def regionForwards (nat : Natives) : Nat → Engine → Except BoruError Engine
+  | 0, _ => Engine.outOfFuel
+  | fuel + 1, e =>
+    let last := e.tape.length - 1
+    match (List.range last).find? (fun i => i > 0 && (e.tape[i]?).any Value.isForward) with
+    | none => pure e
+    | some i =>
+      match e.tok? i with
+      | some (.forward f _) => do
+        let tape := removeAt e.tape i
+        let funcIdx := if i < f.funcIndex then f.funcIndex - 1 else f.funcIndex
+        let e := curryOrStack { e with tape := tape } funcIdx f.collected f.stackArgs
+        let e ← regionSteps nat fuel e
+        regionForwards nat fuel e
+      | _ => pure e
+
+/-- Step until the pointer reaches the region's close (the last token). -/
+def regionSteps (nat : Natives) : Nat → Engine → Except BoruError Engine
+  | 0, _ => Engine.outOfFuel
+  | fuel + 1, e =>
+    if e.ptr + 1 ≥ e.tape.length then pure e
+    else match e.tok? e.ptr with
+      | some .openParen | some .frameOpen => regionSteps nat fuel { e with ptr := e.ptr + 1 }
+      | _ => do
+        let e ← stepToken nat fuel e
+        regionSteps nat fuel e
+
 /-- Resolve every collection still parked inside the group at `openIdx`,
     stepping what each resolution leaves before the close. -/
 def closeForwards (nat : Natives) : Nat → Engine → Nat → Except BoruError Engine
@@ -623,7 +683,7 @@ def closeForwards (nat : Natives) : Nat → Engine → Nat → Except BoruError 
       | none => pure e
       | some i =>
         match e.tok? i with
-        | some (.forward f) => do
+        | some (.forward f _) => do
           let tape := removeAt e.tape i
           let funcIdx := if i < f.funcIndex then f.funcIndex - 1 else f.funcIndex
           let e := curryOrStack { e with tape := tape } funcIdx f.collected f.stackArgs
@@ -640,7 +700,7 @@ def stepsToClose (nat : Natives) : Nat → Engine → Nat → Except BoruError E
     | some closeIdx =>
       if e.ptr ≥ closeIdx then pure e
       else match e.tok? e.ptr with
-        | some .openParen => stepsToClose nat fuel { e with ptr := e.ptr + 1 } openIdx
+        | some .openParen | some .frameOpen => stepsToClose nat fuel { e with ptr := e.ptr + 1 } openIdx
         | _ => do
           let e ← stepToken nat fuel e
           stepsToClose nat fuel e openIdx
@@ -741,7 +801,7 @@ def execMatch (nat : Natives) :
           let bind (a : Value) : Value := if a.isListShape && !a.isQuoted then .quoted a else a
           let defs := (names.zip args).foldl (fun d (nm, a) => d.push nm (bind a)) e.defs
           let tail := Value.defCleanup names :: (if s.returns.isEmpty then [] else [.returnCheck s.returns])
-          pure (.openParen :: body ++ tail ++ [.closeParen], defs)
+          pure (.frameOpen :: body ++ tail ++ [.closeParen], defs)
       let e := { e with defs := defs }
       if indices.length == n && n > 0 then
         let first := indices.foldl min e.ptr
@@ -812,11 +872,14 @@ def runSealed (nat : Natives) : Nat → Defs → List Value → Except BoruError
   | fuel + 1, defs, toks => do
     let e ← steps nat fuel
       { tape := .openParen :: toks ++ [.closeParen], ptr := 1, defs := defs, sealed := true }
-    if e.sealed then Engine.err "syntax_error" "unmatched opening parenthesis"
-    else do
-      let e ← sweepRange nat fuel e 0 e.tape.length
-      if e.tape.any Value.isOpenParen then Engine.err "syntax_error" "unmatched opening parenthesis"
-      else pure (e.tape, e.defs)
+    -- the region's move collects what is there — evaluating a pending
+    -- container left in it, whose own error surfaces first — and only then
+    -- is a region that never closed refused
+    let unclosed := e.sealed
+    let e ← sweepRange nat fuel e 0 e.tape.length
+    if unclosed || e.tape.any Value.isOpenParen then
+      Engine.err "syntax_error" "unmatched opening parenthesis"
+    else pure (e.tape, e.defs)
 
 /-- Run a program to its residual: step to the end, resolve what is
     still parked, refuse an unmatched open paren, then evaluate the
@@ -839,7 +902,7 @@ def resolveOrphans (nat : Natives) : Nat → Engine → Except BoruError Engine
     | none => pure e
     | some i =>
       match e.tok? i with
-      | some (.forward f) => do
+      | some (.forward f _) => do
         let tape := removeAt e.tape i
         let funcIdx := if i < f.funcIndex then f.funcIndex - 1 else f.funcIndex
         let e := curryOrStack { e with tape := tape } funcIdx f.collected f.stackArgs
@@ -852,7 +915,7 @@ def orphanSteps (nat : Natives) : Nat → Engine → Except BoruError Engine
   | fuel + 1, e =>
     if e.ptr ≥ e.tape.length then pure e
     else match e.tok? e.ptr with
-      | some .openParen => orphanSteps nat fuel { e with ptr := e.ptr + 1 }
+      | some .openParen | some .frameOpen => orphanSteps nat fuel { e with ptr := e.ptr + 1 }
       | _ => do
         let e ← stepToken nat fuel e
         orphanSteps nat fuel e

@@ -147,7 +147,7 @@ def scopeStart (tape : List Value) : Nat → Nat
   | 0 => 0
   | i + 1 =>
     match tape[i]? with
-    | some .openParen => i + 1
+    | some .openParen | some .frameOpen => i + 1
     | _ => scopeStart tape i
 
 /-- The nearest parked forward before `i` in the same paren scope. -/
@@ -155,8 +155,8 @@ def pendingForwardIdx (tape : List Value) : Nat → Option Nat
   | 0 => none
   | i + 1 =>
     match tape[i]? with
-    | some .openParen => none
-    | some (.forward _) => some i
+    | some .openParen | some .frameOpen => none
+    | some (.forward _ _) => some i
     | _ => pendingForwardIdx tape i
 
 /-- Every parked forward before `i` in the same paren scope. -/
@@ -164,8 +164,8 @@ def scopeForwards (tape : List Value) : Nat → List ForwardInfo
   | 0 => []
   | i + 1 =>
     match tape[i]? with
-    | some .openParen => []
-    | some (.forward f) => f :: scopeForwards tape i
+    | some .openParen | some .frameOpen => []
+    | some (.forward f _) => f :: scopeForwards tape i
     | _ => scopeForwards tape i
 
 /-- The tape cells a parked forward has claimed. -/
@@ -192,8 +192,8 @@ def resolvedIdxBack (tape : List Value) : Nat → Nat → List Nat
   | _, 0 => []
   | i + 1, n + 1 =>
     match tape[i]? with
-    | some .openParen => []
-    | some (.forward _) => resolvedIdxBack tape i (n + 1)
+    | some .openParen | some .frameOpen => []
+    | some (.forward _ _) => resolvedIdxBack tape i (n + 1)
     | _ => i :: resolvedIdxBack tape i n
 
 def resolvedIndicesBefore (tape : List Value) (ptr n : Nat) : List Nat :=
@@ -208,8 +208,11 @@ boundary. It never evaluates. -/
 /-- Does the token at the scan head fill forward slot `fwd` of `s`. -/
 def scanAdmits (defs : Defs) (s : Sig) (fwd : Nat) (tok : Value) : Bool :=
   let expected := s.ptype fwd
+  -- the `Any` escape is for a gradual VALUE slot: a type-arg slot declared
+  -- `Any` still takes only a type, and the plan must not claim a literal
+  -- the arrival will decline
   let literal (v : Value) : Bool :=
-    (sigArgMatches s fwd v || expected == TAny)
+    (sigArgMatches s fwd v || (expected == TAny && !s.isTypeArg fwd))
       && !(!s.isTypeArg fwd && rejectsTypeLiteral v expected)
   -- a word that is not claimed through its binding
   let bareWord (w : WordInfo) : Bool :=
@@ -222,7 +225,7 @@ def scanAdmits (defs : Defs) (s : Sig) (fwd : Nat) (tok : Value) : Bool :=
           && !(!s.isTypeArg fwd && rejectsTypeLiteral (.typeLit t) expected)
       | none => sigArgMatches s fwd (.atom w.name) || expected == TAny
   match tok with
-  | .forward _ | .endMark | .closeParen | .openParen | .defCleanup _ | .returnCheck _ => false
+  | .forward _ _ | .endMark | .closeParen | .openParen | .frameOpen | .defCleanup _ | .returnCheck _ => false
   | .word w =>
     if s.isQuote fwd then conforms TAtom expected                  -- `/q`: the name is the operand
     else match defs.top? w.name with

@@ -172,3 +172,31 @@ run { a: 1 a: 2 }	{a:2}
 
 # A quoted list holding paren markers is data, and renders them.
 run [q ( ) ]	[( )]
+
+# --- an unmatched `(` never closes on its container's own paren (NUR387) ----
+# A container literal is evaluated between a paren pair of its own, and a
+# boru-bodied call inside one of its frame's. An unmatched `(` among the
+# tokens used to take that structure's close for its own: `[ negq ( ]`
+# collapsed a stolen empty group and raised no_value_error, `[ negq ( 5 ]`
+# ran negq over (5) and then failed as a syntax error — where the same
+# tokens at the top level are a signature_error. A structure's close pairs
+# with its own open now, and the unmatched `(` is the scan boundary it is
+# everywhere else.
+run [ negq ( ]	ERROR:signature_error	as `negq (` at the top level: the open is a scan boundary and negq fails on its own terms
+run [ negq ( 5 ]	ERROR:signature_error	it does not close on the literal's own paren, so negq never sees a group
+run { a: [ negq ( ] }	ERROR:signature_error	the same one level down, in a map member
+run dupq [ negq ( ]	ERROR:signature_error	and where the literal is evaluated as an argument
+run [ 1 ( ]	ERROR:syntax_error	with no word to fail first, the open left in the literal is the error
+run def inc fn( n Integer Integer [ negq ( n ] ) ; inc 5	ERROR:signature_error	a call frame's close is its own too: the same body answers as it would at the top level
+run [ negq ( 5 ) ]	[-5]	a matched group inside a literal is unaffected
+
+# --- a disjunct is a set: resolved, it is canonical (NUR385) ----------------
+# Repeats dropped, an alternative absorbed by a wider bare type dropped, the
+# rest in the total order — whenever a disjunct is resolved, whatever its
+# alternatives are. core/go reduced one only when resolution had REBUILT an
+# alternative (a word, a map, a non-empty list), so `d( 5 5 Integer )` was
+# left as written while the same disjunct with a list in it was reduced.
+# Most of these rows are in divergent.tsv: core/ts does not reduce at all.
+run d( Integer 5 )	Integer tor 5	a disjunct already in canonical form is left exactly as it is
+run [q d( 5 5 Integer ) ]	[(5 tor 5 tor Integer)]	inside quoted data nothing is resolved, so nothing is reduced
+run d( 5 )	5	a one-alternative disjunct renders as its alternative

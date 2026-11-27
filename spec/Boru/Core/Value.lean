@@ -39,8 +39,6 @@ structure WordInfo where
     forward stack. -/
 structure ForwardInfo where
   funcName : String
-  /-- Index of the chosen overload among the function's signatures. -/
-  sigIdx : Nat
   /-- Forward arguments still owed in total. -/
   expected : Nat
   /-- Forward arguments collected so far. -/
@@ -93,14 +91,20 @@ inductive Value where
   | word (w : WordInfo)
   /-- `Word/__OP` — the open-paren marker. -/
   | openParen
+  /-- `Word/__OP` carrying a frame — the open paren of a CALL FRAME. To
+      everything that asks "is this an open paren" it is one; it is told
+      apart only where a frame's own tail must find its own open. -/
+  | frameOpen
   /-- `Word/__CP` — the close-paren marker. -/
   | closeParen
   /-- `Word/__ED` — the collection barrier (`end` / `;`). -/
   | endMark
   /-- `Word/__DM` — a group dispatch modifier, `/v` or `/q`. -/
   | dispatchMod (val : Bool)
-  /-- `Word/__FW` — a parked forward collection. -/
-  | forward (info : ForwardInfo)
+  /-- `Word/__FW` — a parked forward collection, holding the signature
+      the plan chose: the collection is finished against THAT signature
+      even if the word's binding changes while it waits. -/
+  | forward (info : ForwardInfo) (sig : Sig)
   /-- `Type/Function` — a function value: its overloads, most specific
       first. One Function type (ADR-011). -/
   | fn (name : String) (sigs : List Sig)
@@ -190,8 +194,8 @@ def isTypeLiteral : Value → Bool
   | _ => false
 
 def isWord : Value → Bool | word _ => true | _ => false
-def isForward : Value → Bool | forward _ => true | _ => false
-def isOpenParen : Value → Bool | openParen => true | _ => false
+def isForward : Value → Bool | forward _ _ => true | _ => false
+def isOpenParen : Value → Bool | openParen | frameOpen => true | _ => false
 def isCloseParen : Value → Bool | closeParen => true | _ => false
 def isEnd : Value → Bool | endMark => true | _ => false
 def isFn : Value → Bool | fn _ _ => true | _ => false
@@ -217,10 +221,11 @@ def typeOf : Value → TypeId
   | parenExpr _ => "Word/__PE"
   | word _ => "Word"
   | openParen => "Word/__OP"
+  | frameOpen => "Word/__OP"
   | closeParen => "Word/__CP"
   | endMark => "Word/__ED"
   | dispatchMod _ => "Word/__DM"
-  | forward _ => "Word/__FW"
+  | forward _ _ => "Word/__FW"
   | fn _ _ => "Type/Function"
   | defCleanup _ => "Word/__IN/__DC"
   | returnCheck _ => "Word/__RC"
@@ -233,7 +238,7 @@ def unquote : Value → Value
 
 /-- A marker the step loop reads structurally: it is never an operand. -/
 def isStructural : Value → Bool
-  | forward _ | defCleanup _ | returnCheck _ => true
+  | forward _ _ | defCleanup _ | returnCheck _ => true
   | _ => false
 
 /-- A pending container: one the parser wrote that nothing has evaluated. -/

@@ -56,10 +56,10 @@ func TestW8UnifyResolvedPredicateNotPredicate(t *testing.T) {
 	}
 }
 
-func TestW8UnifyDisjunctRAny(t *testing.T) {
+func TestW8UnifyDisjunctAny(t *testing.T) {
 	r := w8reg(t)
 	disj := DisjunctInfo{Alternatives: []Value{NewTypeLiteral(TInteger), NewTypeLiteral(TString)}}
-	got, err := unifyDisjunctR(disj, NewTypeLiteral(TAny), r)
+	got, err := unifyDisjunct(disj, NewTypeLiteral(TAny), r)
 	if err != nil {
 		t.Fatalf("Any vs a disjunct yields the disjunct: %v", err)
 	}

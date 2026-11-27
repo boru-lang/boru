@@ -146,11 +146,11 @@ func TestX5UnifyInnerDisjunctPredicateBSide(t *testing.T) {
 	}
 }
 
-func TestX5UnifyDisjunctRNoMatch(t *testing.T) {
+func TestX5UnifyDisjunctNoMatch(t *testing.T) {
 	r := x5reg(t)
 	_, fn := x5PredType(t, r, "X5PosD")
 	disj := DisjunctInfo{Alternatives: []Value{fn}}
-	if _, err := unifyDisjunctR(disj, NewString("nope"), r); err == nil {
+	if _, err := unifyDisjunct(disj, NewString("nope"), r); err == nil {
 		t.Fatal("a string does not satisfy an Integer predicate disjunct")
 	}
 }

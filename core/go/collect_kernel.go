@@ -825,9 +825,14 @@ func CollectCandidateScan(h CollectHost, sig *Signature, forwardLimit int, posit
 			win.Splice(scanIdx, 1, exp...)
 			continue
 		}
-		// Literal value: direct type check.
-		if SigArgMatches(sig, fwd, tok) || expectedType.Equal(TAny) {
-			isTypeArg := sig.TypeArgs != nil && sig.TypeArgs[fwd]
+		// Literal value: direct type check. The `Any` escape is for a
+		// gradual VALUE slot. A type-arg slot declared `Any` still takes
+		// only a type, and the arrival decision (CollectArrival) asks
+		// SigArgMatches alone — so the escape planned a concrete literal
+		// there that arrival then declined: a plan claiming what the
+		// arrival refuses (NUR388).
+		isTypeArg := sig.TypeArgs != nil && sig.TypeArgs[fwd]
+		if SigArgMatches(sig, fwd, tok) || (expectedType.Equal(TAny) && !isTypeArg) {
 			if !isTypeArg && rejectsTypeLiteral(*tok, expectedType) {
 				break // reject type literal at concrete-payload sig
 			}

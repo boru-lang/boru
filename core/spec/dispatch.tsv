@@ -458,3 +458,12 @@ run ( 5 negq/v )	-5	with the operand beneath it, likewise
 run def x 7 ; x/v	7	/v on a plain binding is the bound value
 run nosuchword/v	ERROR:undefined_word	/v on an unbound name is an error, not an atom
 run dupq x/v	ERROR:undefined_word	and the same inside a forward window
+
+# --- a refused collection never re-plans itself (NUR388) --------------------
+# A function VALUE whose first forward argument is refused at arrival is
+# sealed to the stack for its re-step, as a word is rewritten to /s; and a
+# type-arg slot declared `Any` no longer plans a concrete literal that the
+# arrival would decline. Before both, `( tyq/v 'x' )` planned 'x', had it
+# refused, re-planned the same thing, and ran to the step limit.
+run ( tyq/v Integer )	Integer	with a type after it the same value callee is simply called
+run ( Integer tyq/v 'x' )	Integer 'x'	and with a type beneath it, it takes that from the stack
