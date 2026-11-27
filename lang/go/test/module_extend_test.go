@@ -16,7 +16,8 @@ import (
 // the in-memory FS via runMemFSModuleSteps (module_memfs_test.go).
 
 // flagExtModule is the canonical extending module: a minted user type
-// (the module-scope core-word rule requires one), a merged `add`
+// (the ownership-anchor rule requires a nominal type the module owns
+// in every signature it adds to a core word), a merged `add`
 // overload whose body uses a module-PRIVATE helper, a constructor, and
 // the exports that carry all of it to the importer.
 const flagExtModule = `def Flag (refine Boolean)
@@ -199,7 +200,8 @@ export "Bad" {add: add/v}`,
 // TestModuleExtendPointClass pins the canonical user-module shape end
 // to end: a boru file module that mints a CLASS type Point {x,y},
 // merges a [Point Point] overload into core `add` (its own class is
-// the user type the module-scope rule requires), and exports both.
+// the owned nominal type the ownership-anchor rule requires), and
+// exports both.
 // The importer constructs Points through the exported type with
 // `make`, and `p0 add p1` dispatches the transplanted overload —
 // whose body runs in MODULE scope (it references the module's own

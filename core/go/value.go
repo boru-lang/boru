@@ -427,8 +427,9 @@ type FnSig struct {
 	// b:Kindon] …]` wins by specificity. Unlike an ordinary unlocked def it
 	// lives on the native FnDefInfo (so `undef` of the builtin still
 	// declines) and is SKIPPED by the export transplant (so it never rides
-	// a module's word extension into an importer, where its builtin-only
-	// tuple would trip the module-scope user-type rule).
+	// a module's word extension into an importer, where its kernel-only
+	// tuple, anchored on nothing the module owns, would fail the
+	// transplant's requireOwnedAnchor admission).
 	CoreDefault bool
 }
 

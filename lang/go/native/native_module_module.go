@@ -98,11 +98,6 @@ func runModuleBodyCover(parent *Registry, elems []Value, coverID, coverSrc strin
 	if err != nil {
 		return ModuleDesc{}, fmt.Errorf("module init: %w", err)
 	}
-	// Mark this registry as MODULE scope: a module body may extend a
-	// core word only with user-typed signatures (the open-words
-	// module-scope safety rule — see Registry.ModuleScope and
-	// design/OPEN-WORDS.0.md). Top-level programs are unrestricted.
-	modReg.ModuleScope = true
 	// The module's minted types (refine newtypes, classes) escape to the
 	// importer through its exports, so they must draw IDs from the
 	// importing tree's counter — a fresh counter would let the module's
@@ -354,6 +349,16 @@ func runModuleBodyCover(parent *Registry, elems []Value, coverID, coverSrc strin
 	// module's token — the provenance the ownership-anchored signature
 	// rules verify at def-merge and transplant time
 	// (design/OPEN-WORDS.1.md §4).
+	//
+	// That stamp is what holds a module body to the core-word extension
+	// rule: `def <core word> fn […]` here reaches InstallWordExtension,
+	// which hands this registry's MintOwner to requireOwnedAnchor
+	// (core/go/word_extend.go) — every added signature that takes
+	// arguments needs a nominal type carrying this owner, or the def
+	// raises [boru/extend_owner]. A top-level program meets the same
+	// check under OwnerProgram, so the registry carries no "module scope"
+	// mark of its own. Pinned by lang/spec/open-words.tsv §6 and
+	// TestModuleExtendFileUserTypeRule (lang/go/test).
 	modID := parent.Modules.NextID()
 	modReg.Types.MintOwner = "module#" + modID
 	sub := New(modReg)
