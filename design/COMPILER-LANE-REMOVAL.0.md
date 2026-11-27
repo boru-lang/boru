@@ -77,7 +77,10 @@ discipline is design/PERF-BASELINE.10.md.
   SESSION-HANDOVER as SESSION-HANDOVER-FULL-COMPILATION). The old kernel
   guide, eng/go's CLAUDE.md, was folded into `core/go/CLAUDE.md` without
   its compiler passages. NUR.md's records that cite the compiled lane are
-  history and were not rewritten.
+  history and were not rewritten. (They were discharged on 2026-11-27:
+  the records whose divergence existed only against the lane were
+  deleted, and the rest were narrowed to what still reproduces on the
+  interpreter — see NUR.md's head note of that date.)
 
 ## 3. Why plain `boru run` and `boru check` did not change
 
