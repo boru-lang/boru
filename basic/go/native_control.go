@@ -17,27 +17,11 @@ var ControlNatives = []NativeFunc{
 				NoEvalArgs: map[int]bool{0: true},
 				Impl:       Go(DoListHandler),
 				ReturnsFn:  DoListReturnsFn, BarrierPos: -1,
-				// Only the LIST (code-body) sig islands — its NoEvalArgs body
-				// re-enters the interpreter. The Map sig is a pure value eval
-				// whose arg auto-evaluates BEFORE the handler, so it bakes a
-				// plain CALL_NATIVE (do {a:1 b:2} no longer islands).
-				// CompileDynBody is the universal backstop: a body the closure
-				// path declines (computed carriers, args-bearing bodies) lowers
-				// to a CALL_NATIVE under the program's DynEnv mode instead of
-				// declining — the handler's runtime execution is the
-				// interpreter's own semantics once names and args resolve
-				// identically (see eng CompileDynBody).
-				CompileEffect: CompileFallbackBody | CompileDynBody,
 			},
 			{
 				Args:    []*Type{TMap},
 				Impl:    Go(DoMapHandler),
 				Returns: []*Type{TAny}, BarrierPos: -1,
-				// CompileDynBody here too: a GRADUAL operand can commit to
-				// this sig at check time while the runtime value is a List —
-				// the dyn-body poly re-match picks the real overload at run
-				// time (tryRecordDynBody's body.Dynamic branch).
-				CompileEffect: CompileDynBody,
 			},
 		},
 	},
@@ -50,17 +34,12 @@ var ControlNatives = []NativeFunc{
 				NoEvalArgs: map[int]bool{0: true, 1: true, 2: true},
 				Impl:       Go(if3Handler),
 				ReturnsFn:  if3ReturnsFn, BarrierPos: -1,
-				// The branch is lowered by the ReturnsFn (RecordBranch), never
-				// as a dispatch over the arm bodies (S2b's declaration).
-				CompileEffect: CompileOwnLowering,
 			},
 			{
 				Args:       []*Type{TAny, TAny},
 				NoEvalArgs: map[int]bool{0: true, 1: true},
 				Impl:       Go(if2Handler),
-				// As the three-operand form: RecordBranch lowers it (S2b).
-				CompileEffect: CompileOwnLowering,
-				ReturnsFn:     If2ReturnsFn, BarrierPos:
+				ReturnsFn:  If2ReturnsFn, BarrierPos:
 
 				// Clause-list form: `if [c1 b1 c2 b2 … else]`. Even elements
 				// are conditions, the following odd element is that clause's
@@ -79,15 +58,6 @@ var ControlNatives = []NativeFunc{
 				NoEvalArgs: map[int]bool{0: true},
 				Impl:       Go(IfListHandler),
 				ReturnsFn:  IfListReturnsFn, BarrierPos: -1,
-				// The handler returns ifClause's tokens — the chosen body
-				// SPLICED for the tape to re-step — so the dispatch is never
-				// a CALL_NATIVE: under the recording pass the ReturnsFn
-				// lowers the chain as the if3 / if2 branch events it is
-				// equivalent to (ifClauseRecord, 2026-09-26; declared
-				// CompileResteps until then, when a clause list holding a
-				// code body compiled to that CALL_NATIVE and died at run
-				// time on the tape-coupled splice).
-				CompileEffect: CompileOwnLowering,
 			},
 		},
 	},
@@ -109,8 +79,7 @@ var ControlNatives = []NativeFunc{
 		// (case_not_exhaustive, case_exhaustive.go): a default-less
 		// case reaches that produce-nothing path only for a dynamic
 		// (untyped) scrutinee.
-		Name:          "case",
-		CompileEffect: CompileFallbackBody,
+		Name: "case",
 
 		Signatures: []Signature{
 			// One Any/Any sig; the handler disambiguates the two call
@@ -136,25 +105,12 @@ var ControlNatives = []NativeFunc{
 				NoEvalArgs: map[int]bool{1: true},
 				Impl:       Go(ForCountHandler),
 				ReturnsFn:  forIntegerListReturnsFn, BarrierPos: -1,
-				// The loop is lowered by the ReturnsFn (RecordLoop), never as
-				// a dispatch over the body (S2b's declaration). A COMPUTED
-				// body (`for 3 (mk 0)`, code-bodies.tsv L141) has no tokens
-				// for RecordLoop to capture: CompileDynBody hands that
-				// dispatch to the dyn-body backstop, which HOSTS the
-				// handler's splice on the VM's interpreter island — admitted
-				// only where the splice and the island cannot be told apart
-				// (the program's last statement over an empty stack; see
-				// compiler's hostsSplice, 2026-09-26).
-				CompileEffect: CompileOwnLowering | CompileDynBody,
 			},
 			{
 				Args:       []*Type{TList, TList},
 				NoEvalArgs: map[int]bool{1: true},
 				Impl:       Go(ForRangeHandler),
 				ReturnsFn:  forListListReturnsFn, BarrierPos: -1,
-				// RecordLoop, as the count form (S2b); a computed body takes
-				// the hosted splice, as the count form's does.
-				CompileEffect: CompileOwnLowering | CompileDynBody,
 			},
 		},
 	},
@@ -173,10 +129,6 @@ var ControlNatives = []NativeFunc{
 			NoEvalArgs: map[int]bool{0: true, 1: true},
 			Impl:       Go(WhileHandler),
 			ReturnsFn:  whileReturnsFn, BarrierPos: -1,
-			// The loop is lowered by the ReturnsFn (RecordLoop, the
-			// "while" loop event), never as a dispatch over the condition
-			// or the body (S2b's declaration).
-			CompileEffect: CompileOwnLowering,
 		}},
 	},
 	// break and continue signal via Registry.FlowCtrl rather than
@@ -205,28 +157,13 @@ var ControlNatives = []NativeFunc{
 	},
 	{
 		Name: "error",
-		// do [body] error [handler] — the handler runs as a closure with the
-		// caught Error pushed as its one input (BodyPos 0, BodyOut 1). A handler
-		// that CONSUMES the error (`[get message]`, `[get code case …]`) nets 1
-		// and compiles; one that IGNORES it (`["fallback"]`) leaves error+result
-		// (nets 2) — StripsUnconsumedInput admits that shape too: the handler's
-		// runtime identity probe strips the unconsumed error from the residual
-		// bottom (ErrorHandler), so the closure nets ONE value either way and
-		// compiles natively instead of islanding.
-		// CompileDynBody (2026-09-25): a COMPUTED handler body — a List
-		// param, a fn's result — lowers to a plain CALL_NATIVE under the
-		// program's DynEnv mode where the closure path declined, exactly as
-		// `do`'s does: ErrorHandler runs the body through the InvokeBody
-		// seam, which stamps a run-time token body and hosts it on the VM.
-		CompileEffect: CompileFallbackBody | CompileDynBody,
 
 		// ONE sig (List, Any): the handler runs when the body raised (the do
 		// result is an Error), else the result passes through. The two cases were
-		// formerly two sigs (TError vs TAny), but a STATIC pick is unsound for the
-		// compiled path — the checker types `do [raise …]` as Any and would bake
-		// the pass-through sig even when the runtime value is an Error. One sig
-		// with a runtime IsError branch keeps dispatch mono (so the handler body
-		// compiles as a closure) and correct on both paths.
+		// formerly two sigs (TError vs TAny), but a STATIC pick is unsound —
+		// the checker types `do [raise …]` as Any and would pick the
+		// pass-through sig even when the runtime value is an Error. One sig
+		// with a runtime IsError branch keeps dispatch mono and correct.
 		Signatures: []Signature{
 			{
 				Args:       []*Type{TList, TAny},
@@ -251,8 +188,7 @@ func DoListHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]
 	}
 	// `do` runs its body with no per-call inputs and catches a body error,
 	// surfacing it as an Error VALUE rather than propagating (the escape
-	// hatch semantics). Routed through the InvokeBody seam so the VM can run
-	// the body as a compiled closure.
+	// hatch semantics).
 	result, err := InvokeBody(r, args[0], nil)
 	if err != nil {
 		// An `IO.exit` request crosses a HANDLER-LESS `do` unchanged. The
@@ -275,31 +211,15 @@ func DoListHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]
 }
 
 // bodyErrorPropagates reports whether a `do` body error must be
-// RE-RAISED rather than trapped as an Error value. Two kinds cross the
-// escape hatch unchanged:
-//
-//   - an IO.exit request — a control transfer, not a failure (trapping it
-//     as data would demote `IO.exit 4` to exit 0);
-//   - a designed VM defer (IsVMDefer: an internal_error the compiled VM
-//     raises when it cannot continue — DISPATCH_GENERIC with no
-//     live unit, a poly no-match, a recovered lowering panic). Trapping it
-//     as an Error value STRANDS the fallback — the defer never reaches the
-//     top-level run that re-runs interpreted, so the internal message
-//     surfaces as data (a top-level `do [risky]` printed it) or an enclosing
-//     fn's return contract rejects the Error (`type_error … got Error`)
-//     where the interpreter answers cleanly.
-//
-// The marker (not the public `internal_error` code) is what distinguishes a
-// defer: a user `raise internal_error "…"` carries the same code but no
-// VMDefer marker, so it stays trapped and `do [raise internal_error …] error
-// […]` still catches it — as does every other genuine boru error
-// (type_error, undefined_word, a user `raise`), the escape-hatch semantics
-// intend.
+// RE-RAISED rather than trapped as an Error value. One kind crosses the
+// escape hatch unchanged: an IO.exit request — a control transfer, not a
+// failure (trapping it as data would demote `IO.exit 4` to exit 0). Every
+// genuine boru error (type_error, undefined_word, a user `raise`, a user
+// `raise internal_error "…"` among them) stays trapped, as the escape-hatch
+// semantics intend.
 func bodyErrorPropagates(err error) bool {
-	if _, isExit := ExitCode(err); isExit {
-		return true
-	}
-	return IsVMDefer(err)
+	_, isExit := ExitCode(err)
+	return isExit
 }
 
 func DoListReturnsFn(args []Value, r *Registry) []Value {
@@ -366,7 +286,7 @@ func DoListReturnsFn(args []Value, r *Registry) []Value {
 		// The defs the body makes AFTER the raise never happen: `do [raise
 		// bad_input "boom" def x 1] … x` is undefined_word (or the earlier
 		// binding) on the interpreter, and the keep-defs model leaked x = 1
-		// into the enclosing scope, which the compiled lane then folded.
+		// into the enclosing scope.
 		for _, k := range r.Defs.Names() {
 			if r.Defs.Depth(k) > snap[k] {
 				r.Defs.Truncate(k, snap[k])
@@ -416,11 +336,10 @@ func DoListReturnsFn(args []Value, r *Registry) []Value {
 			// isolated (InvokeBody), so each shuffle meets the values the
 			// body itself pushed, exactly as it did here — `do [1 drop]` nets
 			// nothing, and there is no Error to latch (NUR222: `1 do [1 drop]
-			// drop` is [] on both lanes; its consumer had bailed).
+			// drop` is []).
 			if shuffleOnlyBody(bl.Elems(), r) {
 				return nil
 			}
-			r.Check.ValuelessDoBodies++
 			return []Value{NewCarrier(TError)}
 		}
 		return nil
@@ -708,13 +627,8 @@ func if3ReturnsFn(args []Value, r *Registry) []Value {
 	// The then arm may be a `[…]` code body or an already-evaluated VALUE
 	// (`if cond 99 88` — a literal, a def-bound value, a paren result),
 	// exactly like the else arm below. A non-body arm is its own value.
-	// An arm that may not run is bracketed (EnterSpecArm): a fn def inside
-	// one is speculative. Only the arm a DECIDED condition takes goes
-	// unbracketed — its defs are the post-branch bindings exactly
-	// (armsKnownToRun).
-	thenRuns, elseRuns := armsKnownToRun(args[0])
-	thenStk, thenDefs := ifArmResidual(r, args[0], args[1], thenRuns, ApplyGuardNarrowing)
-	elseStk, elseDefs := ifArmResidual(r, args[0], args[2], elseRuns, ApplyComplementNarrowing)
+	thenStk, thenDefs := ifArmResidual(r, args[0], args[1], ApplyGuardNarrowing)
+	elseStk, elseDefs := ifArmResidual(r, args[0], args[2], ApplyComplementNarrowing)
 	InstallJoinedDefs(r, thenDefs, elseDefs)
 	joined := JoinCarrierStacks(thenStk, elseStk)
 	if len(joined) == 0 {
@@ -734,22 +648,15 @@ func if3ReturnsFn(args []Value, r *Registry) []Value {
 }
 
 // ifArmResidual analyses one arm of an undecided `if`: a `[…]` code body
-// runs under the narrowing its condition licenses (narrow), bracketed as a
-// speculative arm unless the model knows it runs; any other arm is its own
-// value.
-func ifArmResidual(r *Registry, cond, arm Value, runs bool, narrow func(*Registry, Value) func()) ([]Value, map[string]Value) {
+// runs under the narrowing its condition licenses (narrow); any other arm
+// is its own value.
+func ifArmResidual(r *Registry, cond, arm Value, narrow func(*Registry, Value) func()) ([]Value, map[string]Value) {
 	if !(IsConcrete(&arm) && arm.Parent().ConformsTo(TList)) {
 		return []Value{arm}, nil
 	}
 	restore := narrow(r, cond)
 	defer restore()
-	var stk []Value
-	var defs map[string]Value
-	func() {
-		defer r.EnterSpecArm(runs)()
-		stk, defs = RunCarrierBodyWithDefs(r, arm)
-	}()
-	return stk, defs
+	return RunCarrierBodyWithDefs(r, arm)
 }
 
 // ifTakenArmReturns models a branch whose condition is DECIDED at check
@@ -765,12 +672,12 @@ func ifTakenArmReturns(r *Registry, cond, arm Value, lit bool) []Value {
 		restoreThen := ApplyGuardNarrowing(r, cond)
 		stk, defs = RunCarrierBodyWithDefs(r, arm)
 		restoreThen()
-		InstallTakenArmDefs(r, defs, nil)
+		InstallJoinedDefs(r, defs, nil)
 	} else {
 		restoreElse := ApplyComplementNarrowing(r, cond)
 		stk, defs = RunCarrierBodyWithDefs(r, arm)
 		restoreElse()
-		InstallTakenArmDefs(r, nil, defs)
+		InstallJoinedDefs(r, nil, defs)
 	}
 	if len(stk) == 0 {
 		// The taken arm leaves no value (`if [true] [def x 1] [2]`, NUR243):
@@ -790,7 +697,7 @@ func ifTakenArmReturns(r *Registry, cond, arm Value, lit bool) []Value {
 
 // staticCondArm reports the taken arm for a statically-known BARE concrete
 // Boolean condition — the shape a paren comparison folds to in plain check
-// (`(n eq 0)` → concrete false via CompileScalarFold, carrier.go). It is the
+// (`(n eq 0)` → concrete false via Signature.ConstFold, carrier.go). It is the
 // bare-value analogue of LiteralCondValue (which reads a length-1 LIST body)
 // and reuses condSelectsArm's concrete-Boolean probe. ok=false for a
 // list-form / dynamic / non-Boolean condition, so the caller falls through to
@@ -882,31 +789,14 @@ func reduceStaticArm(r *Registry, cond, arm Value, isThen bool) []Value {
 		restore := ApplyGuardNarrowing(r, cond)
 		stk, defs = RunCarrierBodyWithDefs(r, arm)
 		restore()
-		InstallTakenArmDefs(r, defs, nil)
+		InstallJoinedDefs(r, defs, nil)
 	} else {
 		restore := ApplyComplementNarrowing(r, cond)
 		stk, defs = RunCarrierBodyWithDefs(r, arm)
 		restore()
-		InstallTakenArmDefs(r, nil, defs)
+		InstallJoinedDefs(r, nil, defs)
 	}
 	return stk
-}
-
-// armsKnownToRun reports which arm of a branch the model knows RUNS: the
-// taken arm of a DECIDED condition — a literal `[true]` / `[false]` — whose
-// defs are the post-branch bindings exactly. Every other arm may not run, so
-// a fn def in it is bound at run time only if it does — speculative, as an
-// undecided arm's is. The arm a decided condition skips is the NEVER case of
-// that (NUR244: left unbracketed, the join kept its fn value and a read past
-// the merge called it, `if false [def f fn […]] [] end 3 f` answering the
-// fn's result for undefined_word). A bare concrete Boolean (a def-bound or
-// folded one) never reaches here: ReduceStaticIf takes it first, on both
-// `if` forms, and analyses the taken arm alone.
-func armsKnownToRun(cond Value) (thenRuns, elseRuns bool) {
-	if lit, ok := LiteralCondValue(cond); ok {
-		return lit, !lit
-	}
-	return false, false
 }
 
 func If2ReturnsFn(args []Value, r *Registry) []Value {
@@ -923,17 +813,7 @@ func If2ReturnsFn(args []Value, r *Registry) []Value {
 		EmitUnreachableBranch(r, false, "then")
 	}
 	restore := ApplyGuardNarrowing(r, args[0])
-	// The arm runs only when the condition holds: bracketed unless the model
-	// decides it true, like if3's arms (NUR244 — unbracketed, a fn def in
-	// the arm was the join's own value, called past the merge on the path
-	// that skipped it).
-	thenRuns, _ := armsKnownToRun(args[0])
-	var thenStk []Value
-	var thenDefs map[string]Value
-	func() {
-		defer r.EnterSpecArm(thenRuns)()
-		thenStk, thenDefs = RunCarrierBodyWithDefs(r, args[1])
-	}()
+	thenStk, thenDefs := RunCarrierBodyWithDefs(r, args[1])
 	restore()
 	InstallJoinedDefs(r, thenDefs, nil)
 	// 2-arg if: a VARIADIC result (0 or 1 values at run time). An empty
@@ -1049,8 +929,7 @@ func IfListReturnsFn(args []Value, r *Registry) []Value {
 func ForCountHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	// Reject a non-concrete count (a DepScalar/refinement Integer, a carrier)
 	// rather than silently coercing it to zero and running the loop zero
-	// times — the VM's OpForSetup (eng/go/vm.go) raises for_error here, so
-	// both engines must agree instead of one looping and the other erroring.
+	// times: a for_error.
 	n, err := args[0].AsConcreteInteger()
 	if err != nil {
 		return nil, r.BoruError("for_error", "for: count must be a concrete Integer", "for")
@@ -1068,8 +947,8 @@ func ForRangeHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) (
 	body := args[1]
 	start, end, step, err := ParseRange(rangeSpec)
 	if err != nil {
-		// for_error matches the VM's OpForSetup taxonomy (eng/go/vm.go) so a
-		// malformed/non-concrete range errors the same way in both engines.
+		// A malformed/non-concrete range is a for_error, as a non-concrete
+		// count is.
 		return nil, r.BoruError("for_error", "for: "+err.Error(), "for")
 	}
 	return RunForLoop(r, start, end, step, "i", body)
@@ -1168,15 +1047,7 @@ func forCarrierAnalyse(r *Registry, iterName string, iterType *Type, args []Valu
 			}
 		}
 	}
-	// provenTrips: the loop provably runs at least once (all three bounds
-	// static, count >= 1 — the statically-zero prune above already returned
-	// for a static zero-trip). It arms the S9.2a LoopBodyDepth stamp inside
-	// AnalyseLoopBody; a COMPUTED count must not (a runtime count of 0 runs
-	// the body zero times and would leak an admitted split's analysis-only
-	// binding — PR #280 review).
-	provenTrips := staticBounds &&
-		LoopIterations(AsInt64Or(startV, 0), AsInt64Or(endV, 0), AsInt64Or(stepV, 1)) >= 1
-	stk := AnalyseLoopBody(r, body, []string{iterName}, []Value{iter}, provenTrips)
+	stk := AnalyseLoopBody(r, body, []string{iterName}, []Value{iter})
 	out := NewCarrier(TList)
 	if len(stk) > 0 {
 		top := stk[len(stk)-1]
@@ -1364,10 +1235,8 @@ func ErrorHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]V
 	if !IsError(args[1]) {
 		return []Value{args[1]}, nil
 	}
-	// Run the handler with the caught error pushed as its one input. Routed
-	// through InvokeBody so a compiled handler closure runs VM-native (r.Invoker
-	// set); with no Invoker a fresh sub-engine runs the reconstructed token
-	// stream — byte-identical to the historical `New(r).Run([err, body…])`.
+	// Run the handler with the caught error pushed as its one input: a
+	// pooled sub-engine runs the reconstructed token stream (InvokeBody).
 	out, err := InvokeBody(r, args[0], []Value{args[1]})
 	if err != nil {
 		return nil, err

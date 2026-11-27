@@ -126,7 +126,7 @@ func unifyListFamily(a Value, sa ValueShape, b Value, sb ValueShape, r *Registry
 // kind, tagged, rather than dereferencing nil (the flex-[:T] panic twin).
 // See design/TYPED-CONTAINER-TAG-RETENTION.0.md.
 // reparentSwappedElem applies the Typed-Def Reparent discipline
-// (eng/go/CLAUDE.md) to a container-child unify result: Unify of a
+// (core/go/CLAUDE.md) to a container-child unify result: Unify of a
 // concrete element against a bare-refine child returns the TYPE
 // LITERAL (the documented Unify-swap), and binding that literal would
 // replace the element's data with the type name. Return the source

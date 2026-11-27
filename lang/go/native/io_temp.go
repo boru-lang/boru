@@ -27,7 +27,6 @@ func doTempWord(args []Value, r *Registry) ([]Value, error) {
 		}
 	}
 	pattern := prefix + "*" + suffix
-	r.NoteEffect()
 	var path string
 	var err error
 	if wantDir {

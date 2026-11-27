@@ -217,15 +217,6 @@ func logRegisterNative(lsr *LogSinkRegistry) NativeFunc {
 			Args:       []*Type{TFunction, TAtom, TAtom},
 			Returns:    []*Type{},
 			BarrierPos: -1,
-			// The sink fn is STORED (registerFnSink) and invoked by the Go-side
-			// sink machinery at emit time through a fresh sub-engine — never on
-			// the recorded tape — so a PURE fn literal bakes as a const operand
-			// exactly like the minilang/parselang register words (Stage M2c,
-			// design/legacy/STAGE3-INLINING-DESIGN-ROUND.0.ignore); a CAPTURING fn is no
-			// const, so it compiles as a closure unit and arrives as a closure
-			// operand the stored-sink invocation runs through the compiled
-			// runtime (the twenty-sixth increment; it declined before that).
-			CompileEffect: CompileStoresFn,
 			Impl: Go(func(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 				name, err := args[1].AsConcreteAtom()
 				if err != nil {

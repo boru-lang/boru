@@ -59,7 +59,6 @@ func BuildSiftModule(parent *native.Registry) (native.ModuleDesc, error) {
 	modReg.Output = parent.Output
 	modReg.ErrOutput = parent.ErrOutput
 	modReg.Input = parent.Input
-	modReg.Effects = parent.Effects
 	modReg.InheritObserveHooks(parent)
 	// Tag sift's sub-registry as a coverage target (coverage.go): sift's fn
 	// bodies run on this registry, so a coverage run attributes their executed

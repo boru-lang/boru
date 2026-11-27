@@ -35,22 +35,6 @@ func lrReg(t *testing.T) *Registry {
 	return r
 }
 
-func TestLaneRemovalEnterSpecArm(t *testing.T) {
-	r := covRegistry(t, nil)
-	r.EnterSpecArm(true)()
-	if r.Check.SpecArmDepth != 0 {
-		t.Fatalf("a known arm takes no bracket: depth %d", r.Check.SpecArmDepth)
-	}
-	leave := r.EnterSpecArm(false)
-	if r.Check.SpecArmDepth != 1 {
-		t.Fatalf("an undecidable arm raises the depth: %d", r.Check.SpecArmDepth)
-	}
-	leave()
-	if r.Check.SpecArmDepth != 0 {
-		t.Fatalf("leaving lowers it: %d", r.Check.SpecArmDepth)
-	}
-}
-
 func TestLaneRemovalFnMemberReads(t *testing.T) {
 	r := newTestRegistry(t)
 	c := r.Check
@@ -92,7 +76,7 @@ func TestLaneRemovalFnMemberReads(t *testing.T) {
 	}
 }
 
-func TestLaneRemovalJoinedDefsNarrowingAndTakenArms(t *testing.T) {
+func TestLaneRemovalJoinedDefsNarrowingAndOneArm(t *testing.T) {
 	r := w8reg(t)
 	r.Check.Mode = true
 	pre := NewDynamicCarrier(TAny)
@@ -111,19 +95,20 @@ func TestLaneRemovalJoinedDefsNarrowingAndTakenArms(t *testing.T) {
 	if d := r.Defs.Depth("bjq"); d != 1 {
 		t.Fatalf("a genuine both-arms join must push: depth = %d", d)
 	}
-	// A constant-condition branch: the taken arm's own value, marked Taken.
+	// A one-arm binding with nothing bound before the branch: the arm's own
+	// value.
 	tv := NewInteger(1)
-	joins := InstallTakenArmDefs(r, map[string]Value{"tka": tv}, nil)
-	if len(joins) != 1 || !joins[0].Taken || !joins[0].ThenBinds || joins[0].ElseBinds || joins[0].Name != "tka" {
-		t.Fatalf("a then-arm taken binding reports one Taken then-join: %+v", joins)
-	}
+	InstallJoinedDefs(r, map[string]Value{"tka": tv}, nil)
 	if got, ok := r.Defs.Top("tka"); !ok || IDOf(&got) != IDOf(&tv) {
-		t.Errorf("the taken arm's binding is the arm's own value: %v/%v", got, ok)
+		t.Errorf("a then-only binding is the arm's own value: %v/%v", got, ok)
 	}
 	ev := NewString("e")
-	joins = InstallTakenArmDefs(r, nil, map[string]Value{"tkb": ev})
-	if len(joins) != 1 || !joins[0].Taken || joins[0].ThenBinds || !joins[0].ElseBinds {
-		t.Fatalf("an else-arm taken binding reports one Taken else-join: %+v", joins)
+	InstallJoinedDefs(r, nil, map[string]Value{"tkb": ev})
+	if got, ok := r.Defs.Top("tkb"); !ok || IDOf(&got) != IDOf(&ev) {
+		t.Errorf("an else-only binding is the arm's own value: %v/%v", got, ok)
+	}
+	if _, ok := r.Defs.Top("never-bound"); ok {
+		t.Error("a name neither arm bound stays unbound")
 	}
 }
 
@@ -206,9 +191,6 @@ func TestLaneRemovalQuotedFnCarrierReadUnderAnalysis(t *testing.T) {
 	}
 	if got := e.Tape.At(0); IsQuoted(&got) {
 		t.Error("a bare read of a binding that may hold a fn is the word dispatch: the quote is dropped")
-	}
-	if len(e.defReads["lrq-1"]) != 1 {
-		t.Errorf("the read's position is noted for the def-read ledger: %v", e.defReads)
 	}
 }
 
@@ -400,7 +382,6 @@ func TestLaneRemovalNilReceivers(t *testing.T) {
 		t.Fatalf("nil get = (%v, %v), want (nil, false)", fn, ok)
 	}
 	c.put("x", 0, nil)
-	c.reset()
 	zero := &Registry{Check: &CheckState{StepBudget: -1}}
 	if zero.Lookup("anything") != nil {
 		t.Fatal("zero-registry Lookup = non-nil")
@@ -415,8 +396,8 @@ func TestLaneRemovalNilReceivers(t *testing.T) {
 	}
 	idle := &CheckState{}
 	idle.RecordDef("k", SrcPos{Row: 1, Col: 1})
-	if idle.DefsDone != 0 || idle.DefsInstalled != nil {
-		t.Errorf("RecordDef outside a pass records nothing: %d %v", idle.DefsDone, idle.DefsInstalled)
+	if idle.DefsInstalled != nil {
+		t.Errorf("RecordDef outside a pass records nothing: %v", idle.DefsInstalled)
 	}
 }
 

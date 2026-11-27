@@ -70,7 +70,7 @@ var arityNames = map[string]bool{
 // arity comparisons. See the header for what a pin means.
 var pinnedAritySites = map[string]int{
 	// ── The matcher and its machinery: reading arities to MATCH a signature
-	//    is the one argument rule (eng/go/CLAUDE.md, "Signature Ordering"),
+	//    is the one argument rule (core/go/CLAUDE.md, "Signature Ordering"),
 	//    not an exception to it.
 	// 33 -> 28: the plan-level matcher moved to core/go/collect_plan.go
 	// (PlanMatch, the sixty-fourth increment) with its five comparisons —
@@ -98,7 +98,7 @@ var pinnedAritySites = map[string]int{
 	// hasPendingForwardExpectingFunction's still-collecting test
 	// (`nextIdx < fwd.Sig.TotalArgs()`). No site was added: a bare fn name
 	// now calls at every slot, so nothing asks which slot is open.
-	// 27 -> 28 (2026-09-26, the merge of main's #509): TryRecordRecoveredUserFn
+	// 27 -> 28 (2026-09-26, the merge of main's #509): TryRecoverUserFn
 	// refuses a recovered window shorter than the sole sig (`len(window) <
 	// sig.TotalArgs()`) — the matcher's own arity rule, mirrored so the
 	// guarded CALL_USER never binds a partial window the interpreter's
@@ -132,12 +132,13 @@ var pinnedAritySites = map[string]int{
 	// the ratchet tightens.
 	"core/go/engine.go":      23,
 	"core/go/region_diag.go": 1,
-	// NUR357's forward fits (2026-09-29), matching the argument rule: a
-	// matched signature's collected args (len(match.Args)) are laid over the
-	// resolved stack beneath the word, and a candidate stopped at slot k
-	// draws its remaining TotalArgs()-k args from that stack — the same
-	// forward-then-stack binding every call makes, not a decision by arity.
-	"core/go/forward_fit.go": 2,
+	// BarrierBars (NUR362) asks whether an overload's barrier stops its
+	// forward collection short of its own argument count (`s.BarrierPos <
+	// s.TotalArgs()`) — the forward/stack split the argument rule makes.
+	// 2 -> 1, the file renamed from forward_fit.go (2026-11-27, the
+	// compiler residue pass): ForwardValueFits' slot bounds check is
+	// deleted with the forward-fit test only the compiled call ran.
+	"core/go/barrier_bars.go": 1,
 	// 5 -> 8 (NUR305): laterCandidateCollectsPast compared FORWARD-WINDOW
 	// counts (a later candidate's limit and scan against the selected fill)
 	// — the argument rule over two candidates, not behaviour by arity.
@@ -186,7 +187,7 @@ var pinnedAritySites = map[string]int{
 	"core/go/boru_error.go":   2,
 	"core/go/macro_expand.go": 1,
 
-	// ── The checker's and VM's mirrors of that same matching.
+	// ── The checker's mirrors of that same matching.
 	// 13 -> 15 on 2026-09-26 (the last real programs):
 	// reachableUnknownReturnSibling's same-arity candidate filter
 	// (`s.TotalArgs() != len(args)`) and its single-overload early out
@@ -200,7 +201,12 @@ var pinnedAritySites = map[string]int{
 	// recovery's best-fit overload over a SHORT window answers its declared
 	// Returns instead. A bounds check against the signature the argument
 	// rule matched, never behaviour keyed on a function's count.
-	"check/go/carrier.go": 16,
+	// 16 -> 12 (2026-11-27, the compiler residue pass): the four reads in
+	// FnPredicateOverloadHazard and DynamicReachableOverloadCount — each
+	// a same-arity candidate filter and a single-overload early out — are
+	// deleted with those functions, which only the compiler lane called.
+	// No site changed meaning; the ratchet tightens.
+	"check/go/carrier.go": 12,
 	// 1 -> 2 (2026-09-24, the written argument's fit, NUR194):
 	// shapedFnReadWindow guards `i-1 < len(shape.Params)` — a BOUNDS check
 	// on the claim's parameter-type slice, which may be shorter than the

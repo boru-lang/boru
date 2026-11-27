@@ -10,7 +10,7 @@ import (
 
 // resolve_color_test.go — the colour cascade, both halves of the NO_COLOR
 // read. This test moved here with ResolveColor itself (it was
-// eng/go/diag_render_test.go::TestResolveColor) and gained the arm the move
+// core/go/diag_render_test.go::TestResolveColor) and gained the arm the move
 // exists for: a host-installed EnvOps governs the decision, so the renderer
 // and `IO.env` can no longer disagree about what the environment is.
 

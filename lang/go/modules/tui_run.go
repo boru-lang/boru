@@ -429,10 +429,10 @@ func (d *tuiDriver) render(state native.Value) error {
 // tuiRunNatives lists the Tier-2 runtime words.
 func tuiRunNatives() []native.NativeFunc {
 	T := func(ts ...*native.Type) []*native.Type { return ts }
-	return native.SideEffecting([]native.NativeFunc{
+	return []native.NativeFunc{
 		{Name: "run", Signatures: []native.Signature{
 			{Args: T(native.TMap), Impl: native.Go(tuiRunHandler), Returns: T(native.TAny),
-				ReturnsFn: tuiRunMirror(), BarrierPos: -1, CompileEffect: native.CompileStoresFn},
+				ReturnsFn: tuiRunMirror(), BarrierPos: -1},
 		}},
-	})
+	}
 }

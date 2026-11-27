@@ -164,9 +164,6 @@ func requireConcreteMap(reg *Registry, v Value, word string) (ReadMap, error) {
 // eachMapHandler maps a body over a map's values, keeping the keys — `mapValues`.
 // Backs the `[TList, TMap]` (quotation) and `[TFunction, TMap]` (lambda) sigs.
 func eachMapHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([]Value, error) {
-	if collIsConcreteList(args[1]) {
-		return eachHandler(args, nil, nil, reg)
-	}
 	data, err := requireConcreteMap(reg, args[1], "each")
 	if err != nil {
 		return nil, err
@@ -223,9 +220,6 @@ func forEachMapHandler(args []Value, _ map[string]Value, _ []Value, reg *Registr
 // foldMapInitHandler reduces a map's entries with an explicit seed —
 // `init fold [body] {map}`. Backs `[TList, TMap, TAny]` / `[TFunction, TMap, TAny]`.
 func foldMapInitHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([]Value, error) {
-	if collIsConcreteList(args[1]) {
-		return foldWithInitHandler(args, nil, nil, reg)
-	}
 	data, err := requireConcreteMap(reg, args[1], "fold")
 	if err != nil {
 		return nil, err
@@ -236,9 +230,6 @@ func foldMapInitHandler(args []Value, _ map[string]Value, _ []Value, reg *Regist
 // foldMapNoInitHandler reduces a map's entries, seeding from the first value —
 // `fold [body] {map}`. Backs `[TList, TMap]` / `[TFunction, TMap]`.
 func foldMapNoInitHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([]Value, error) {
-	if collIsConcreteList(args[1]) {
-		return foldNoInitHandler(args, nil, nil, reg)
-	}
 	data, err := requireConcreteMap(reg, args[1], "fold")
 	if err != nil {
 		return nil, err
@@ -283,9 +274,6 @@ func doFoldMap(reg *Registry, body, acc Value, data ReadMap, start int) ([]Value
 // body result becomes that key's output. Keeps the map shape (keys preserved).
 // Backs the `[TList, TMap]` (quotation) and `[TFunction, TMap]` (lambda) sigs.
 func scanMapHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([]Value, error) {
-	if collIsConcreteList(args[1]) {
-		return scanHandler(args, nil, nil, reg)
-	}
 	data, err := requireConcreteMap(reg, args[1], "scan")
 	if err != nil {
 		return nil, err

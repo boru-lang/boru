@@ -118,27 +118,3 @@ func stampStoredModuleCall(r *Registry, name string, id *ModuleCallID) {
 		}
 	}
 }
-
-// StampedModuleCall returns the per-export policy identity stamped onto
-// name's stored signatures in a module sub-registry, or nil when the
-// name carries none. The compiled CALL_USER arm uses it rather than
-// reconstructing an identity from the unit's name: a module-preamble
-// fn's INNER name (`cli-w-usage`) is not the EXPORT key the policy
-// addresses (`usage`), and only the stamp knows the mapping.
-func StampedModuleCall(r *Registry, name string) *ModuleCallID {
-	if r == nil {
-		return nil
-	}
-	for _, entry := range r.Defs.Stack(name) {
-		fd, ok := entry.Data().(*FnDefInfo)
-		if !ok {
-			continue
-		}
-		for i := range fd.Signatures {
-			if id := fd.Signatures[i].ModuleCall; id != nil {
-				return id
-			}
-		}
-	}
-	return nil
-}

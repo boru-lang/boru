@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -40,12 +41,12 @@ func TestFetchFunc(t *testing.T) {
 	}
 }
 
-// effect ledger: a fetch that reaches the network counts one effect on the
-// registry's ledger (noted on the attempt — once Do runs, the request may
-// have escaped even on error), while a request rejected BEFORE the send (a
-// missing url) provably sent nothing and stays uncounted.
-func TestFetchNotesEffectLedger(t *testing.T) {
+// A fetch reaches the peer exactly once, while a request rejected BEFORE the
+// send (a missing url) provably sends nothing.
+func TestFetchSendsOnceAndRejectsBeforeSend(t *testing.T) {
+	var hits atomic.Int64
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
 		w.WriteHeader(200)
 	}))
 	defer ts.Close()
@@ -55,20 +56,19 @@ func TestFetchNotesEffectLedger(t *testing.T) {
 		t.Fatal(err)
 	}
 	ft := MintFetchTypes(r)
-	before := r.Effects.Count()
 	if _, err := ft.fetchStringHandler([]Value{NewString(ts.URL)}, nil, nil, r); err != nil {
 		t.Fatal(err)
 	}
-	if delta := r.Effects.Count() - before; delta != 1 {
-		t.Errorf("fetch ledger delta = %d, want exactly 1", delta)
+	if n := hits.Load(); n != 1 {
+		t.Errorf("the server saw %d request(s), want exactly 1", n)
 	}
 
 	om := NewOrderedMap()
 	if _, err := ft.doFetch(om, r); err == nil {
 		t.Fatal("missing url must error")
 	}
-	if delta := r.Effects.Count() - before; delta != 1 {
-		t.Errorf("a pre-send rejection counted: delta = %d, want still 1", delta)
+	if n := hits.Load(); n != 1 {
+		t.Errorf("a pre-send rejection reached the server: %d request(s), want still 1", n)
 	}
 }
 

@@ -919,7 +919,7 @@ const (
 //
 // A NEGATIVE BarrierPos is the "-1" sentinel for all-forward-eligible.
 // The registry normalizes it to TotalArgs() when a native is registered
-// (eng/go/registry.go), but an FnSig carried on an FnDefInfo — every
+// (core/go/registry.go), but an FnSig carried on an FnDefInfo — every
 // module-export wrapper, which the wrapper rule requires to declare -1 —
 // still holds the raw sentinel when it reaches here. Normalizing in these
 // two predicates keeps that shape from reading as stack-only.

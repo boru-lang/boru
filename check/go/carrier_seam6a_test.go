@@ -134,9 +134,9 @@ func TestS6aGradualContagionStrictDedup(t *testing.T) {
 	}
 }
 
-// registerIslandWord registers a word with the given compile effect and
-// arg count and returns the REGISTERED sig pointer (identity matters).
-func registerIslandWord(t *testing.T, r *core.Registry, name string, effect core.CompileEffect, argc int, barrier int) *core.Signature {
+// registerPlainWord registers a word with the given arg count and returns
+// the REGISTERED sig pointer (identity matters).
+func registerPlainWord(t *testing.T, r *core.Registry, name string, argc int, barrier int) *core.Signature {
 	t.Helper()
 	args := make([]*core.Type, argc)
 	for i := range args {
@@ -145,8 +145,7 @@ func registerIslandWord(t *testing.T, r *core.Registry, name string, effect core
 	r.RegisterNativeFunc(core.NativeFunc{
 		Name: name,
 		Signatures: []core.Signature{{
-			Args:          args,
-			CompileEffect: effect,
+			Args: args,
 			Impl: core.Go(func(_ []core.Value, _ map[string]core.Value, _ []core.Value, _ *core.Registry) ([]core.Value, error) {
 				return []core.Value{core.NewInteger(0)}, nil
 			}),
@@ -157,19 +156,6 @@ func registerIslandWord(t *testing.T, r *core.Registry, name string, effect core
 		t.Fatalf("registration of %s: %v", name, err)
 	}
 	return &r.Lookup(name).Signatures[0]
-}
-
-func TestS6aBodyFreeForFallbackLiteralAndTypeWords(t *testing.T) {
-	r := newTestRegistry(t)
-	if !BodyFreeForFallback(r, core.NewList([]core.Value{core.NewWord("true"), core.NewWord("false")})) {
-		t.Error("bare literal words are VM-resolvable")
-	}
-	if !BodyFreeForFallback(r, core.NewList([]core.Value{core.NewWord("Integer")})) {
-		t.Error("type-name words are VM-resolvable")
-	}
-	if BodyFreeForFallback(r, core.NewList([]core.Value{core.NewWord("s6a_no_such")})) {
-		t.Error("an unresolvable word must fail the body scan")
-	}
 }
 
 // --- disjunctPartitionReturns ------------------------------------------------------
@@ -192,7 +178,7 @@ func TestS6aDisjunctPartitionUnknownWordDeclines(t *testing.T) {
 
 func TestS6aDisjunctPartitionComboCapDeclines(t *testing.T) {
 	r := newTestRegistry(t)
-	registerIslandWord(t, r, "s6apart", 0, 1, -1)
+	registerPlainWord(t, r, "s6apart", 1, -1)
 	done := r.Check.Begin()
 	defer done()
 	alts := make([]core.Value, disjunctPartitionCap+1)
@@ -452,28 +438,3 @@ func TestS6aRefineRecursiveSummaryJoinsRounds(t *testing.T) {
 }
 
 // --- RunFnBodyOnce / AnalyseFnBody -----------------------------------------------------------
-
-func TestS6aIsDeferredWordListShapes(t *testing.T) {
-	// Parent=TList with a non-list payload: AsList fails.
-	bad := core.NewValueRaw(core.TList, core.IntPayload{N: 1})
-	core.SetEval(&bad, true)
-	if IsDeferredWordList(bad) {
-		t.Error("a non-list payload must decline")
-	}
-
-	// A nested list containing a word: deferred.
-	inner := core.NewList([]core.Value{core.NewWord("w")})
-	core.SetEval(&inner, true)
-	outer := core.NewList([]core.Value{inner})
-	core.SetEval(&outer, true)
-	if !IsDeferredWordList(outer) {
-		t.Error("a nested word-bearing list is deferred")
-	}
-
-	// No words anywhere: not deferred.
-	plain := core.NewList([]core.Value{core.NewInteger(1), core.NewList([]core.Value{core.NewInteger(2)})})
-	core.SetEval(&plain, true)
-	if IsDeferredWordList(plain) {
-		t.Error("a word-free list is not deferred")
-	}
-}

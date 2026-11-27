@@ -97,7 +97,7 @@ var patrunNatives = []NativeFunc{
 			// (CompileStoresFn; a capturing fn declines at isInertConst and falls
 			// back, keeping its real binding).
 			{Args: []*Type{TMap, TAny, TPatrun}, Impl: Go(patrunAddHandler), Returns: []*Type{},
-				ReturnsFn: patrunAddReturns, BarrierPos: -1, CompileEffect: CompileStoresFn},
+				ReturnsFn: patrunAddReturns, BarrierPos: -1},
 		},
 	},
 	{

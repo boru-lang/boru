@@ -32,7 +32,7 @@ func checkResidual(t *testing.T, src string) []core.Value {
 	return out
 }
 
-// CompileScalarFold — a comparison over compile-time-known scalars folds to
+// Signature.ConstFold — a comparison over compile-time-known scalars folds to
 // its CONCRETE result in check mode (tryFoldScalarConst), instead of the
 // declared-type carrier: the prerequisite for static branch commitment
 // (`(n eq 0)` with const n must read as a known false, not "some Boolean").

@@ -552,7 +552,7 @@ func CarrierResults(r *core.Registry, word string, sig *core.Signature, args []c
 	}
 	out := declaredReturnCarriers(r, word, sig, args, pos)
 	if folded, ok := tryFoldScalarConst(r, sig, args); ok && len(out) == 1 {
-		// Concrete-condition folding (CompileScalarFold): the comparison ran
+		// Concrete-condition folding (Signature.ConstFold): the comparison ran
 		// for real over compile-time-known scalars, so the concrete result
 		// replaces the declared-type carrier — `(n eq 0)` with a const n
 		// reads as a known false downstream (return-membership conformance,
@@ -565,7 +565,7 @@ func CarrierResults(r *core.Registry, word string, sig *core.Signature, args []c
 }
 
 // scalarFoldOperand reports whether a check-mode dispatch operand carries a
-// compile-time-known SCALAR value a CompileScalarFold dispatch may fold
+// check-time-known SCALAR value a ConstFold dispatch may fold
 // over: an inert const, or a check-mode literal — which rides as a
 // concrete-PAYLOAD carrier (Carrier=true, Data set; the same shape the
 // DepScalar predicate evaluation reads for `f 5`), so the isInertConst
@@ -688,7 +688,6 @@ func declaredReturnCarriers(r *core.Registry, word string, sig *core.Signature, 
 		out = shortWindowCarriers(sig)
 	case sig.ReturnsFn != nil:
 		r.Check.CurCallPos = pos // expose call site to ReturnsFn (e.g. make Array identity)
-		r.Check.CurCallWord = word
 		raw := sig.ReturnsFn(resolveTypeNameArgs(args), r)
 		out = make([]core.Value, len(raw))
 		for i, v := range raw {
@@ -936,64 +935,9 @@ func applyGradualContagion(r *core.Registry, word string, args []core.Value, out
 	return out
 }
 
-// bodyFreeForFallback reports whether a code body references only words
-// the VM's sub-engine can resolve at run time: registered natives /
-// fn-defs (r.Lookup non-nil) and the known bare literals. A bare word
-// bound by a value `def` resolves via Defs substitution, NOT Lookup, so
-// it fails here — correctly, since at VM run time that binding is the
-// check pass's CARRIER, not a concrete value.
-func BodyFreeForFallback(r *core.Registry, body core.Value) bool {
-	free := true
-	core.WalkBodyWords([]core.Value{body}, func(w core.WordInfo, _ core.Value) {
-		if !free {
-			return
-		}
-		switch w.Name {
-		case "true", "false", "none", "null":
-			return
-		case "break", "continue", "return":
-			// A flow-control sentinel inside the body would set the shared
-			// registry's FlowCtrl when the island's sub-engine runs it; the
-			// VM cannot propagate that to an ENCLOSING compiled loop/frame
-			// across the island boundary (the sentinel surfaces as a
-			// tape-coupled island result and the VM rejects it). Decline so
-			// the program does not compile, where the interpreter unwinds
-			// it correctly. (Sentinels targeting a loop WITHIN the body are
-			// rarer than this conservative rule loses; the gate stays
-			// green either way.)
-			free = false
-			return
-		case "args", "__pa":
-			// Context-dependent words read the interpreter's per-call args
-			// stack, which the VM's CALL_USER frames do not maintain (params
-			// are frame locals). An island's sub-engine inside a compiled fn
-			// would therefore see an EMPTY args stack where the interpreter
-			// sees the enclosing call's list — `do [args]` in a fn islanded
-			// to error(args_error) against the interpreter's [7]. Decline so
-			// the program does not compile (the same divergence RecordCall's
-			// context-dependent-word gate declines for direct dispatches).
-			free = false
-			return
-		}
-		if r.Lookup(w.Name) != nil {
-			return
-		}
-		if _, ok := core.TypeNames[w.Name]; ok {
-			return
-		}
-		free = false
-	})
-	return free
-}
-
 // bodyHasSentinel reports whether a code body contains a flow-control
-// sentinel (break/continue/return). Such a body cannot compile to a closure
-// (or island): the sentinel targets an ENCLOSING loop/frame the VM cannot
-// reach across the call boundary, so the whole program must fall back and let
-// the interpreter unwind it. Unlike bodyFreeForFallback this does NOT reject
-// def references — the closure compile bakes a concrete def as a const or
-// threads an enclosing-fn binding as a capture, and the probe compile declines
-// anything it cannot resolve.
+// sentinel (break/continue/return): one that targets an ENCLOSING loop or
+// frame, across the body's own boundary.
 func BodyHasSentinel(body core.Value) bool {
 	return valueHasSentinel(body)
 }
@@ -1110,85 +1054,6 @@ func xmlTmplScan(t core.XmlTmpl, scan func(core.Value) bool) bool {
 			}
 		case core.XmlCrenChild:
 			if c.Child != nil && xmlTmplScan(*c.Child, scan) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// bodyHasSentinelDeep is bodyHasSentinel plus a TRANSITIVE callee scan: a
-// body word resolving to a user fn (registry-installed or a def-bound fn
-// value) whose body — transitively through further calls — holds a bare
-// break/continue leaks that signal through the call into the CALLER's loop
-// (probe-verified: the interpreter unwinds `def f fn [.. [break 7]] .. do
-// [f 1]` to the enclosing for), while a compiled closure boundary starts a
-// fresh loop stack and surfaces "flow signal with no enclosing loop" error
-// values — a miscompile. `return` is deliberately NOT counted in callees:
-// the fn boundary consumes it. The scan is conservative — a break consumed
-// by the callee's OWN loop still declines; the body then falls back with
-// parity, so the cost is speed, never correctness.
-//
-// The closure-compile gates with a Registry in hand ride this deep variant:
-// the token-list callable gate (which owns `do <body>` — the proven
-// divergence) and the dyn-body bake gate. Where the interpreter does not
-// thread a callee's break through the boundary anyway (each/filter callbacks
-// raise `break outside loop` — probe-verified), the deep decline is still
-// parity-safe: the fallback interpreter run raises identically. The
-// const-bake gates (the noEvalBodiesInert twins) and the lambda gates keep
-// the syntactic scan — no divergence reproduced there.
-func BodyHasSentinelDeep(r *core.Registry, body core.Value) bool {
-	if BodyHasSentinel(body) {
-		return true
-	}
-	if r == nil {
-		return false
-	}
-	return calleeValueLeaksFlow(r, body, map[string]bool{})
-}
-
-// calleeValueLeaksFlow is the transitive-scan walker: bare break/continue
-// count as leaks, other words resolve to callee fn bodies (recursively,
-// cycle-guarded by seen), and containers recurse. Constructed fn payloads
-// scan too — an APPLIED fn value's break escapes to the caller (only raw
-// tokens reach the direct scanner; a constructed FnDefInfo in a body is
-// treated as potentially applied).
-func calleeValueLeaksFlow(r *core.Registry, v core.Value, seen map[string]bool) bool {
-	if fd, ok := v.Data().(*core.FnDefInfo); ok {
-		return fnDefLeaksFlow(r, fd, seen)
-	}
-	if core.IsWord(&v) {
-		w, _ := core.AsWord(&v)
-		if w.Name == "break" || w.Name == "continue" {
-			return true
-		}
-		return calleeLeaksFlow(r, w.Name, seen)
-	}
-	return scanBodyContainers(v, func(e core.Value) bool {
-		return calleeValueLeaksFlow(r, e, seen)
-	})
-}
-
-// calleeLeaksFlow resolves name to its aggregated dispatch table (Lookup
-// unions every FnDefInfo binding on the name's def stack — exactly what a
-// call would dispatch over) and scans the overload bodies. Native (Go-impl)
-// sigs have no boru body and contribute nothing.
-func calleeLeaksFlow(r *core.Registry, name string, seen map[string]bool) bool {
-	if name == "" || seen[name] {
-		return false
-	}
-	seen[name] = true
-	fd := r.Lookup(name)
-	return fd != nil && fnDefLeaksFlow(r, fd, seen)
-}
-
-// fnDefLeaksFlow scans every overload body of fd for a leaking
-// break/continue. A module fn's body words resolve in its OWN registry.
-func fnDefLeaksFlow(r *core.Registry, fd *core.FnDefInfo, seen map[string]bool) bool {
-	r, _ = core.FnHome(r, fd)
-	for i := range fd.Signatures {
-		for _, t := range fd.Signatures[i].Body() {
-			if calleeValueLeaksFlow(r, t, seen) {
 				return true
 			}
 		}
@@ -1400,119 +1265,15 @@ func comboTypeNames(combo []core.Value) string {
 	return strings.Join(parts, ", ")
 }
 
-// dynamicReachableReturns returns the distinct single-position return
-// types of every signature of `word` that the (dynamic) args reach, but
-// only when there are TWO OR MORE distinct returns — the case the
-// single matched-sig return would get wrong. Returns nil otherwise (the
-// common case: contagion's matched-sig return is already correct).
-// Restricted to same-arity, single-static-return sigs; any other shape
-// falls back to contagion.
-// dynamicReachableValueReturns returns the distinct 1-value return types of the
-// word's overloads that the (possibly dynamic) args can reach. Unlike
-// dynamicReachableReturns it does NOT bail on a sibling that returns 0 values —
-// it is for the MIXED-arity case: a mutator like `set` whose in-place overloads
+// dynamicReachableValueReturns returns the distinct 1-value return types of
+// the word's overloads that the (possibly dynamic) args can reach. It does
+// not bail on a sibling that returns 0 values — it is for the MIXED-arity
+// case: a mutator like `set` whose in-place overloads
 // (Array/Object/Store/Class) return nothing while the value-returning twins
-// (Map/List/Flex) return the updated node. A CONCRETE receiver reaches only its
-// own overload (sigTypeMatches is exact for it), so this returns nil there and
-// the true 0-arity stands; only a genuinely dynamic receiver reaches both.
-// dynamicReachableOverloadCount counts how many of word's same-arity overloads
-// the (partly-dynamic) arg list could match. ≥2 means the dispatch is AMBIGUOUS:
-// a gradual-Any arg matches every overload optimistically, so the checker's single
-// committed overload may not be the one the RUNTIME value needs. Used to decline a
-// higher-order word (each/fold/scan) over a gradual collection — its List-vs-Map
-// overloads can't be statically chosen and it has no poly re-match (code body).
-// fnPredicateOverloadHazard reports whether word's same-arity overload set
-// both (a) contains an fn-PREDICATE-typed param slot (*predicateUnifier —
-// the boru fn-body membership path whose check-mode match is LENIENT:
-// RunPredicate short-circuits true, registry.go) and (b) leaves more than
-// one arm reachable for these args — the combination where a static arm
-// commit can diverge from the interpreter's runtime predicate fall-through.
-// DepScalar and Go-member types match self-contained in check mode (no
-// leniency), so they carry no hazard — unless the refinement's bound is one
-// the pass does not know (a computed one, `def T (Integer gt (size s))`):
-// its check-mode match admits every value (NUR308), the same leniency.
-func FnPredicateOverloadHazard(r *core.Registry, word string, args []core.Value) bool {
-	fn := r.Lookup(word)
-	if fn == nil || len(fn.Signatures) < 2 {
-		return false
-	}
-	hasPred, reachable := false, 0
-	for i := range fn.Signatures {
-		s := &fn.Signatures[i]
-		if s.TotalArgs() != len(args) {
-			continue
-		}
-		reach := true
-		for j := range args {
-			t := core.SigArgType(s, j)
-			if t != nil {
-				if _, ok := t.Behavior().(*core.PredicateUnifier); ok {
-					hasPred = true
-				}
-				if core.HasUnknownRefinement(core.NewTypeLiteral(t)) {
-					hasPred = true
-				}
-			}
-			if p, ok := core.SigPattern(s, j); ok && core.HasUnknownRefinement(p) {
-				hasPred = true
-			}
-			if !core.SigTypeMatches(&args[j], t) {
-				reach = false
-				break
-			}
-		}
-		if reach {
-			reachable++
-		}
-	}
-	return hasPred && reachable >= 2
-}
-
-func DynamicReachableOverloadCount(r *core.Registry, word string, args []core.Value) int {
-	fn := r.Lookup(word)
-	if fn == nil || len(fn.Signatures) < 2 {
-		return 0
-	}
-	n := 0
-	for i := range fn.Signatures {
-		s := &fn.Signatures[i]
-		if s.TotalArgs() != len(args) {
-			continue
-		}
-		reach := true
-		for j := range args {
-			// A strict OR gradual Any carrier could hold a value of any type at
-			// run time, so it reaches EVERY same-arity arm — the dispatch is
-			// genuinely runtime-dynamic and must poly re-match, not commit
-			// statically to the Any-slot arm. Without this a strict Any (an Any
-			// param's generalised arg — core_helpers.go) reached only the Any
-			// overload, so a wrapper forwarding a Map through an Any param baked
-			// the Any arm and diverged from the interpreter's Map dispatch (the
-			// each/fold-body multi-sig degradation).
-			if isAnyCarrier(args[j]) {
-				continue
-			}
-			// A GENERIC placeholder slot ((T extends Comparable)) admits by
-			// per-call instantiation over the runtime value, which a gradual
-			// arg's bound-disjointness probe cannot see (tand(Integer, T-node)
-			// is Never even though a runtime Integer instantiates T) — count
-			// the arm reachable so the ambiguous dispatch stays a runtime
-			// re-matched user poly instead of a wrong static commit.
-			if core.IsDynamic(&args[j]) && core.IsTypeParamNode(core.SigArgType(s, j)) {
-				continue
-			}
-			if !core.SigTypeMatches(&args[j], core.SigArgType(s, j)) {
-				reach = false
-				break
-			}
-		}
-		if reach {
-			n++
-		}
-	}
-	return n
-}
-
+// (Map/List/Flex) return the updated node. A CONCRETE receiver reaches only
+// its own overload (sigTypeMatches is exact for it), so this returns nil
+// there and the true 0-arity stands; only a genuinely dynamic receiver
+// reaches both.
 func dynamicReachableValueReturns(r *core.Registry, word string, args []core.Value) []*core.Type {
 	fn := r.Lookup(word)
 	if fn == nil {
@@ -1835,20 +1596,6 @@ func AnyDynamicCarrier(vs []core.Value) bool {
 	return false
 }
 
-// anyNonConcreteOperand reports whether any value is not a concrete
-// payload-bearing value (a typed carrier or a bare type literal) — the
-// operand shape under which a static CoreDefault match is not a dispatch
-// proof (recordCallCompileFailure): the runtime tag may be a strict subtype a
-// more-specific unlocked overload claims.
-func AnyNonConcreteOperand(vs []core.Value) bool {
-	for _, v := range vs {
-		if !core.IsConcrete(&v) {
-			return true
-		}
-	}
-	return false
-}
-
 // anyAnyCarrier reports whether any value is an Any-typed carrier — a value
 // whose static type is unknown (a List/Map element, an opaque module-fn
 // result). Unlike anyDynamicCarrier it does not require the Dynamic flag: a
@@ -2164,40 +1911,6 @@ func ReturnsAddConcat() core.ReturnsFunc {
 	}
 }
 
-// carrierMixedConform reports whether v is a genuinely MIXED gradual
-// carrier with respect to type t: a non-concrete Disjunct carrier whose
-// flattened alternatives include at least one that conforms to t AND at
-// least one that does not. Such a carrier makes a forward/stack dispatch
-// split AMBIGUOUS — a concrete value drawn from it could match a more-
-// specific overload (and be grabbed from the stack) or not (and be
-// skipped, so the word forward-collects instead). The two splits leave
-// different stacks, so the bytecode compiler cannot statically reproduce
-// the runtime one. A pure carrier (all alternatives conform, or none do)
-// and a bare dynamic carrier are NOT mixed and return false: the split is
-// consistent, or is the dynamic path handled elsewhere.
-func carrierMixedConform(v core.Value, t *core.Type) bool {
-	if t == nil || !v.Carrier() || core.IsConcrete(&v) || core.IsDynamic(&v) {
-		return false
-	}
-	alts := core.FlattenAlternatives(v)
-	if len(alts) < 2 {
-		return false
-	}
-	someConform, someReject := false, false
-	for _, alt := range alts {
-		// core.FlattenAlternatives yields type LITERALS; the denoted type is
-		// typeNodeOf(alt), NOT alt.Parent (a literal's Parent is the
-		// denoted node's lattice parent — the `Boolean` literal's Parent
-		// is `Scalar`).
-		if node := core.TypeNodeOf(alt); node != nil && node.ConformsTo(t) {
-			someConform = true
-		} else {
-			someReject = true
-		}
-	}
-	return someConform && someReject
-}
-
 // loopAnalysisRounds bounds the Kleene iteration for loop-body
 // analysis: round 1 with the pre-loop bindings, then re-runs with the
 // joined bindings until stable. Three rounds suffice for ascent in a
@@ -2207,6 +1920,16 @@ const loopAnalysisRounds = 3
 // FnAnalysisQuota caps how many distinct call shapes one fn's body is
 // analysed for before the checker answers from the declaration (A9).
 const FnAnalysisQuota = 64
+
+// isBindName reports whether name is one of a loop's own bind variables.
+func isBindName(bindNames []string, name string) bool {
+	for _, n := range bindNames {
+		if n == name {
+			return true
+		}
+	}
+	return false
+}
 
 // AnalyseLoopBody analyses a loop body to a bounded fixed point
 // (design/legacy/checker-accuracy-review.10.ignore A4). Each round binds the
@@ -2225,31 +1948,7 @@ const FnAnalysisQuota = 64
 // The joined post-loop bindings are left installed (they ARE the
 // post-loop environment); the loop-local binds are popped. Returns
 // the final round's residual carrier stack.
-//
-// provenTrips asserts the CALLER's proof that the loop executes at least
-// once at run time — a static trip count >= 1 (forCarrierAnalyse's
-// staticBounds). Combined with the body carrying no flow-control sentinel
-// (bodyHasSentinel — a break/continue/return can bypass a site or discard
-// an iteration's spilled values), it gates the LoopBodyDepth stamp the
-// S9.2a first-value split consults: the split's soundness argument is
-// "every enclosing body runs unconditionally per iteration AND the split
-// site is reached with its residual intact", which a computed count (zero
-// trips leak the analysis-only binding) or loop control (PR #280 review:
-// `continue` bypassed the bind, `break` kept a discarded iteration's
-// value) breaks. A non-proven loop body still analyses identically — it
-// just declines the split (NestedBodyDepth != LoopBodyDepth).
-// isBindName reports whether name is one of a loop's own bind variables.
-func isBindName(bindNames []string, name string) bool {
-	for _, n := range bindNames {
-		if n == name {
-			return true
-		}
-	}
-	return false
-}
-
-func AnalyseLoopBody(r *core.Registry, body core.Value, bindNames []string, bindVals []core.Value, provenTrips bool) []core.Value {
-	proven := provenTrips && !BodyHasSentinel(body)
+func AnalyseLoopBody(r *core.Registry, body core.Value, bindNames []string, bindVals []core.Value) []core.Value {
 	var stk []core.Value
 	var installed []string
 	diagBase := len(r.Check.Diagnostics)
@@ -2274,13 +1973,7 @@ func AnalyseLoopBody(r *core.Registry, body core.Value, bindNames []string, bind
 			r.Defs.Push(n, bindVals[i])
 		}
 		var adds map[string]core.Value
-		if proven {
-			r.Check.LoopBodyDepth++
-		}
 		stk, adds = core.RunCarrierBodyWithDefs(r, body)
-		if proven {
-			r.Check.LoopBodyDepth--
-		}
 		for i := len(bindNames) - 1; i >= 0; i-- {
 			for r.Defs.Depth(bindNames[i]) > bindDepths[i] {
 				r.Defs.Pop(bindNames[i])
@@ -2305,8 +1998,7 @@ func AnalyseLoopBody(r *core.Registry, body core.Value, bindNames []string, bind
 			// A body def of one of the loop's OWN bind names (its index)
 			// rebinds the iteration's binding and ends with it — the
 			// lexical index scope (NUR204): it is neither joined into the
-			// post-loop binding nor loop-carried (the lowering stores it
-			// into the index slot).
+			// post-loop binding nor loop-carried.
 			if isBindName(bindNames, k) {
 				continue
 			}
@@ -2543,11 +2235,9 @@ func RunFnBodyOnce(r *core.Registry, name string, paramNames []string, body, arg
 	parts := r.TypePartsSnapshot()
 
 	// Expose the params as the per-call args list so a body that reads
-	// `args` / `args.N` resolves them in check mode. The params ARE the
-	// frame's leading locals (0..n-1), so `args.N` folds to that local — at
-	// lowering it becomes PUSH_LOCAL N, no runtime args stack needed
-	// (CarrierResults' `args` projection + tryFoldStaticIndex). Pushed
-	// alongside the FnBaseline; popped together.
+	// `args` / `args.N` resolves them in check mode (CarrierResults' `args`
+	// projection + tryFoldStaticIndex). Pushed alongside the FnBaseline;
+	// popped together.
 	_ = r.Args.Push(core.NewList(append([]core.Value(nil), args...)))
 	defer func() { _, _ = r.Args.Pop() }()
 
@@ -2643,16 +2333,6 @@ func emptyBodyResidual(paramNames []string, args []core.Value) []core.Value {
 // the analyser aborted (recursion detected or body not available) —
 // callers should treat that as an Any carrier.
 func AnalyseFnBody(r *core.Registry, name string, paramNames []string, body []core.Value, args []core.Value, captures []core.CapturedBinding, declared []*core.Type, anonymous bool) []core.Value {
-	// A callee's body is its OWN control flow: an undecidable arm the
-	// CALLER is inside (CheckState.SpecArmDepth) says nothing about a def
-	// in the callee — `sift-spec-from-map`'s fn-local `check-keys`, defined
-	// at the top of its body, was taken as conditional because the caller
-	// dispatched it inside `if (v is Map) […]`, and 73 corpus rows declined
-	// (the seventieth increment's corpus finding). The depth is the body's:
-	// zero on entry, the caller's again on exit.
-	savedSpecArm := r.Check.SpecArmDepth
-	r.Check.SpecArmDepth = 0
-	defer func() { r.Check.SpecArmDepth = savedSpecArm }()
 	if len(body) == 0 {
 		return emptyBodyResidual(paramNames, args)
 	}
@@ -2833,29 +2513,6 @@ func AnalyseFnBody(r *core.Registry, name string, paramNames []string, body []co
 
 	r.Check.FnSummaries[key] = result
 	return result
-}
-
-// isDeferredWordList reports whether v is a parser-evaluated (`Eval`, unquoted)
-// plain list that still carries a raw Word element — the unfolded def-node-binding
-// deferred residual a transparent fn body like `[[c1]]` returns.
-func IsDeferredWordList(v core.Value) bool {
-	if !core.IsEval(&v) || core.IsQuoted(&v) || !v.Parent().Equal(core.TList) || v.Data() == nil ||
-		core.IsTypedList(&v) || core.IsTableType(v) {
-		return false
-	}
-	lst, err := core.AsList(v)
-	if err != nil {
-		return false
-	}
-	for _, e := range lst.Elems() {
-		if core.IsWord(&e) {
-			return true
-		}
-		if e.Parent().Equal(core.TList) && IsDeferredWordList(e) {
-			return true
-		}
-	}
-	return false
 }
 
 // deferredParamListResidual reports whether a fn body is a single deferred list

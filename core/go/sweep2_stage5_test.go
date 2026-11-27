@@ -6,7 +6,6 @@ package core
 // schemas, the invoke seams, and the word-extension merge policy.
 
 import (
-	"errors"
 	"strings"
 	"testing"
 )
@@ -25,16 +24,15 @@ func TestSweepCapNilCapabilityRegistry(t *testing.T) {
 
 // --- coverage.go -----------------------------------------------------------
 
-func TestSweepCoverageArmedAndVMEmit(t *testing.T) {
+func TestSweepCoverageArmedAndEmit(t *testing.T) {
 	r := newTestRegistry(t)
 	if r.CoverageArmed() {
 		t.Error("a fresh registry must report the hook unarmed")
 	}
-	// Untagged registry: NoteVMCoverage short-circuits.
-	r.NoteVMCoverage([]SrcPos{{}}, 0)
-	// Tagged: the emit path runs (the unarmed hook drops the event).
+	// Unarmed: the emit drops the event, tagged or not.
+	r.noteCoverage(SrcPos{Row: 3})
 	r.SetCoverID("sweep-unit")
-	r.NoteVMCoverage([]SrcPos{{}}, 0)
+	r.noteCoverage(SrcPos{Row: 3})
 	// Armed and tagged: the observation arrives.
 	var rows int
 	disarm := r.ArmCoverageHook(func(string, int) { rows++ })
@@ -42,21 +40,20 @@ func TestSweepCoverageArmedAndVMEmit(t *testing.T) {
 	if !r.CoverageArmed() {
 		t.Error("armed registry must report armed")
 	}
-	r.NoteVMCoverage([]SrcPos{{Row: 3}}, 0)
+	r.noteCoverage(SrcPos{Row: 3})
 	if rows != 1 {
-		t.Errorf("armed VM emit count = %d, want 1", rows)
+		t.Errorf("armed emit count = %d, want 1", rows)
+	}
+	// A position with no row, and an untagged registry, are not counted.
+	r.noteCoverage(SrcPos{})
+	r.SetCoverID("")
+	r.noteCoverage(SrcPos{Row: 4})
+	if rows != 1 {
+		t.Errorf("a rowless position or an untagged registry must not count: %d", rows)
 	}
 }
 
 // --- diag_msg.go -----------------------------------------------------------
-
-func TestSweepRuntimeNoMatch(t *testing.T) {
-	r := newTestRegistry(t)
-	be := RuntimeNoMatch(r, "sweep_nomatch_word", []Value{NewInteger(1)})
-	if be == nil || be.Code != "signature_error" {
-		t.Errorf("RuntimeNoMatch = %+v", be)
-	}
-}
 
 // --- fn_frame_elide.go / fn_frame_probe.go ---------------------------------
 
@@ -174,15 +171,6 @@ func TestSweepInstantiateClassSchema(t *testing.T) {
 
 // --- invoke.go -------------------------------------------------------------
 
-func TestSweepIsInternalError(t *testing.T) {
-	if IsInternalError(errors.New("plain")) {
-		t.Error("a plain error is not internal_error-class")
-	}
-	if !IsInternalError(&BoruError{Code: "internal_error"}) {
-		t.Error("an internal_error BoruError must classify")
-	}
-}
-
 // --- macro_expand.go -------------------------------------------------------
 
 func TestSweepExpandTemplateNestedError(t *testing.T) {
@@ -196,34 +184,6 @@ func TestSweepExpandTemplateNestedError(t *testing.T) {
 }
 
 // --- module_export_growth.go -----------------------------------------------
-
-func TestSweepModuleExportGrowthResetAndAbsence(t *testing.T) {
-	// Reset with no table: the nil-table early return.
-	r := newTestRegistry(t)
-	ResetModuleExportGrowth(r)
-	// Registered ledger with a note: reset clears the per-pass state.
-	fields := NewOrderedMap()
-	fields.Set("f", NewInteger(1))
-	RegisterModuleExportGrowth(r, fields)
-	NoteModuleExportAdd(r, fields, "grown")
-	PoisonModuleExportGrowth(r, fields)
-	ResetModuleExportGrowth(r)
-	tbl := exportGrowthTableFor(r, false)
-	if tbl == nil {
-		t.Fatal("registration lost by reset")
-	}
-	l := tbl.byFields[fields]
-	if l == nil || l.poisoned || len(l.adds) != 0 {
-		t.Errorf("reset left per-pass notes: %+v", l)
-	}
-
-	// Absence probe with NO growth table on the registry: declines.
-	r2 := newTestRegistry(t)
-	ns := WithModuleNS(mapOf("f", NewInteger(1)), "SweepMod", NewModuleInstance(ModuleDesc{Ref: "sweep:mod"}))
-	if ModuleExportAbsenceStable(r2, []Value{ns, NewAtom("missing")}) {
-		t.Error("a table-less registry must decline the absence fold")
-	}
-}
 
 // --- word_extend.go --------------------------------------------------------
 

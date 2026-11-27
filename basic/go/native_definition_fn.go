@@ -4,14 +4,14 @@ package basic
 // The fn handler itself lives in native_definition.go.
 
 // parseFnDef, parseFnUndefSpec: re-exported from borueng via
-// aliases.go (canonical implementations live in eng/go/fn_def.go).
+// aliases.go (canonical implementations live in core/go/fn_def.go).
 
 // parseFnReturns: re-exported from borueng via aliases.go
-// (canonical implementation lives in eng/go/fn_params.go).
+// (canonical implementation lives in core/go/fn_params.go).
 
 // parseFnParams, resolveSigType, resolveTypeName: re-exported from
 // borueng via aliases.go (canonical implementations live in
-// eng/go/fn_params.go).
+// core/go/fn_params.go).
 
 // MatchFnSig is re-exported from core in aliases.go. The implementation moved
 // DOWN to core (core/go/fnsig.go) because every operand is a core type and the

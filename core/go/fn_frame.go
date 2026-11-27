@@ -242,7 +242,7 @@ var spentFrameMarker = NewDefCleanup(DefCleanupInfo{SkipCleanup: true})
 // PopFrameArgs pops the per-call Args list and, in lockstep, the
 // enclosing-fn baseline pushed at fn entry (closure-capture detection on
 // subsequent fn constructions reads the baseline, so the two must move
-// together — see eng/go/CLAUDE.md "Per-Call Stacks"). The frame marker
+// together — see core/go/CLAUDE.md "Per-Call Stacks"). The frame marker
 // (stepDefCleanup) and CallBoru's inline cleanup call it; the `__pa`
 // word's handler delegates here too.
 func PopFrameArgs(r *Registry) error {

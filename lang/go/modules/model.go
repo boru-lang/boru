@@ -74,7 +74,7 @@ var inlineSeq atomic.Int64
 // the registry, taken on the foreground goroutine before the watch begins, so
 // the watch goroutine's rebuilds run their boru actions on an isolated registry
 // that can never race the main interpreter — the same pattern timeout /
-// interval / await use (see eng/go/fork.go).
+// interval / await use (see core/go/fork.go).
 type modelHandle struct {
 	build     *model.Build
 	watch     *model.Watch
@@ -98,8 +98,7 @@ func BuildModelModule(parent *native.Registry) (native.ModuleDesc, error) {
 
 	// Model.new <spec:Map> -> Model
 	subReg.RegisterNativeFunc(native.NativeFunc{
-		Name:          "model-new",
-		CompileEffect: native.CompileSideEffect,
+		Name: "model-new",
 		Signatures: []native.Signature{{
 			Args:       []*native.Type{native.TMap},
 			Returns:    []*native.Type{tModel},
@@ -116,8 +115,7 @@ func BuildModelModule(parent *native.Registry) (native.ModuleDesc, error) {
 
 	// Model.stop <Model> -> (nothing)
 	subReg.RegisterNativeFunc(native.NativeFunc{
-		Name:          "model-stop",
-		CompileEffect: native.CompileSideEffect,
+		Name: "model-stop",
 		Signatures: []native.Signature{{
 			Args:       []*native.Type{tModel},
 			Returns:    []*native.Type{},
@@ -140,8 +138,7 @@ func BuildModelModule(parent *native.Registry) (native.ModuleDesc, error) {
 func registerModelWord(tModel *native.Type, subReg *native.Registry, exports *native.OrderedMap, name string, h native.Handler) {
 	inner := "model-" + name
 	subReg.RegisterNativeFunc(native.NativeFunc{
-		Name:          inner,
-		CompileEffect: native.CompileSideEffect,
+		Name: inner,
 		Signatures: []native.Signature{{
 			Args:       []*native.Type{tModel},
 			Returns:    []*native.Type{native.TMap},
@@ -196,13 +193,7 @@ func modelNewHandlerFor(tModel *native.Type) native.Handler {
 
 		// Every file operation goes through the active boru:io FileOps so a test
 		// can run the model on an in-memory FS (capabilities.NewMem).
-		// The note captures the LEDGER POINTER at construction (the writer-
-		// fence discipline): a watch-goroutine rebuild then marks the ledger
-		// of the request that BUILT the model, never the live registry field
-		// — which a later request's per-request swap mutates concurrently
-		// (the TestModelWatchForkNoRace data race).
-		led := r.Effects
-		fs := &fileOpsFS{ops: native.EffectiveFileOps(r), dry: ps.dryrun, mem: map[string][]byte{}, note: led.Note}
+		fs := &fileOpsFS{ops: native.EffectiveFileOps(r), dry: ps.dryrun, mem: map[string][]byte{}}
 
 		path, base := ps.path, ps.base
 		if ps.hasInline {
@@ -462,7 +453,7 @@ func modelStartHandler(args []native.Value, _ map[string]native.Value, _ []nativ
 	// foreground goroutine (ForkConcurrent's contract: fork while the parent is
 	// not concurrently mutating), and route action callbacks to it. Outputs are
 	// SyncWriter-wrapped so concurrent prints don't interleave with the main
-	// program's. Mirrors timeout / interval (eng/go/fork.go).
+	// program's. Mirrors timeout / interval (core/go/fork.go).
 	fork := r.ForkConcurrent()
 	fork.Output = native.NewSyncWriter(r.Output)
 	fork.ErrOutput = native.NewSyncWriter(r.ErrOutput)
@@ -541,11 +532,6 @@ type fileOpsFS struct {
 	dry bool
 	mu  sync.Mutex
 	mem map[string][]byte
-	// note marks the C1 effect ledger (eng effects.go) when a write reaches
-	// the underlying FileOps — dryrun overlay writes stay uncounted (they
-	// never leave the handle, so a fallback re-run cannot duplicate them).
-	// Nil for handles assembled without a registry (unit tests).
-	note func()
 }
 
 func (f *fileOpsFS) key(name string) string {
@@ -578,18 +564,12 @@ func (f *fileOpsFS) WriteFile(name string, data []byte, _ os.FileMode) error {
 		f.mu.Unlock()
 		return nil
 	}
-	if f.note != nil {
-		f.note()
-	}
 	return f.ops.WriteFile(name, data, 0o644)
 }
 
 func (f *fileOpsFS) MkdirAll(path string, _ os.FileMode) error {
 	if f.dry {
 		return nil
-	}
-	if f.note != nil {
-		f.note()
 	}
 	return f.ops.MkdirAll(path, 0o755)
 }

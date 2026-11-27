@@ -395,18 +395,18 @@ func equalInts(a, b []int) bool {
 func planDispatch(h CollectHost, win *Tape, reg *Registry, fn *FnDefInfo, w WordInfo, resolved []Value, pointer int, insideForward bool) (*Signature, []int, int) {
 	set := planSetFor(fn)
 	if set == nil {
-		return PlanMatch(h, win, reg, fn, w, resolved, pointer, insideForward, false, false)
+		return PlanMatch(h, win, reg, fn, w, resolved, pointer, insideForward, false)
 	}
 	key, ok := planKeyFor(set, h, win, w, resolved, pointer, insideForward)
 	if !ok {
-		return PlanMatch(h, win, reg, fn, w, resolved, pointer, insideForward, false, false)
+		return PlanMatch(h, win, reg, fn, w, resolved, pointer, insideForward, false)
 	}
 	if p, hit := set.find(&key); hit {
 		if sig, positions, specAt, ok := p.apply(fn, win, pointer); ok {
 			return sig, positions, specAt
 		}
 	}
-	sig, positions, specAt := PlanMatch(h, win, reg, fn, w, resolved, pointer, insideForward, false, false)
+	sig, positions, specAt := PlanMatch(h, win, reg, fn, w, resolved, pointer, insideForward, false)
 	recordPlan(fn, set, key, sig, positions, specAt, win, pointer)
 	return sig, positions, specAt
 }

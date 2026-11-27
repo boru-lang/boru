@@ -18,9 +18,6 @@ func TestInactiveAnalysisImpl(t *testing.T) {
 	if inactiveCarrierResults(nil, "", nil, nil, SrcPos{}, nil, false) != nil {
 		t.Fatal("inactive carrierResults must be nil")
 	}
-	if inactiveMixedConform(Value{}, TInteger) {
-		t.Fatal("inactive mixedConform must be false")
-	}
 	if inactiveValueCarriesCarrier(NewCarrier(TInteger)) {
 		t.Fatal("inactive valueCarriesCarrier must be false")
 	}
@@ -35,7 +32,7 @@ func TestInactiveAnalysisImpl(t *testing.T) {
 	if inactiveAnalyseFnBody(nil, "", nil, nil, nil, nil, nil, false) != nil {
 		t.Fatal("inactive analyseFnBody must be nil")
 	}
-	if inactiveAnalyseLoopBody(nil, Value{}, nil, nil, false) != nil {
+	if inactiveAnalyseLoopBody(nil, Value{}, nil, nil) != nil {
 		t.Fatal("inactive analyseLoopBody must be nil")
 	}
 	// The exported accessors are the surface a word library outside core
@@ -49,14 +46,14 @@ func TestInactiveAnalysisImpl(t *testing.T) {
 		[]CapturedBinding, []*Type, bool) []Value {
 		return marker
 	}
-	AnalysisImpl.AnalyseLoopBody = func(*Registry, Value, []string, []Value, bool) []Value {
+	AnalysisImpl.AnalyseLoopBody = func(*Registry, Value, []string, []Value) []Value {
 		return marker
 	}
 	if got := RunFnBodyAnalysis(nil, "", nil, nil, nil, nil, nil, false); len(got) != 1 ||
 		!ValuesEqual(got[0], marker[0]) {
 		t.Fatal("RunFnBodyAnalysis must dispatch through AnalysisImpl")
 	}
-	if got := RunLoopBodyAnalysis(nil, Value{}, nil, nil, false); len(got) != 1 ||
+	if got := RunLoopBodyAnalysis(nil, Value{}, nil, nil); len(got) != 1 ||
 		!ValuesEqual(got[0], marker[0]) {
 		t.Fatal("RunLoopBodyAnalysis must dispatch through AnalysisImpl")
 	}

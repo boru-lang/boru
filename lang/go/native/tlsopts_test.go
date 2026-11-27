@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/boru-lang/boru/lang/go/capabilities"
@@ -16,8 +17,17 @@ import (
 // self-signed certificate in PEM form, which doubles as the private CA
 // a client must be told to trust. Nothing here touches a real network.
 func tlsTestServer(t *testing.T) (*httptest.Server, string) {
+	ts, ca, _ := tlsCountingServer(t)
+	return ts, ca
+}
+
+// tlsCountingServer is tlsTestServer with the count of requests the server
+// has handled, for a test that asserts nothing reached the wire.
+func tlsCountingServer(t *testing.T) (*httptest.Server, string, *atomic.Int64) {
 	t.Helper()
+	hits := new(atomic.Int64)
 	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits.Add(1)
 		w.WriteHeader(200)
 		_, _ = w.Write([]byte("secure"))
 	}))
@@ -26,7 +36,7 @@ func tlsTestServer(t *testing.T) (*httptest.Server, string) {
 		Type:  "CERTIFICATE",
 		Bytes: ts.Certificate().Raw,
 	})
-	return ts, string(caPEM)
+	return ts, string(caPEM), hits
 }
 
 func tlsFetch(t *testing.T, r *Registry, url string, tlsOpts *OrderedMap) ([]Value, error) {
@@ -313,7 +323,7 @@ func TestTLSInsecurePolicyGate(t *testing.T) {
 
 // End-to-end: a denied verify:false never reaches the wire.
 func TestFetchTLSInsecureDeniedIsUnsent(t *testing.T) {
-	ts, _ := tlsTestServer(t)
+	ts, _, hits := tlsCountingServer(t)
 	pol, err := policy.LoadInline(`{
 		name: "net-no-insecure-tls"
 		scopes: {
@@ -327,7 +337,6 @@ func TestFetchTLSInsecureDeniedIsUnsent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	before := r.Effects.Count()
 	_, fErr := tlsFetch(t, r, ts.URL, tlsOpt("verify", NewBoolean(false)))
 	if fErr == nil {
 		t.Fatal("expected the fetch to be denied")
@@ -335,7 +344,7 @@ func TestFetchTLSInsecureDeniedIsUnsent(t *testing.T) {
 	if _, ok := fErr.(*policy.Denied); !ok {
 		t.Fatalf("expected *policy.Denied, got %T (%v)", fErr, fErr)
 	}
-	if after := r.Effects.Count(); after != before {
-		t.Errorf("effects %d → %d: a denied fetch must send nothing", before, after)
+	if n := hits.Load(); n != 0 {
+		t.Errorf("a denied fetch must send nothing: the server saw %d request(s)", n)
 	}
 }

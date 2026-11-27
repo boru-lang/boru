@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math"
 	"reflect"
-	"strconv"
 )
 
 // ErrNoComparer is returned by Comparer.Compare implementations that
@@ -1109,24 +1108,8 @@ func DeqHandler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Val
 	return []Value{NewBoolean(DeepEqual(args[0], args[1]))}, nil
 }
 
-func FnIdentityKey(v Value) (string, bool) {
-	fd, isFn := v.Data().(*FnDefInfo)
-	if !isFn || fd.ident == nil {
-		return "", false
-	}
-	if fd.ident.closure != 0 {
-		return "c" + strconv.FormatUint(fd.ident.closure, 10), true
-	}
-	return fmt.Sprintf("p%p", fd.ident), true
-}
-
 func sameFnIdentity(a, b FnDefInfo) bool {
-	if a.ident == nil || b.ident == nil {
-		return false
-	}
-	// Two tokens minted for one compiled closure (two bridges of it) are one
-	// function: they share the closure's sequence.
-	return a.ident == b.ident || (a.ident.closure != 0 && a.ident.closure == b.ident.closure)
+	return a.ident != nil && a.ident == b.ident
 }
 
 // fnStructurallyEqual reports whether two fn payloads have the same VALUE

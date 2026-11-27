@@ -73,14 +73,35 @@ func TestReadListElemsIsTheListsOwnStorage(t *testing.T) {
 	}
 }
 
-// --- CompileEffect.Has ----------------------------------------------------
+// --- NativeFunc.ConstFold folds onto every signature ------------------------
 
-func TestS5VCompileEffectHas(t *testing.T) {
-	if !CompileReadsFn.Has(CompileReadsFn) {
-		t.Error("effect must include itself")
+func TestS5VNativeFuncConstFoldFoldsOntoSigs(t *testing.T) {
+	r := newTestRegistry(t)
+	h := Go(func(a []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Value, error) { return a, nil })
+	r.RegisterNativeFunc(NativeFunc{Name: "s5vfold", ConstFold: true, Signatures: []Signature{
+		{Args: []*Type{TInteger}, Impl: h, BarrierPos: -1},
+		{Args: []*Type{TString}, Impl: h, BarrierPos: -1},
+	}})
+	r.RegisterNativeFunc(NativeFunc{Name: "s5vplain", Signatures: []Signature{
+		{Args: []*Type{TInteger}, Impl: h, BarrierPos: -1, ConstFold: true},
+		{Args: []*Type{TString}, Impl: h, BarrierPos: -1},
+	}})
+	if err := r.Err(); err != nil {
+		t.Fatalf("registration: %v", err)
 	}
-	if CompileReadsFn.Has(CompileStoresFn) {
-		t.Error("effect must not include an unset flag")
+	for _, s := range r.Lookup("s5vfold").OwnSigs() {
+		if !s.ConstFold {
+			t.Errorf("a word-level ConstFold must reach every signature: %v", s.ArgTypes())
+		}
+	}
+	n := 0
+	for _, s := range r.Lookup("s5vplain").OwnSigs() {
+		if s.ConstFold {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Errorf("a signature-level ConstFold stays on its own overload: %d folding sigs, want 1", n)
 	}
 }
 

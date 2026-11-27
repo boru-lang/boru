@@ -144,8 +144,8 @@ type Options struct {
 	// capabilities.FixedStreamProbe, which is the only way the "yes, a
 	// terminal" arm is reachable in a suite whose streams are redirected.
 	Streams capabilities.StreamProbe
-	// Steps caps evaluation: the interpreter's Run loop, a single
-	// paren-group evaluation, and the VM's step counter. Zero uses the
+	// Steps caps evaluation: the interpreter's Run loop and a single
+	// paren-group evaluation. Zero uses the
 	// engine defaults (core.DefaultStepLimit / DefaultSubStepLimit). Set
 	// via the CLI's --options flag (e.g. `--options steps:50000000`) when
 	// a legitimately long computation trips the default ceiling, or
@@ -154,7 +154,7 @@ type Options struct {
 }
 
 // TapeOptions configures the execution tape's bounded growth — see
-// eng/go/tape.go. InitialSize 0 derives from the program; MaxGrows 0 and
+// core/go/tape.go. InitialSize 0 derives from the program; MaxGrows 0 and
 // GrowthFactor 0 use the defaults (7 and 2.7).
 type TapeOptions = native.TapeConfig
 
@@ -289,7 +289,6 @@ func (a *Boru) Check(src string) (CheckResult, error) {
 
 	a.registry.Source = src
 	defer a.registry.Check.Begin()()
-	native.ResetModuleExportGrowth(a.registry)
 	native.ResetCheckFnCarrierBinds(a.registry)
 
 	eng := native.NewTop(a.registry)

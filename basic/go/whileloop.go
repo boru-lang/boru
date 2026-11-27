@@ -102,8 +102,8 @@ func whileReturnsFn(args []Value, r *Registry) []Value {
 	// analysis, and the condition analysed after it reads the joined
 	// binding. Both analyses run to their fixed points over the joined
 	// bindings, so the order changes no verdict.
-	stk := AnalyseLoopBody(r, args[1], nil, nil, false)
-	AnalyseLoopBody(r, args[0], nil, nil, false)
+	stk := AnalyseLoopBody(r, args[1], nil, nil)
+	AnalyseLoopBody(r, args[0], nil, nil)
 	var top Value
 	if len(stk) > 0 {
 		top = stk[len(stk)-1]

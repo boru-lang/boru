@@ -8,56 +8,6 @@ import "testing"
 // shape claim (CheckState.FnShapes — the arity a producing word's check-mode
 // ReturnsFn claims for a computed-fn carrier).
 
-// fnShapeGoSig builds the one all-forward Go-impl signature of fn-util's
-// produced wrappers (goFnValue's shape) over nParams Any params.
-func fnShapeGoSig(nParams int) Signature {
-	params := make([]FnParam, nParams)
-	for i := range params {
-		params[i] = FnParam{Type: TAny}
-	}
-	sig := Signature{Params: params, BarrierPos: nParams, Impl: Go(func(_ []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Value, error) {
-		return []Value{NewInteger(7)}, nil
-	})}
-	NormalizeSig(&sig)
-	return sig
-}
-
-func TestIsSelfContainedGoFnDef(t *testing.T) {
-	self := FnDefInfo{Name: "const", Anonymous: true, Signatures: []Signature{fnShapeGoSig(1)}}
-	if !IsSelfContainedGoFnDef(self) {
-		t.Error("an anonymous fn value whose own sigs are all Go handlers is self-contained")
-	}
-	named := self
-	named.Anonymous = false
-	if IsSelfContainedGoFnDef(named) {
-		t.Error("a non-anonymous fn resolves through its name — not self-contained")
-	}
-	macro := self
-	macro.Macro = true
-	if IsSelfContainedGoFnDef(macro) {
-		t.Error("a macro is data, applied only by name")
-	}
-	inner := NewFunction(self)
-	wrapper := self
-	wrapper.Wrap = WrapRebarrier
-	wrapper.Wraps = &inner
-	if IsSelfContainedGoFnDef(wrapper) {
-		t.Error("a modifier wrapper re-dispatches what it wraps — excluded")
-	}
-	reversed := self
-	reversed.ArgsReversed = true
-	if IsSelfContainedGoFnDef(reversed) {
-		t.Error("usurp's one-way mark excludes the value")
-	}
-	boru := FnDefInfo{Anonymous: true, Signatures: []Signature{{Impl: Boru([]Value{NewInteger(1)})}}}
-	if IsSelfContainedGoFnDef(boru) {
-		t.Error("a boru-bodied lambda needs the interpreter's frame")
-	}
-	if IsSelfContainedGoFnDef(FnDefInfo{Anonymous: true}) {
-		t.Error("a sig-less value has nothing to dispatch on")
-	}
-}
-
 func TestNoteFnShapeArms(t *testing.T) {
 	r := newTestRegistry(t)
 	out := NewCarrier(TFunction)

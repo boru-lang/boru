@@ -15,7 +15,7 @@ import (
 // BEAM-style process words — the language surface of design/PROCESSES.0.md
 // phase 1: `spawn` / `self` / `send` / `receive` / `register` / `whereis` /
 // `unregister`, plus the opaque `Pid` handle type. The runtime substrate
-// (ProcessRuntime, Process, the bounded mailbox) lives in eng/go/process.go;
+// (ProcessRuntime, Process, the bounded mailbox) lives in core/go/process.go;
 // this file owns dispatch: patrun clause routing for `receive`, the
 // immutable-only `send` rule, and the `process`-scope capability gate on
 // `spawn`.
@@ -33,16 +33,16 @@ import (
 //   - `receive` is consume-front + patrun dispatch (no selective receive).
 
 // processNatives installs the process words.
-var processNatives = SideEffecting([]NativeFunc{
+var processNatives = []NativeFunc{
 	{
 		Name: "spawn",
 		Signatures: []Signature{
 			// spawn [body] {opts} — opts: {mailbox: Integer, overflow: "block"|"fail"|"drop"}.
 			{Args: []*Type{TList, TMap}, Impl: Go(spawnHandler), Returns: []*Type{TPid},
-				BarrierPos: -1, NoEvalArgs: map[int]bool{0: true}, CompileEffect: CompileStoresBody},
+				BarrierPos: -1, NoEvalArgs: map[int]bool{0: true}},
 			// spawn [body] — start a process running body; returns its Pid.
 			{Args: []*Type{TList}, Impl: Go(spawnHandler), Returns: []*Type{TPid},
-				BarrierPos: -1, NoEvalArgs: map[int]bool{0: true}, CompileEffect: CompileStoresBody},
+				BarrierPos: -1, NoEvalArgs: map[int]bool{0: true}},
 		},
 	},
 	{
@@ -95,8 +95,7 @@ var processNatives = SideEffecting([]NativeFunc{
 			// count, variadic. The two flags split on the operand: a literal
 			// list takes the registry-body rule, a computed one the backstop.
 			{Args: []*Type{TList}, Impl: Go(receiveHandler), Returns: []*Type{TAny},
-				BarrierPos: -1, NoEvalArgs: map[int]bool{0: true},
-				CompileEffect: CompileRunsBodyOnRegistry | CompileDynBody},
+				BarrierPos: -1, NoEvalArgs: map[int]bool{0: true}},
 		},
 	},
 	{
@@ -125,7 +124,7 @@ var processNatives = SideEffecting([]NativeFunc{
 			{Args: []*Type{TAtom}, Impl: Go(unregisterHandler), Returns: []*Type{}, BarrierPos: -1},
 		},
 	},
-}, "self", "whereis")
+}
 
 // checkProcessPolicy gates `spawn` behind the `process` capability scope
 // (PROCESSES.0.md §7), mirroring fetch.go::checkFetchPolicy. No policy

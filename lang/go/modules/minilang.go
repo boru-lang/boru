@@ -76,15 +76,6 @@ func BuildMiniLangModule(parent *native.Registry) (native.ModuleDesc, error) {
 	subReg.Types.AdoptSeqFrom(parent.Types)
 	tMini := subReg.Types.MintType("MiniLangCompiled", native.TIdeal)
 	exports := native.NewOrderedMap()
-	// Growth ledger (Phase 6 M3): the kind namespace is frozen, so NO
-	// program-reachable word installs new keys into this export map at run
-	// time (the register words are tombstones). Registering the map with an
-	// empty growth set lets the checker fold every missing-key read to a
-	// PROVABLY stable None (`MiniLang.Gen` — module-minilang.tsv) instead of
-	// the blanket fold decline unregistered maps get. See
-	// eng/go/module_export_growth.go.
-	core.RegisterModuleExportGrowth(parent, exports)
-
 	// langs collects the FIXED built-in kinds by NAME (a Map) — re, bf, gex,
 	// math, hb, bb, micron, m, jp, jq, xp, sp — so no per-kind lang_<name>
 	// key is hard-coded at the registration sites. Once every kind is

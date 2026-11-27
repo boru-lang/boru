@@ -16,7 +16,7 @@ import (
 // move, and copy — plus the shared record/option helpers. Handlers route
 // every filesystem touch through EffectiveFileOps(r) (so the in-memory
 // backing engages under context.__sys.fs) and reuse extractPath for target
-// routing. Mutating words call r.NoteEffect() (the effect ledger).
+// routing.
 
 // mapBoolOpt reads one boolean key from an options map, returning def when the
 // value is not a concrete map or the key is absent. It is the single option
@@ -293,7 +293,6 @@ func doRemoveWord(args []Value, r *Registry, hasOpts bool) ([]Value, error) {
 		force = mapBoolOpt(args[1], "force", false)
 	}
 	path := extractPath(args[0])
-	r.NoteEffect()
 	err := EffectiveFileOps(r).Remove(path, recursive)
 	if err != nil {
 		if force && errors.Is(err, os.ErrNotExist) {
@@ -339,7 +338,6 @@ func doMoveWord(args []Value, r *Registry, hasOpts bool) ([]Value, error) {
 			return nil, err
 		}
 	}
-	r.NoteEffect()
 	if err := EffectiveFileOps(r).Rename(src, dst); err != nil {
 		return nil, r.BoruError("move_error", fmt.Sprintf("move: %v", err), "move")
 	}
@@ -419,7 +417,6 @@ func doCopyWord(args []Value, r *Registry, hasOpts bool) ([]Value, error) {
 			return nil, err
 		}
 	}
-	r.NoteEffect()
 	if err := doCopy(r, src, dst, recursive); err != nil {
 		return nil, r.BoruError("copy_error", fmt.Sprintf("copy: %v", err), "copy")
 	}
@@ -455,7 +452,6 @@ func doLinkWord(args []Value, r *Registry, hasOpts bool) ([]Value, error) {
 	if hasOpts {
 		hard = mapBoolOpt(args[2], "hard", false)
 	}
-	r.NoteEffect()
 	var err error
 	if hard {
 		err = EffectiveFileOps(r).Link(target, link)
@@ -583,7 +579,6 @@ func doTouchWord(args []Value, r *Registry, hasOpts bool) ([]Value, error) {
 	if hasOpts {
 		opts = args[1]
 	}
-	r.NoteEffect()
 	if err := applyTouch(EffectiveFileOps(r), path, opts, hasOpts); err != nil {
 		return nil, r.BoruError("touch_error", fmt.Sprintf("touch: %v", err), "touch")
 	}

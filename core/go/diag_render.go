@@ -166,14 +166,6 @@ type siteStyle struct {
 // boruErrSite shape.
 var primarySiteStyle = siteStyle{underline: "^", caretStyle: cBold + cRed, context: 2}
 
-// boruErrSite is the historical name for the primary-span site extract;
-// renderSite with the primary style and plain opts reproduces its
-// output byte-for-byte (pinned by TestS5bEBoruErrSiteClampsRowCol and
-// the error-format goldens).
-func boruErrSite(src, sub, msg string, row, col int) string {
-	return renderSite(src, sub, msg, row, col, RenderOpts{}, primarySiteStyle)
-}
-
 // renderSite generates a source code extract showing one location — a
 // gutter-numbered excerpt with an underline captioned by msg. With the
 // primary style and plain opts it reproduces the historical boruErrSite

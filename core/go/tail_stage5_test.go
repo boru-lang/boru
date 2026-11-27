@@ -14,31 +14,6 @@ import (
 
 // --- effects.go -----------------------------------------------------------
 
-func TestX5EffectLedgerNoteCount(t *testing.T) {
-	var nilLedger *EffectLedger
-	nilLedger.Note() // nil-safe
-	if nilLedger.Count() != 0 {
-		t.Fatal("nil ledger counts 0")
-	}
-	l := &EffectLedger{}
-	l.Note()
-	l.Note()
-	if l.Count() != 2 {
-		t.Fatalf("expected 2 effects, got %d", l.Count())
-	}
-}
-
-func TestX5RegistryNoteEffect(t *testing.T) {
-	var nilReg *Registry
-	nilReg.NoteEffect() // nil-safe
-	r := x5reg(t)
-	before := r.Effects.Count()
-	r.NoteEffect()
-	if r.Effects.Count() != before+1 {
-		t.Fatal("NoteEffect marks the registry ledger")
-	}
-}
-
 // --- tape.go --------------------------------------------------------------
 
 func x5Vals(n int) []Value {
@@ -314,12 +289,11 @@ func TestX5AnalysisStepMeterBudget(t *testing.T) {
 
 // --- argsstack.go ---------------------------------------------------------
 
-func TestX5ArgsStackDepthTruncate(t *testing.T) {
+func TestX5ArgsStackDepth(t *testing.T) {
 	var nilAS *ArgsStack
 	if nilAS.Depth() != 0 {
 		t.Fatal("nil stack depth is 0")
 	}
-	nilAS.Truncate(0) // nil-safe
 
 	as := NewArgsStack()
 	_ = as.Push(NewList(nil))
@@ -327,14 +301,8 @@ func TestX5ArgsStackDepthTruncate(t *testing.T) {
 	if as.Depth() != 2 {
 		t.Fatalf("expected depth 2, got %d", as.Depth())
 	}
-	as.Truncate(-1) // guarded
-	as.Truncate(5)  // at/above depth: no-op
-	if as.Depth() != 2 {
-		t.Fatal("guarded truncates must not change depth")
-	}
-	as.Truncate(1)
-	if as.Depth() != 1 {
-		t.Fatalf("truncate to 1, got %d", as.Depth())
+	if ok, err := as.Pop(); !ok || err != nil || as.Depth() != 1 {
+		t.Fatalf("pop to 1: %v / %v, depth %d", ok, err, as.Depth())
 	}
 }
 

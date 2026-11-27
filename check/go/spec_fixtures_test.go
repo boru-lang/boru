@@ -242,16 +242,9 @@ func registerControlFixtures(r *core.Registry) {
 		return out, nil
 	}
 	// The check model: the loop body analysed with the iterator bound as a
-	// typed carrier. A LITERAL count > 0 proves at least one trip; a
-	// computed count must not (a runtime count of 0 runs the body never).
+	// typed carrier.
 	forqReturnsFn := func(args []core.Value, reg *core.Registry) []core.Value {
-		proven := false
-		if core.IsConcrete(&args[0]) {
-			if n, err := core.AsInteger(args[0]); err == nil && n > 0 {
-				proven = true
-			}
-		}
-		return check.AnalyseLoopBody(reg, args[1], []string{"iq"}, []core.Value{core.NewCarrier(core.TInteger)}, proven)
+		return check.AnalyseLoopBody(reg, args[1], []string{"iq"}, []core.Value{core.NewCarrier(core.TInteger)})
 	}
 	r.RegisterNativeFunc(core.NativeFunc{
 		Name: "forq",

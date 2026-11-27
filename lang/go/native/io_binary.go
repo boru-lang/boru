@@ -112,7 +112,6 @@ func writeAtOffset(r *Registry, path string, data []byte, offset int64) error {
 		existing = grown
 	}
 	copy(existing[offset:], data)
-	r.NoteEffect()
 	return ops.WriteFile(path, existing, 0o644)
 }
 

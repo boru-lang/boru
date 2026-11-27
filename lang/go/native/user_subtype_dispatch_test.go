@@ -24,7 +24,7 @@ import (
 // Documents the architectural distinction the fix relies on:
 //
 //   - The codebase HAS a dedicated "this is a type" flag:
-//     DefEntry.TypeDef *Type (see eng/go/deftable.go). It's set
+//     DefEntry.TypeDef *Type (see core/go/deftable.go). It's set
 //     non-nil exactly when a capitalised def installs a type
 //     binding. r.LookupTypeName(name) consults it directly and
 //     returns the lattice node.
@@ -211,7 +211,7 @@ func TestRefineNewtypeMembershipIsNominal(t *testing.T) {
 // different value (the class schema payload, its own ID) and is NOT a
 // dispatchable stand-in — which is exactly why dispatch must resolve
 // names via LookupTypeName / NodeOf, never via `&body`. See
-// eng/go/CLAUDE.md "Canonical *Type Pointers".
+// core/go/CLAUDE.md "Canonical *Type Pointers".
 func TestClassInstanceTaggedWithCanonicalLatticeNode(t *testing.T) {
 	r, _ := DefaultRegistry()
 	registerIOWords(r)
@@ -285,7 +285,7 @@ func TestDisjunctMembershipRequiresCanonicalNode(t *testing.T) {
 
 	// The orphan `&body` pointer carries no unifier: it must not admit
 	// members. If this changes, dispatch through bodies has been made
-	// canonical — update eng/go/CLAUDE.md "Canonical *Type Pointers".
+	// canonical — update core/go/CLAUDE.md "Canonical *Type Pointers".
 	body, _ := r.TopTypeBody("Maybe")
 	bNode := body
 	if addrOf(NewInteger(42)).Is(&bNode) {

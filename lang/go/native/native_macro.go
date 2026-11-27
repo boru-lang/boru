@@ -12,13 +12,12 @@ import (
 // - macro (1c): the definer — an fn the expander runs on UNEVALUATED operand
 //   forms, whose returned token list is spliced into the call site.
 // - unquote / splice (1d): template escapes, recognized by the expander
-//   (eng/go/macro_expand.go); they error if stepped outside an expansion.
+//   (core/go/macro_expand.go); they error if stepped outside an expansion.
 // - macroexpand (1e): introspection — return the expansion without splicing.
 
 var macroNatives = []NativeFunc{
 	{
-		Name:          "gensym",
-		CompileEffect: CompileSideEffect,
+		Name: "gensym",
 		// `gensym` mints a fresh, never-colliding atom (`tmp$G<n>`) — the
 		// Common-Lisp temporary generator. Capture-free temporaries for
 		// hand-written `word`/`__SP` macros today, and the manual-hygiene
@@ -49,13 +48,10 @@ var macroNatives = []NativeFunc{
 			Impl:       Go(macroHandler, RunInCheck()),
 			// Pure construction, like fn/fnsig — runs in check mode so
 			// the macro INSTALLS during the check pass: its uses then
-			// expand on the tape (execMacro) and the checker (and the
-			// bytecode recording pass) see the expanded stream, never
-			// the raw-form operand span (plan R6 #29).
+			// expand on the tape (execMacro) and the checker sees the
+			// expanded stream, never the raw-form operand span (plan
+			// R6 #29).
 			Returns: []*Type{TFunction}, BarrierPos: -1,
-			// S2b's declaration: built on the check engine, so the recorder
-			// sees the expanded uses, never the body (CompileOwnLowering).
-			CompileEffect: CompileOwnLowering,
 		}},
 	},
 	{
@@ -126,20 +122,18 @@ var macroNatives = []NativeFunc{
 		// zero value used to make silently. Same for `emit` and `parse`.
 		Signatures: []Signature{
 			{
-				Args:          []*Type{TAtom, TString, TMap},
-				QuoteArgs:     map[int]bool{0: true},
-				Impl:          Go(miniHandler, RunInCheck()),
-				Returns:       []*Type{TAny},
-				BarrierPos:    -1,
-				CompileEffect: CompileResteps,
+				Args:       []*Type{TAtom, TString, TMap},
+				QuoteArgs:  map[int]bool{0: true},
+				Impl:       Go(miniHandler, RunInCheck()),
+				Returns:    []*Type{TAny},
+				BarrierPos: -1,
 			},
 			{
-				Args:          []*Type{TAtom, TString},
-				QuoteArgs:     map[int]bool{0: true},
-				Impl:          Go(miniHandler, RunInCheck()),
-				Returns:       []*Type{TAny},
-				BarrierPos:    -1,
-				CompileEffect: CompileResteps,
+				Args:       []*Type{TAtom, TString},
+				QuoteArgs:  map[int]bool{0: true},
+				Impl:       Go(miniHandler, RunInCheck()),
+				Returns:    []*Type{TAny},
+				BarrierPos: -1,
 			},
 			// The mini-language VALUE form — `mini <fn> <src> <opts?>`:
 			// the first operand IS the transducer, a fn (or a word bound to
@@ -147,18 +141,16 @@ var macroNatives = []NativeFunc{
 			// the standard [src opts] prefix. Every fn value — anonymous
 			// literal, def'd fn, module export — is TFunction (ADR-011).
 			{
-				Args:          []*Type{TFunction, TString, TMap},
-				Impl:          Go(miniHandler, RunInCheck()),
-				Returns:       []*Type{TAny},
-				BarrierPos:    -1,
-				CompileEffect: CompileResteps,
+				Args:       []*Type{TFunction, TString, TMap},
+				Impl:       Go(miniHandler, RunInCheck()),
+				Returns:    []*Type{TAny},
+				BarrierPos: -1,
 			},
 			{
-				Args:          []*Type{TFunction, TString},
-				Impl:          Go(miniHandler, RunInCheck()),
-				Returns:       []*Type{TAny},
-				BarrierPos:    -1,
-				CompileEffect: CompileResteps,
+				Args:       []*Type{TFunction, TString},
+				Impl:       Go(miniHandler, RunInCheck()),
+				Returns:    []*Type{TAny},
+				BarrierPos: -1,
 			},
 		},
 	},
@@ -189,28 +181,25 @@ var macroNatives = []NativeFunc{
 		Signatures: []Signature{
 			// CompileResteps on the kind and fn forms: the splice (see mini).
 			{
-				Args:          []*Type{TAtom, TAny, TAny},
-				QuoteArgs:     map[int]bool{0: true},
-				Impl:          Go(emitHandler, RunInCheck()),
-				Returns:       []*Type{TString},
-				BarrierPos:    -1,
-				CompileEffect: CompileResteps,
+				Args:       []*Type{TAtom, TAny, TAny},
+				QuoteArgs:  map[int]bool{0: true},
+				Impl:       Go(emitHandler, RunInCheck()),
+				Returns:    []*Type{TString},
+				BarrierPos: -1,
 			},
 			{
-				Args:          []*Type{TAtom, TAny},
-				QuoteArgs:     map[int]bool{0: true},
-				Impl:          Go(emitHandler, RunInCheck()),
-				Returns:       []*Type{TString},
-				BarrierPos:    -1,
-				CompileEffect: CompileResteps,
+				Args:       []*Type{TAtom, TAny},
+				QuoteArgs:  map[int]bool{0: true},
+				Impl:       Go(emitHandler, RunInCheck()),
+				Returns:    []*Type{TString},
+				BarrierPos: -1,
 			},
 			{
-				Args:          []*Type{TAtom},
-				QuoteArgs:     map[int]bool{0: true},
-				Impl:          Go(emitHandler, RunInCheck()),
-				Returns:       []*Type{TString},
-				BarrierPos:    -1,
-				CompileEffect: CompileResteps,
+				Args:       []*Type{TAtom},
+				QuoteArgs:  map[int]bool{0: true},
+				Impl:       Go(emitHandler, RunInCheck()),
+				Returns:    []*Type{TString},
+				BarrierPos: -1,
 			},
 			// The emitter VALUE form — `emit <fn> <opts?> <data>`: the first
 			// operand IS the emitter, a fn whose every signature is
@@ -219,18 +208,16 @@ var macroNatives = []NativeFunc{
 			// operand would silently route to emit_auto and JSON-emit the fn
 			// value itself.
 			{
-				Args:          []*Type{TFunction, TAny, TAny},
-				Impl:          Go(emitHandler, RunInCheck()),
-				Returns:       []*Type{TString},
-				BarrierPos:    -1,
-				CompileEffect: CompileResteps,
+				Args:       []*Type{TFunction, TAny, TAny},
+				Impl:       Go(emitHandler, RunInCheck()),
+				Returns:    []*Type{TString},
+				BarrierPos: -1,
 			},
 			{
-				Args:          []*Type{TFunction, TAny},
-				Impl:          Go(emitHandler, RunInCheck()),
-				Returns:       []*Type{TString},
-				BarrierPos:    -1,
-				CompileEffect: CompileResteps,
+				Args:       []*Type{TFunction, TAny},
+				Impl:       Go(emitHandler, RunInCheck()),
+				Returns:    []*Type{TString},
+				BarrierPos: -1,
 			},
 			{
 				Args:    []*Type{TAny, TAny},
@@ -271,34 +258,30 @@ var macroNatives = []NativeFunc{
 		// CompileResteps on every overload: the splice (see mini).
 		Signatures: []Signature{
 			{
-				Args:          []*Type{TAtom, TMap, TAny},
-				QuoteArgs:     map[int]bool{0: true},
-				Impl:          Go(parseHandler, RunInCheck()),
-				Returns:       []*Type{TAny},
-				BarrierPos:    -1,
-				CompileEffect: CompileResteps,
+				Args:       []*Type{TAtom, TMap, TAny},
+				QuoteArgs:  map[int]bool{0: true},
+				Impl:       Go(parseHandler, RunInCheck()),
+				Returns:    []*Type{TAny},
+				BarrierPos: -1,
 			},
 			{
-				Args:          []*Type{TAtom, TAny},
-				QuoteArgs:     map[int]bool{0: true},
-				Impl:          Go(parseHandler, RunInCheck()),
-				Returns:       []*Type{TAny},
-				BarrierPos:    -1,
-				CompileEffect: CompileResteps,
+				Args:       []*Type{TAtom, TAny},
+				QuoteArgs:  map[int]bool{0: true},
+				Impl:       Go(parseHandler, RunInCheck()),
+				Returns:    []*Type{TAny},
+				BarrierPos: -1,
 			},
 			{
-				Args:          []*Type{TFunction, TMap, TAny},
-				Impl:          Go(parseHandler, RunInCheck()),
-				Returns:       []*Type{TAny},
-				BarrierPos:    -1,
-				CompileEffect: CompileResteps,
+				Args:       []*Type{TFunction, TMap, TAny},
+				Impl:       Go(parseHandler, RunInCheck()),
+				Returns:    []*Type{TAny},
+				BarrierPos: -1,
 			},
 			{
-				Args:          []*Type{TFunction, TAny},
-				Impl:          Go(parseHandler, RunInCheck()),
-				Returns:       []*Type{TAny},
-				BarrierPos:    -1,
-				CompileEffect: CompileResteps,
+				Args:       []*Type{TFunction, TAny},
+				Impl:       Go(parseHandler, RunInCheck()),
+				Returns:    []*Type{TAny},
+				BarrierPos: -1,
 			},
 		},
 	},
@@ -458,8 +441,7 @@ func miniHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Va
 		// bound-variable fallback. A registered kind wins a collision
 		// (checked above); an unbound name or a non-Function binding keeps
 		// the unknown-kind handling below. A name def-bound to a COMPUTED
-		// fn (`def m (mk)`) has no Defs binding under analysis — installDef
-		// declines so the compiled closure machinery owns the name — and
+		// fn (`def m (mk)`) has no Defs binding under analysis and
 		// resolves through the per-pass fn-carrier side table
 		// (checkFnCarrierBind) instead, like parse.
 		top, bound := r.Defs.Top(kind)

@@ -10,7 +10,7 @@ import (
 //	a b unify     → [unified, true]  on success
 //	a b unify     → ["~unify-fail", false]  on failure
 //
-// The algorithm (Unify and friends) lives in eng/go/unify.go; this
+// The algorithm (Unify and friends) lives in core/go/unify.go; this
 // file owns the word name, dispatch wiring, and the Go-level adapter
 // (unifyHandler) that converts an core.Unify result into the boru
 // stack shape.

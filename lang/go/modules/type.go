@@ -501,7 +501,6 @@ var typeModuleNatives = []native.NativeFunc{
 				return []native.Value{native.NewList(elems)}, nil
 			}),
 			Returns: []*native.Type{native.TList}, BarrierPos: -1,
-			CompileEffect: native.CompileReadsFn, // reads a fn's param types, never invokes it
 		}},
 	},
 
@@ -533,7 +532,6 @@ var typeModuleNatives = []native.NativeFunc{
 				return []native.Value{v}
 			},
 			Returns: []*native.Type{native.TAny}, BarrierPos: -1,
-			CompileEffect: native.CompileReadsFn, // reads a fn's return type, never invokes it
 		}},
 	},
 
@@ -561,7 +559,6 @@ var typeModuleNatives = []native.NativeFunc{
 				return []native.Value{native.NewInteger(n)}, nil
 			}),
 			Returns: []*native.Type{native.TInteger}, BarrierPos: -1,
-			CompileEffect: native.CompileReadsFn, // reads a fn's arity, never invokes it
 		}},
 	},
 

@@ -355,46 +355,11 @@ func TestW3CompressEdges(t *testing.T) {
 	w3ArrayErr(t, `compress [true] [1 2]`, "does not match data length")
 }
 
-// ---- cross-collection delegation (collIsConcrete{Map,List}) ----
+// ---- the map overloads, reached by dispatch ----
 
-func TestW3EachCrossCollection(t *testing.T) {
-	// eachHandler with a concrete MAP collection delegates to the map form.
+func TestW3EachOverAMap(t *testing.T) {
+	// A concrete MAP collection dispatches to the map overload.
 	w3ArrayWant(t, `each [mul 2] {a:1 b:2}`, `{a:2 b:4}`)
-	// eachMapHandler with a concrete LIST collection delegates back
-	// (collIsConcreteList) — reachable via a direct handler call, as the
-	// interpreter's matchSignature gates the shapes apart.
-	r := arrayTestReg()
-	drive := w9Driven(r)
-	body := NewEvalList([]Value{NewWord("mul"), NewInteger(2)})
-	out, err := drive(eachMapHandler([]Value{body, NewList([]Value{NewInteger(3)})}, nil, nil, r))
-	if err != nil {
-		t.Fatalf("eachMapHandler over list: %v", err)
-	}
-	if len(out) != 1 || Canon(out) != `[6]` {
-		t.Errorf("eachMapHandler over list = %q, want [6]", Canon(out))
-	}
-	// And the fold/scan cross-collection redirects.
-	out, err = drive(foldWithInitHandler([]Value{
-		NewEvalList([]Value{NewWord("add")}),
-		mapOf(t, "a", NewInteger(1), "b", NewInteger(2)),
-		NewInteger(0),
-	}, nil, nil, r))
-	if err != nil {
-		t.Fatalf("fold over map: %v", err)
-	}
-	if Canon(out) != `3` {
-		t.Errorf("fold over map = %q, want 3", Canon(out))
-	}
-}
-
-// mapOf builds a concrete ordered map value for direct handler calls.
-func mapOf(t *testing.T, pairs ...any) Value {
-	t.Helper()
-	om := NewOrderedMap()
-	for i := 0; i+1 < len(pairs); i += 2 {
-		om.Set(pairs[i].(string), pairs[i+1].(Value))
-	}
-	return NewMap(om)
 }
 
 // ---- check-mode ReturnsFn coverage ----

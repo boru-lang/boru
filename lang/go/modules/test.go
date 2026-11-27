@@ -119,10 +119,7 @@ func BuildTestModule(parent *native.Registry) (native.ModuleDesc, error) {
 	modReg.Output = parent.Output
 	modReg.ErrOutput = parent.ErrOutput
 	modReg.Input = parent.Input
-	// Ledger rides with the writers so this sub-registry's effects count
-	// against the parent's compiled-mode fallback fence (eng effects.go);
-	// the observability hooks ride along for the same reason.
-	modReg.Effects = parent.Effects
+	// The observability hooks ride with the writers.
 	modReg.InheritObserveHooks(parent)
 	modReg.ParseFunc = parent.ParseFunc
 	modReg.BaseDir = parent.BaseDir
@@ -189,8 +186,7 @@ func BuildTestModule(parent *native.Registry) (native.ModuleDesc, error) {
 		// Src lets import transport escaped type machinery — the
 		// preamble-minted record/table type NODES the exports now carry
 		// (TestSet, TestCase, …) are adopted into the importing
-		// registry's TypeTable so the compiled OpPushType path resolves
-		// them (adoptEscapedTypes).
+		// registry's TypeTable (adoptEscapedTypes).
 		Src:     modReg,
 		ID:      parent.Modules.NextID(),
 		Exports: exports,
@@ -262,7 +258,7 @@ func activeRun(parent *native.Registry) *testRun {
 // are registered into the module sub-registry; their handlers reach
 // the active testRun via the captured parent registry.
 func testNatives(parent *native.Registry) []native.NativeFunc {
-	return native.SideEffecting([]native.NativeFunc{
+	return []native.NativeFunc{
 		// describe "name" [body] — push name onto the path, run body,
 		// pop. Body errors abort the describe but leave already-
 		// recorded results in place.
@@ -501,10 +497,11 @@ func testNatives(parent *native.Registry) []native.NativeFunc {
 					// Side-effect suppression (design/legacy/module-fn-checkstate-ownership.1.ignore
 					// §5c): test-record accumulates pass/fail outcomes into the run. Once
 					// a module-fn body (run-case) runs IN CHECK MODE under the parent pass
-					// (§5b), this handler fires during the compile/check pass — it must NOT
-					// mutate observable state, or the compiled path leaks pass/fail counts
-					// (the module-test:38 {passed:1 failed:1} vs {passed:2 failed:0}
-					// divergence). Skip the write when the pass suppresses side effects.
+					// (§5b), this handler fires during the check pass — it must NOT
+					// mutate observable state, or the run that follows starts with the
+					// pass's counts (the module-test:38 {passed:1 failed:1} vs
+					// {passed:2 failed:0} divergence). Skip the write when the pass
+					// suppresses side effects.
 					if r != nil && r.Check.SkipsSideEffect() {
 						return nil, nil
 					}
@@ -600,16 +597,6 @@ func testNatives(parent *native.Registry) []native.NativeFunc {
 				Returns:    []*native.Type{native.TMap},
 				ReturnsFn:  testPropResultShapeReturns,
 				BarrierPos: -1,
-				// runCheckProp runs BOTH bodies (the generator, param `r`; the
-				// property, one unnamed param) through parent.CallBoru in fresh
-				// isolated frames against the module-captured parent registry — the
-				// SAME Go handler in interpreter and compiled mode. So the bodies
-				// never couple to the VM tape or a compiled frame local: a plain
-				// CALL_NATIVE bake is sound even when the bodies arrive as DYNAMIC
-				// values (the declarative `_prop_spec` surface fetches them via
-				// `p get "gen"` / `p get "property"`). Without this the NoEvalArgs
-				// dynamic-body compile failure blocked every `_prop_spec` file.
-				CompileEffect: native.CompileRunsBodyIsolated,
 				Impl: native.Go(func(args []native.Value, _ map[string]native.Value, _ []native.Value, _ *native.Registry) ([]native.Value, error) {
 					return runCheckProp(parent, args)
 				}),
@@ -657,7 +644,7 @@ func testNatives(parent *native.Registry) []native.NativeFunc {
 				},
 			},
 		},
-	})
+	}
 }
 
 // ---- check-mode shape ReturnsFns -------------------------------------
@@ -855,10 +842,7 @@ func runCheckProp(parent *native.Registry, args []native.Value) ([]native.Value,
 
 		// Run the generator body with `r` bound to the iteration's rand
 		// instance. Body must leave exactly one value on the stack — the
-		// generated input. A stored-param-body carrier (compiled path)
-		// dispatches through InvokeCallback — the unit runs nested on the
-		// VM, and stale deps / internal errors degrade to the identical
-		// CallBoru frame; a raw body builds today's throwaway sig.
+		// generated input.
 		genResults, err := checkPropBody(parent, checkPropGenParams, args[1], []native.Value{native.NewMap(randMap)})
 		if err != nil {
 			failed = true
@@ -1125,9 +1109,8 @@ func shrinkFailingInput(
 			return shrink.Invalid
 		}
 		candidateValue := vals[len(vals)-1]
-		// The main loop's dispatch: the carrier on the VM, or the
-		// throwaway frame whose unnamed Any param makes `args.0`
-		// available inside the property body.
+		// The main loop's dispatch: the throwaway frame whose unnamed
+		// Any param makes `args.0` available inside the property body.
 		res, err := checkPropBody(parent, checkPropPropParams, propBody, []native.Value{candidateValue})
 		if err != nil || len(res) == 0 {
 			return shrink.Invalid

@@ -67,13 +67,6 @@ type Registry struct {
 	Output    io.Writer // output writer for print/printstr and stdout
 	ErrOutput io.Writer // error output writer for stderr
 	Input     io.Reader // input reader for stdin
-	// Effects is the observable-side-effect ledger the compiled-mode
-	// fallback fence reads (effects.go, design/RUNTIME-INDEPENDENCE-
-	// COMPLETION-PLAN.0.md C1): a silent interpreter re-run is permitted
-	// only while the count is unchanged since before the check pass.
-	// Shared by pointer into forks (ForkConcurrent's shallow copy) and
-	// module sub-registries (RunModuleBody threads it with Output).
-	Effects *EffectLedger
 	// coverHook is the arm-able boru-source line-coverage seam (coverage.go),
 	// powering boru:test's coverage feature. Pointer-shared into forks and
 	// inherited by module sub-registries via InheritObserveHooks; inert (one
@@ -85,10 +78,10 @@ type Registry struct {
 	coverSources *coverSources
 	// TapeConfig bounds the execution tape's growth (initial size, max
 	// grows, growth factor). The zero value uses the defaults; hosts set
-	// it via lang.Options. See eng/go/tape.go.
+	// it via lang.Options. See tape.go.
 	TapeConfig TapeConfig
-	// StepLimit caps the interpreter's Run loop, a single paren-group
-	// evaluation, and the VM's step counter. Zero means unset — the
+	// StepLimit caps the interpreter's Run loop and a single paren-group
+	// evaluation. Zero means unset — the
 	// DefaultStepLimit / DefaultSubStepLimit constants apply. It is not a
 	// zero-value overload: a limit of 0 would abort before the first step,
 	// so the option parser rejects an explicit 0 (lang/go/options.go) and
@@ -172,20 +165,17 @@ type Registry struct {
 	// returns, without the signal having to ride the error channel.
 	// See flowctrl.go.
 	FlowCtrl FlowCtrl
-	// FlowAt is where a VM ISLAND run stood when a break/continue it could
-	// not resolve ended it (Engine.exitWithFlowCtrl): the position of the
-	// token at its pointer, which the interpreter's `outside loop` report
-	// points at when no loop takes the signal. FlowAtSet is false when the
-	// pointer had run off the island's tape — the report then points past
-	// the island's span, which only the compiled lowering knows
-	// (compiler.FlowExit). The VM takes both with the signal (NUR355).
-	FlowAt    SrcPos
-	FlowAtSet bool
+	// FlowAt is where a run stood when a break/continue it could not
+	// resolve ended it (Engine.exitWithFlowCtrl): the position of the token
+	// at its pointer, which the `outside loop` report points at when no loop
+	// takes the signal (NUR355). The zero position when the pointer had run
+	// off the run's tape.
+	FlowAt SrcPos
 	// FlowAtHeld reports that FlowAt already records where the pending
 	// signal stood, taken by the INNERMOST run that could not hand its tape
-	// back — an island, or a container literal's element run (NUR358). An
-	// enclosing island keeps it rather than overwriting it with its own
-	// position, and the top of an interpreted run reports it (the literal's
+	// back — a container literal's element run (NUR358). An enclosing run
+	// keeps it rather than overwriting it with its own position, and the
+	// top of the run reports it (the literal's
 	// elements stood where the signal escaped, not the run's pointer, which
 	// has moved past the literal). Cleared with the signal.
 	FlowAtHeld bool
@@ -388,18 +378,6 @@ func (c *dispatchCacheState) put(name string, gen int64, fn *FnDefInfo) {
 	}
 	c.mu.Lock()
 	c.m[name] = dispatchCacheEntry{gen: gen, fn: fn}
-	c.mu.Unlock()
-}
-
-// reset drops every entry while keeping the holder (and its mutex) in
-// place, so a registry shared across goroutines never has its cache
-// pointer swapped out from under a concurrent reader.
-func (c *dispatchCacheState) reset() {
-	if c == nil {
-		return
-	}
-	c.mu.Lock()
-	c.m = make(map[string]dispatchCacheEntry)
 	c.mu.Unlock()
 }
 
@@ -714,7 +692,6 @@ func NewRegistry() (*Registry, error) {
 		Output:       os.Stdout,
 		ErrOutput:    os.Stderr,
 		Input:        os.Stdin,
-		Effects:      &EffectLedger{},
 		coverHook:    &coverHook{},
 		coverSources: &coverSources{},
 		SDKCache:     make(map[string]any),
@@ -1588,11 +1565,11 @@ func (r *Registry) RegisterNativeFunc(fn NativeFunc) {
 		// The native author fills a plain Signature (positional Args + a Go
 		// Handler); Register → upsertFnDef → normalizeSig synthesizes the
 		// authoritative Params from Args+Patterns. Only the WORD-level field
-		// (CompileEffect) folds onto each sig here. `BarrierAllForward`
+		// (ConstFold) folds onto each sig here. `BarrierAllForward`
 		// (-1) is the "default all-forward" sentinel; `0` is explicit all-stack —
 		// upsertFnDef resolves it once.
 		s := sig
-		s.CompileEffect |= fn.CompileEffect
+		s.ConstFold = s.ConstFold || fn.ConstFold
 		r.Register(fn.Name, s)
 	}
 }
@@ -1655,7 +1632,7 @@ func (r *Registry) callBoruNamed(sig *FnSig, args []Value, captures []CapturedBi
 	// Push the fn-entry baseline before installing anything. Inner
 	// fn constructions inside this body consult TopFnBaseline to
 	// identify enclosing-fn-local bindings; a leaf pushes a nil entry,
-	// which keeps the per-call stacks balanced (eng/go/CLAUDE.md).
+	// which keeps the per-call stacks balanced (core/go/CLAUDE.md).
 	if leaf {
 		r.PushFnBaseline(nil)
 	} else {
@@ -2283,29 +2260,6 @@ func (r *Registry) runPredicateBody(fnDef FnDefInfo, predSig *FnSig, candidate V
 	}
 	return out, true, nil
 }
-
-// enforceCallBoruReturns applies a fn's declared return contract to the
-// results of a CallBoru dispatch (NUR069). Nil when the sig declares no
-// returns — an undeclared return keeps the historical flow-through, the
-// residual IS the return, matching the frame path, which emits no
-// ReturnCheck in that case.
-//
-// The count is NOT enforced, only the types of the positions present.
-// Enforcing arity here would break the two shapes this path exists to
-// serve, and that the old trim-only comment named: a guard predicate
-// signals failure with a None residual, and a lambda auto-declares
-// `[Any]` over a side-effect body. Both are legitimate callers whose
-// residual count does not match the declaration, and neither is a TYPE
-// violation — which is what this record is about. The compiled side
-// already declines to raise on a count mismatch (checkReturnContract's
-// RetReplay arm defers to the interpreter), so leaving count alone here
-// keeps the two paths agreeing rather than trading one asymmetry for
-// another.
-// InPredicateCall reports whether a predicate body is executing (the
-// predicate-call bracket around RunPredicate): the CallBoru return
-// discipline skips its type check there, and the VM's mirror of that
-// discipline (eng checkCallBoruContract) asks the same question.
-func (r *Registry) InPredicateCall() bool { return r.predicateCalls > 0 }
 
 func (r *Registry) enforceCallBoruReturns(sig *FnSig, name string, result []Value) error {
 	if len(sig.Returns) == 0 || r.predicateCalls > 0 {

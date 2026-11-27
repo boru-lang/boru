@@ -16,21 +16,20 @@ import (
 
 // *Type aliases — every exported type from borueng is re-exported here.
 type (
-	DeqIndex           = core.DeqIndex
-	BoruError          = core.BoruError
-	RenderOpts         = core.RenderOpts
-	DiagSpan           = core.DiagSpan
-	DiagSuggestion     = core.DiagSuggestion
-	CalDurationData    = core.CalDurationData
-	CheckDiagnostic    = core.CheckDiagnostic
-	CheckFullStackFunc = core.CheckFullStackFunc
-	CheckSeverity      = core.CheckSeverity
-	CheckState         = core.CheckState
-	ChildTypeInfo      = core.ChildTypeInfo
-	CodeEffectInfo     = core.CodeEffectInfo
-	ReachInfo          = core.ReachInfo
-	ReachSeg           = core.ReachSeg
-	ChildEntry         = core.ChildEntry
+	DeqIndex        = core.DeqIndex
+	BoruError       = core.BoruError
+	RenderOpts      = core.RenderOpts
+	DiagSpan        = core.DiagSpan
+	DiagSuggestion  = core.DiagSuggestion
+	CalDurationData = core.CalDurationData
+	CheckDiagnostic = core.CheckDiagnostic
+	CheckSeverity   = core.CheckSeverity
+	CheckState      = core.CheckState
+	ChildTypeInfo   = core.ChildTypeInfo
+	CodeEffectInfo  = core.CodeEffectInfo
+	ReachInfo       = core.ReachInfo
+	ReachSeg        = core.ReachSeg
+	ChildEntry      = core.ChildEntry
 	// Sealed Payload variants (post Step 5).
 	Payload              = core.Payload
 	IntPayload           = core.IntPayload
@@ -65,7 +64,6 @@ type (
 	LoopDriver           = core.LoopDriver
 	LoopOpenInfo         = core.LoopOpenInfo
 	ForwardInfo          = core.ForwardInfo
-	GuardClause          = core.GuardClause
 	Handler              = core.Handler
 	IfCont               = core.IfCont
 	InterpPart           = core.InterpPart
@@ -82,7 +80,6 @@ type (
 	GoImpl               = core.GoImpl   // native / internal Go-handler implementation
 	BoruImpl             = core.BoruImpl // boru body implementation (module ref / lambda / installed fn)
 	GoOpt                = core.GoOpt    // optional dispatch knob for Go(...)
-	CompileEffect        = core.CompileEffect
 	ClassInstanceInfo    = core.ClassInstanceInfo
 	ClassTypeInfo        = core.ClassTypeInfo
 	ResourceInstanceInfo = core.ResourceInstanceInfo
@@ -92,7 +89,6 @@ type (
 	GenSpecInfo          = core.GenSpecInfo
 	TypeSchemaInfo       = core.TypeSchemaInfo
 	GenInstRef           = core.GenInstRef
-	SchemaKind           = core.SchemaKind
 	OptionsTypeInfo      = core.OptionsTypeInfo
 	OrderedMap           = core.OrderedMap
 	PathonInfo           = core.PathonInfo
@@ -110,7 +106,6 @@ type (
 	TableData            = core.TableData
 	TableTypeInfo        = core.TableTypeInfo
 	TimeoutInfo          = core.TimeoutInfo
-	TraceCallback        = core.TraceCallback
 	Type                 = core.Type
 	Value                = core.Value
 	WordInfo             = core.WordInfo
@@ -151,7 +146,6 @@ var (
 	TInteger      = core.TInteger
 	TBigInteger   = core.TBigInteger
 	TBigDecimal   = core.TBigDecimal
-	TInternal     = core.TInternal
 	TInterpString = core.TInterpString
 	// TInterval moved to lang/go/engine/native_misc.go (Step 8).
 	TList         = core.TList
@@ -174,9 +168,6 @@ var (
 	TClass          = core.TClass
 	TSurface        = core.TSurface
 	TSelf           = core.TSelf
-	TTypeParam      = core.TTypeParam
-	TGenSpec        = core.TGenSpec
-	TGenParam       = core.TGenParam
 	TIdeal          = core.TIdeal
 	TOpenParen      = core.TOpenParen
 	TOptions        = core.TOptions
@@ -224,43 +215,18 @@ const (
 const (
 	SchemaRecord = core.SchemaRecord
 	SchemaClass  = core.SchemaClass
-	SchemaFnSig  = core.SchemaFnSig
 	SchemaFn     = core.SchemaFn
 )
 
 // Engine-level constants.
 const (
-	CarrierDisjunctCap     = core.CarrierDisjunctCap
-	MaxArgs                = core.MaxArgs
-	DefaultCheckStepBudget = core.DefaultCheckStepBudget
+	CarrierDisjunctCap = core.CarrierDisjunctCap
+	MaxArgs            = core.MaxArgs
 
 	DepGT  = core.DepGT
 	DepGTE = core.DepGTE
 	DepLT  = core.DepLT
 	DepLTE = core.DepLTE
-
-	// Compile-effect classifications (core.CompileEffect) for the bytecode
-	// recorder — declared on a Signature instead of a name-keyed eng table.
-	CompileDefault            = core.CompileDefault
-	CompileReadsFn            = core.CompileReadsFn
-	CompileStoresFn           = core.CompileStoresFn
-	CompileModuleFold         = core.CompileModuleFold
-	CompileIslandPure         = core.CompileIslandPure
-	CompileScalarFold         = core.CompileScalarFold
-	CompileFallbackBody       = core.CompileFallbackBody
-	CompileQuoteInert         = core.CompileQuoteInert
-	CompileQuoteKey           = core.CompileQuoteKey
-	CompileDiverges           = core.CompileDiverges
-	CompileValueDiverges      = core.CompileValueDiverges
-	CompileStoresBody         = core.CompileStoresBody
-	CompileStoresBodyList     = core.CompileStoresBodyList
-	CompileFnHandlerStrict    = core.CompileFnHandlerStrict
-	CompileResteps            = core.CompileResteps
-	CompileOwnLowering        = core.CompileOwnLowering
-	CompileRunsBodyIsolated   = core.CompileRunsBodyIsolated
-	CompileRunsBodyOnRegistry = core.CompileRunsBodyOnRegistry
-	CompileDynBody            = core.CompileDynBody
-	CompileSideEffect         = core.CompileSideEffect
 )
 
 // Flow-control signal values exposed by the engine. These travel
@@ -391,7 +357,6 @@ var (
 	GenerateID                = core.GenerateID
 	GenerateObjectTypeID      = core.GenerateObjectTypeID
 	BeginIDMintScope          = core.BeginIDMintScope
-	ResetModuleExportGrowth   = core.ResetModuleExportGrowth
 	MakeClassFieldValue       = core.MakeClassFieldValue
 	MakeClassInstance         = core.MakeClassInstance
 	MakeResource              = core.MakeResource
@@ -434,7 +399,6 @@ var (
 	ApplyGuardNarrowing      = core.ApplyGuardNarrowing
 	ApplyComplementNarrowing = core.ApplyComplementNarrowing
 	RunCarrierBodyWithDefs   = core.RunCarrierBodyWithDefs
-	RunCarrierCondBody       = core.RunCarrierCondBody
 	InstallJoinedDefs        = core.InstallJoinedDefs
 	New                      = core.New
 	RunPooled                = core.RunPooled
@@ -591,7 +555,7 @@ var (
 	ValidateTypeNameParts  = core.ValidateTypeNameParts
 	ValuesEqual            = core.ValuesEqual
 	WithPos                = core.WithPos
-	// `make` helpers, ported alongside the make word in eng/go/core_make.go.
+	// `make` helpers, ported alongside the make word in core/go/core_make.go.
 	makeFieldValue   = core.MakeFieldValue
 	ResolveFieldType = core.ResolveFieldType
 
@@ -599,7 +563,7 @@ var (
 	getKey = core.GetKey
 )
 
-// Sugar roles (eng/go/sugar.go — ADR-012 rule 3, 2026-08-04
+// Sugar roles (core/go/sugar.go — ADR-012 rule 3, 2026-08-04
 // amendment): the keys bindSugarWords binds boru's word names to.
 const (
 	SugarUsurp       = core.SugarUsurp

@@ -387,10 +387,6 @@ var mathNatives = []NativeFunc{
 	},
 	{
 		Name: "div",
-		// div by a static-zero integer divisor raises (returnsDivMod drops the
-		// result on that path); the flag lets a closure body ending in it —
-		// `do [1 div 0]` — compile as a divergent terminal instead of islanding.
-		CompileEffect: CompileValueDiverges,
 
 		Signatures: []Signature{{
 			Args:      []*Type{TNumber, TNumber},
@@ -400,9 +396,6 @@ var mathNatives = []NativeFunc{
 	},
 	{
 		Name: "mod",
-		// mod by a static-zero integer divisor raises — same divergent-terminal
-		// treatment as div (see above).
-		CompileEffect: CompileValueDiverges,
 
 		Signatures: []Signature{{
 			Args:      []*Type{TNumber, TNumber},

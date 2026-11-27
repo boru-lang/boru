@@ -42,7 +42,6 @@ func seam5Check(r *Registry, src string) ([]Value, error) {
 	}
 	r.Source = src
 	defer r.Check.Begin()()
-	ResetModuleExportGrowth(r)
 	ResetCheckFnCarrierBinds(r)
 	e := NewTop(r)
 	e.SetSource(src)

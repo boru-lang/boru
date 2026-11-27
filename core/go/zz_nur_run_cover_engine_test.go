@@ -352,40 +352,6 @@ func TestNurRunDispatchModQuotesPrecedingCarrier(t *testing.T) {
 	step() // a marker with nothing before it is simply dropped
 }
 
-// Pins that under analysis a reach group collapsing to a lone fn-typed or
-// dynamic carrier records it as a re-stepping survivor, while a quoted
-// carrier, a concrete value, a non-reach collapse and an inactive pass
-// record nothing.
-func TestNurRunTagReachCollapsedCarrierSurvivor(t *testing.T) {
-	r := newTestRegistry(t)
-	tag := func(v Value, wasReach bool) {
-		e := NewTop(r)
-		e.Tape = NewTape([]Value{v, NewInteger(0), NewInteger(0)}, StackHeadroom)
-		e.tagReachCollapsedFn(0, 2, wasReach)
-	}
-	withID := func(v Value, id string) Value { SetID(&v, id); return v }
-
-	tag(withID(NewCarrier(TFunction), "nrc-inactive"), true)
-	if r.Check.ReachSurvivorFnIDs != nil {
-		t.Fatal("an inactive pass records nothing")
-	}
-
-	done := r.Check.Begin()
-	defer done()
-	tag(withID(NewCarrier(TFunction), "nrc-fn-carrier"), true)
-	tag(withID(NewDynamicCarrier(TAny), "nrc-dyn"), true)
-	quoted := withID(NewCarrier(TFunction), "nrc-quoted")
-	SetQuoted(&quoted, true)
-	tag(quoted, true)
-	tag(withID(NewInteger(4), "nrc-int"), true)
-	tag(withID(NewCarrier(TFunction), "nrc-not-reach"), false)
-
-	got := r.Check.ReachSurvivorFnIDs
-	if !got["nrc-fn-carrier"] || !got["nrc-dyn"] || len(got) != 2 {
-		t.Fatalf("want exactly the fn-typed and dynamic survivors, got %v", got)
-	}
-}
-
 // Pins the forward-claim probe: a dispatch-modifier marker is never an
 // argument (probeNone), where a literal is a claimable value.
 func TestNurRunForwardClaimProbeDispatchMod(t *testing.T) {

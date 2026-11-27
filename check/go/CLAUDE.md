@@ -27,7 +27,7 @@ Three rules specific to this module:
   other boru sibling). Never write a basic or lang symbol here.
 - **Downward into core, only through slots.** check's analysis and
   check-mode behaviors are handed to core at init — `AnalysisImpl`
-  (S1, 10 slots) and `CheckBraid` (S9), both installed from
+  (S1, 8 slots) and `CheckBraid` (S9), both installed from
   `check_recovery.go` (`installAnalysisImpl` / `installCheckBraid`).
   Core-side tests pin each NAMED inactive default
   (`TestInactiveAnalysisImpl`, `TestInactiveCheckBraid`); a new slot
