@@ -15,106 +15,126 @@
 // MintType. User-minted types are handled separately where the specs
 // reach them.
 
-// builtinDecl mirrors eng/go/typetable.go::builtinDecl (the subset of
-// fields the TS port needs: path, an optional friendly short alias for
-// expansion, and the internal flag that keeps a type out of the
-// user-facing name table).
+// builtinDecl mirrors core/go/typetable.go::builtinDecl (the subset of
+// fields the TS port needs: path, the unified lattice rank, an optional
+// friendly short alias for expansion, and the internal flag that keeps a
+// type out of the user-facing name table).
 interface BuiltinDecl {
   path: string;
+  /**
+   * The unified lattice Rank — the one integer the total order falls back
+   * to for every cross-type comparison (core/go/compare_types.go). A child
+   * ranks above its parent, siblings run least-to-most complex.
+   */
+  rank: number;
   alias?: string;
   internal?: boolean;
 }
 
-// builtinDecls mirrors eng/go/typetable.go::builtinDecls (parent-first
-// order). Ranks/FixedIDs are omitted — the TS port does not serialise
-// IDs or use Rank ordering yet.
+// builtinDecls mirrors core/go/typetable.go::builtinDecls ROW FOR ROW, in
+// the same parent-first order and with the same ranks. It was a subset —
+// thirteen nodes short (eight Microns, the three Weak flex nodes, KeyVal,
+// Module) and rank-less — so `Module` was undefined_word here and a type
+// literal in Go, and nothing could order two types the way Go does.
+// The table is DATA the Go kernel owns: type-table.test.ts reads
+// core/go/typetable.go and holds this copy to it row by row, as
+// spec/tools/gen-typetable.sh does for the Lean model's.
 const builtinDecls: BuiltinDecl[] = [
   // Degenerate roots.
-  { path: "Any" },
-  { path: "None" },
-  { path: "Never" },
-  { path: "Absent" },
+  { path: "Any", rank: 11_000_000_000 },
+  { path: "None", rank: 12_000_000_000 },
+  { path: "Never", rank: 13_000_000_000 },
+  { path: "Absent", rank: 14_000_000_000 },
 
   // Branch roots (sit under Any in the lattice; Path() stays the leaf).
-  { path: "Scalar" },
-  { path: "Node" },
-  { path: "Ideal" },
-  { path: "Word" },
-  { path: "Type" },
+  { path: "Scalar", rank: 20_000_000_000 },
+  { path: "Node", rank: 30_000_000_000 },
+  { path: "Ideal", rank: 40_000_000_000 },
+  { path: "Word", rank: 50_000_000_000 },
+  { path: "Type", rank: 60_000_000_000 },
 
   // Scalar branch.
-  { path: "Scalar/Atom" },
-  { path: "Scalar/Boolean" },
-  { path: "Scalar/Number" },
-  { path: "Scalar/Number/Integer" },
-  { path: "Scalar/Number/Float" },
-  { path: "Scalar/Number/BigInteger" },
-  { path: "Scalar/Number/BigDecimal" },
-  { path: "Scalar/String" },
-  { path: "Scalar/String/EmptyString" },
-  { path: "Scalar/String/ProperString" },
-  // Scalar/Micron — structured-scalar family (mirrors eng/go). The TS
-  // port carries the lattice rows only; Emailon/Urlon construction and
-  // property access live in the Go engine.
-  { path: "Scalar/Micron" },
-  { path: "Scalar/Micron/Pathon" },
-  { path: "Scalar/Micron/Emailon" },
-  { path: "Scalar/Micron/Urlon" },
-  // Present in core/go's table (typetable.go:722) and absent here, so
-  // `Cidron` was undefined_word in TS and a type literal in Go.
-  { path: "Scalar/Micron/Cidron" },
+  { path: "Scalar/Atom", rank: 20_100_000_000 },
+  { path: "Scalar/Boolean", rank: 20_200_000_000 },
+  { path: "Scalar/Number", rank: 20_300_000_000 },
+  { path: "Scalar/Number/Integer", rank: 20_310_000_000 },
+  { path: "Scalar/Number/Float", rank: 20_320_000_000 },
+  { path: "Scalar/Number/BigInteger", rank: 20_330_000_000 },
+  { path: "Scalar/Number/BigDecimal", rank: 20_340_000_000 },
+  { path: "Scalar/String", rank: 20_400_000_000 },
+  { path: "Scalar/String/EmptyString", rank: 20_410_000_000 },
+  { path: "Scalar/String/ProperString", rank: 20_420_000_000 },
+  // Scalar/Micron — the structured-scalar family. The TS port carries the
+  // lattice rows only; the content (validators, grammars) lives in Go.
+  { path: "Scalar/Micron", rank: 20_500_000_000 },
+  { path: "Scalar/Micron/Pathon", rank: 20_510_000_000 },
+  { path: "Scalar/Micron/Emailon", rank: 20_520_000_000 },
+  { path: "Scalar/Micron/Urlon", rank: 20_530_000_000 },
+  { path: "Scalar/Micron/Ipon", rank: 20_540_000_000 },
+  { path: "Scalar/Micron/Hoston", rank: 20_550_000_000 },
+  { path: "Scalar/Micron/Semveron", rank: 20_560_000_000 },
+  { path: "Scalar/Micron/Cidron", rank: 20_570_000_000 },
+  { path: "Scalar/Micron/Macon", rank: 20_580_000_000 },
+  { path: "Scalar/Micron/Coloron", rank: 20_590_000_000 },
+  { path: "Scalar/Micron/Mimon", rank: 20_600_000_000 },
+  { path: "Scalar/Micron/Qion", rank: 20_610_000_000 },
+  { path: "Scalar/Micron/Phonon", rank: 20_620_000_000 },
 
   // Node branch.
-  { path: "Node/List" },
-  { path: "Node/List/Args" },
-  { path: "Node/List/FlexList" },
-  { path: "Node/Map" },
-  { path: "Node/Map/Inspect" },
-  { path: "Node/Map/FlexMap" },
-  { path: "Node/Xml" },
-  { path: "Node/Xml/FlexXml" },
+  { path: "Node/List", rank: 30_100_000_000 },
+  { path: "Node/List/Args", rank: 30_110_000_000 },
+  { path: "Node/List/FlexList", rank: 30_120_000_000 },
+  { path: "Node/List/FlexList/WeakFlexList", rank: 30_121_000_000 },
+  { path: "Node/Map", rank: 30_200_000_000 },
+  { path: "Node/Map/Inspect", rank: 30_210_000_000 },
+  { path: "Node/Map/FlexMap", rank: 30_220_000_000 },
+  { path: "Node/Map/FlexMap/WeakFlexMap", rank: 30_221_000_000 },
+  { path: "Node/Map/KeyVal", rank: 31_000_000_000 },
+  { path: "Node/Xml", rank: 30_300_000_000 },
+  { path: "Node/Xml/FlexXml", rank: 30_310_000_000 },
+  { path: "Node/Xml/FlexXml/WeakFlexXml", rank: 30_311_000_000 },
 
   // Ideal branch.
-  { path: "Ideal/Resource" },
-  { path: "Ideal/Resource/Entity" },
-  { path: "Ideal/Record" },
-  { path: "Ideal/Options" },
-  { path: "Ideal/Error" },
-  { path: "Ideal/Store" },
-  { path: "Ideal/Store/System" },
-  { path: "Ideal/Table" },
-  { path: "Ideal/Reach" },
-  { path: "Ideal/Class" },
-  { path: "Ideal/Surface" },
+  { path: "Ideal/Resource", rank: 40_120_000_000 },
+  { path: "Ideal/Resource/Entity", rank: 40_121_000_000 },
+  { path: "Ideal/Record", rank: 40_300_000_000 },
+  { path: "Ideal/Options", rank: 40_400_000_000 },
+  { path: "Ideal/Error", rank: 40_500_000_000 },
+  { path: "Ideal/Store", rank: 40_600_000_000 },
+  { path: "Ideal/Store/System", rank: 40_610_000_000 },
+  { path: "Ideal/Table", rank: 40_700_000_000 },
+  { path: "Ideal/Reach", rank: 40_800_000_000 },
+  { path: "Ideal/Class", rank: 40_900_000_000 },
+  { path: "Ideal/Surface", rank: 40_910_000_000 },
+  { path: "Ideal/Module", rank: 41_000_000_000 },
 
   // Word branch — interpreter-internal markers (kept out of byName).
-  { path: "Word/__FW", alias: "Forward", internal: true },
-  { path: "Word/__OP", alias: "Paren", internal: true },
-  { path: "Word/__CP", alias: "CloseParen", internal: true },
-  { path: "Word/__ED", alias: "End", internal: true },
-  { path: "Word/__PE", internal: true },
-  { path: "Word/__IS", internal: true },
-  { path: "Word/__XI", internal: true },
-  // Word/__FN ('Fndef') retired — collapsed into Type/Function (ADR-011).
-  { path: "Word/__RC", alias: "Returncheck", internal: true },
-  { path: "Word/__MK", alias: "Mark", internal: true },
-  { path: "Word/__MV", alias: "Move", internal: true },
-  { path: "Word/__IN", internal: true },
-  { path: "Word/__IN/__DC", internal: true },
-  { path: "Word/__SP", alias: "Splice", internal: true },
-  { path: "Word/__DM", alias: "DispatchMod", internal: true },
-  { path: "Word/__SG", alias: "Sugar", internal: true },
+  { path: "Word/__FW", rank: 50_100_000_000, alias: "Forward", internal: true },
+  { path: "Word/__OP", rank: 50_100_001_000, alias: "Paren", internal: true },
+  { path: "Word/__CP", rank: 50_100_002_000, alias: "CloseParen", internal: true },
+  { path: "Word/__ED", rank: 50_100_003_000, alias: "End", internal: true },
+  { path: "Word/__PE", rank: 50_100_004_000, internal: true },
+  { path: "Word/__IS", rank: 50_100_005_000, internal: true },
+  { path: "Word/__XI", rank: 50_100_005_500, internal: true },
+  { path: "Word/__RC", rank: 50_100_007_000, alias: "Returncheck", internal: true },
+  { path: "Word/__MK", rank: 50_100_008_000, alias: "Mark", internal: true },
+  { path: "Word/__MV", rank: 50_100_009_000, alias: "Move", internal: true },
+  { path: "Word/__IN", rank: 50_100_011_000, internal: true },
+  { path: "Word/__IN/__DC", rank: 50_100_011_001, internal: true },
+  { path: "Word/__SP", rank: 50_100_012_000, alias: "Splice", internal: true },
+  { path: "Word/__DM", rank: 50_100_013_000, alias: "DispatchMod", internal: true },
+  { path: "Word/__SG", rank: 50_100_014_000, alias: "Sugar", internal: true },
 
   // Type (metatype) branch.
-  { path: "Type/Function" },
-  { path: "Type/FunctionSignature" },
-  { path: "Type/Disjunct" },
-  { path: "Type/Disjunct/Enum" },
-  { path: "Type/Negation" },
-  { path: "Type/Self" },
-  { path: "Type/TypeParam" },
-  { path: "Type/GenSpec" },
-  { path: "Type/GenParam" },
+  { path: "Type/Function", rank: 60_100_000_000 },
+  { path: "Type/FunctionSignature", rank: 60_200_000_000 },
+  { path: "Type/Disjunct", rank: 60_300_000_000 },
+  { path: "Type/Disjunct/Enum", rank: 60_310_000_000 },
+  { path: "Type/Negation", rank: 60_400_000_000 },
+  { path: "Type/Self", rank: 60_500_000_000 },
+  { path: "Type/TypeParam", rank: 60_600_000_000 },
+  { path: "Type/GenSpec", rank: 60_700_000_000 },
+  { path: "Type/GenParam", rank: 60_800_000_000 },
 ];
 
 // Derived lookups, built once from builtinDecls.
@@ -161,6 +181,17 @@ export function indexDecl(d: {
 }
 
 for (const d of builtinDecls) indexDecl(d);
+
+/**
+ * The builtin declaration table, read-only — path, rank, alias and the
+ * internal flag of every kernel lattice node, in declaration order. Exposed
+ * so a test can hold it against core/go/typetable.go row by row: the table
+ * is DATA the Go kernel owns, and a port that restates it by hand drifts
+ * (it was thirteen nodes short when that test was written).
+ */
+export function builtinTypeDecls(): ReadonlyArray<Readonly<BuiltinDecl>> {
+  return builtinDecls;
+}
 
 export class BoruType {
   readonly parts: readonly string[];
@@ -213,8 +244,11 @@ export class BoruType {
 export function newType(path: string): BoruType {
   const rawParts = path.split("/");
   for (const p of rawParts) {
-    const ch = p[0];
-    if (ch && /[a-z]/.test(ch)) {
+    // A LETTER that is not uppercase, as Go's NewType reads it
+    // (unicode.IsLetter && !unicode.IsUpper): `é` is refused exactly as `e`
+    // is, and a digit or `_` opens a part freely (`Word/__ED`).
+    const ch = String.fromCodePoint(p.codePointAt(0) ?? 0x30);
+    if (/\p{L}/u.test(ch) && !/\p{Lu}/u.test(ch)) {
       throw new Error(
         `boru: type part ${JSON.stringify(p)} in ${JSON.stringify(path)} must start with an uppercase letter`,
       );
@@ -246,6 +280,62 @@ const RANK_BY_PATH = new Map<string, number>(
 export function builtinRank(t: BoruType): number {
   const r = RANK_BY_PATH.get(t.parts.join("/"));
   return r === undefined ? Number.MAX_SAFE_INTEGER : r;
+}
+
+const LATTICE_RANK = new Map<string, number>(
+  builtinDecls.map((d) => [d.path, d.rank]),
+);
+
+/**
+ * typeRank is a type's unified lattice Rank: its own when the kernel
+ * declares it, else the nearest declared ancestor's — a minted type has no
+ * positional slot and inherits its parent's (core/go/compare_types.go
+ * `rankOf`). Zero for a type with no declared ancestor at all.
+ */
+export function typeRank(t: BoruType): number {
+  for (let n = t.parts.length; n > 0; n--) {
+    const r = LATTICE_RANK.get(t.parts.slice(0, n).join("/"));
+    if (r !== undefined) return r;
+  }
+  return 0;
+}
+
+/**
+ * compareTypes is the total order on types — the order two bare type
+ * literals sort in, and what the value order falls back to across
+ * families (core/go/compare_types.go `compareTypes`): Rank, then depth
+ * (the more general type first), then leaf name.
+ */
+export function compareTypes(a: BoruType, b: BoruType): number {
+  if (a.equal(b)) return 0;
+  const byRank = typeRank(a) - typeRank(b);
+  if (byRank !== 0) return byRank < 0 ? -1 : 1;
+  const byDepth = a.parts.length - b.parts.length;
+  if (byDepth !== 0) return byDepth < 0 ? -1 : 1;
+  return compareText(a.leaf(), b.leaf());
+}
+
+/**
+ * compareText orders two strings by CODE POINT, which is the order Go's
+ * byte-wise strings.Compare gives UTF-8 text. JavaScript's own `<` compares
+ * UTF-16 code units, and so puts an astral character (U+1F600, a surrogate
+ * pair opening 0xD83D) BEFORE U+E000..U+FFFF where Go puts it after.
+ */
+export function compareText(a: string, b: string): number {
+  const n = Math.min(a.length, b.length);
+  for (let i = 0; i < n; i++) {
+    const x = a.charCodeAt(i);
+    const y = b.charCodeAt(i);
+    if (x === y) continue;
+    // Two differing units order as their code points do unless exactly one
+    // of them is a surrogate: that one is half of an astral character, and
+    // so the greater, whatever the unit values say.
+    const xs = x >= 0xd800 && x <= 0xdfff;
+    const ys = y >= 0xd800 && y <= 0xdfff;
+    if (xs !== ys) return xs ? 1 : -1;
+    return x < y ? -1 : 1;
+  }
+  return a.length === b.length ? 0 : a.length < b.length ? -1 : 1;
 }
 
 // Well-known types. Mirrors the var block in eng/go/types.go.
@@ -323,8 +413,18 @@ export function resolveBuiltinTypeName(name: string): BoruType | undefined {
   const leaf = typeNameTable().get(name);
   if (leaf !== undefined) return leaf;
   if (!name.includes("/")) return undefined;
-  if (!BY_PATH.has(name)) return undefined;
-  return newType(name);
+  // The path arm is NewType's: the first part may be a SHORT name
+  // (`Number/Integer`, `FlexMap/WeakFlexMap`), expanded through the leaf
+  // index, and a part opening with a lowercase letter is no type path at
+  // all. core/ts tested the name as written against the declared paths, so
+  // only the fully spelled form resolved.
+  let t: BoruType;
+  try {
+    t = newType(name);
+  } catch {
+    return undefined;
+  }
+  return BY_PATH.has(t.toString()) ? t : undefined;
 }
 
 export function typeNameTable(): Map<string, BoruType> {

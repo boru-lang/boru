@@ -392,8 +392,25 @@ export class Value {
     return this.vType.matches(TFunction) && this.data !== null;
   }
 
+  /**
+   * True iff this value is a marker of type `t` and not the TYPE LITERAL of
+   * that marker type — `Word/__MK` the name, which shares the vType and is
+   * no mark at all. The same line isWord() draws. Without it the step loop
+   * took the literal for the marker: `run Word/__MK` died in an uncoded
+   * `AsMark: nil data`, `run Word/__ED` was stepped as a barrier and
+   * rendered nothing — where Go renders the leaf name, as it does for every
+   * type literal.
+   *
+   * The test is "not a bare literal", NOT "has a payload": check mode strips
+   * a marker to a payload-free CARRIER of its type, and that carrier still
+   * has to step as the marker it stands for.
+   */
+  isMarker(t: BoruType): boolean {
+    return this.vType.equal(t) && (this.data !== null || this.carrier);
+  }
+
   isForward(): boolean {
-    return this.vType.equal(TForward);
+    return this.isMarker(TForward);
   }
 
   asForward(): ForwardMarker {
@@ -402,7 +419,7 @@ export class Value {
   }
 
   isMark(): boolean {
-    return this.vType.equal(TMark);
+    return this.isMarker(TMark);
   }
 
   asMark(): MarkInfo {
@@ -411,11 +428,11 @@ export class Value {
   }
 
   isMove(): boolean {
-    return this.vType.equal(TMove);
+    return this.isMarker(TMove);
   }
 
   isInterpString(): boolean {
-    return this.vType.equal(TInterpString);
+    return this.isMarker(TInterpString);
   }
 
   isXml(): boolean {
@@ -423,7 +440,7 @@ export class Value {
   }
 
   isXmlInterp(): boolean {
-    return this.vType.equal(TXmlInterp);
+    return this.isMarker(TXmlInterp);
   }
 
   asXmlTmpl(): XmlTmpl {
@@ -556,6 +573,19 @@ export class Value {
       // order-insensitive map equality (coretype.ts valuesEqual).
       const parts = m.keys().map((k) => `${k}:${m.get(k)!.toString()}`);
       return `{${parts.join(" ")}}`;
+    }
+    // A function renders as a one-line summary of its overloads' parameter
+    // types — `fn (Integer)`, `fn (Integer, String) or (Float)`, a bare
+    // `fn` when no overload takes anything — which is Go's FormatFnDef
+    // (core/go/value.go) for a function with no name: the body and the
+    // returns are deliberately not in it. There was no arm, so a function
+    // fell to String(FnDefInfo) and printed '[object Object]'.
+    if (this.isFnDef()) {
+      const taking = this.asFnDef().sigs.filter((s) => s.params.length > 0);
+      const shapes = taking.map(
+        (s) => `(${s.params.map((p) => p.type.leaf()).join(", ")})`,
+      );
+      return shapes.length === 0 ? "fn" : `fn ${shapes.join(" or ")}`;
     }
     // A disjunction renders as its alternatives joined by ` tor `, matching
     // Go's kernelFormatDefault (core/go/value.go:3660). Without this arm the
@@ -1236,8 +1266,8 @@ export function newEnd(): Value {
   return new Value(TEnd, { name: "end" } satisfies WordInfo);
 }
 
-// The three marker predicates test the VTYPE and nothing else, exactly as
-// Go's IsOpenParen / IsCloseParen / IsEnd do (core/go/value.go:2734-2746).
+// The three marker predicates ask Value.isMarker: the marker's vType, and
+// not the bare type LITERAL of that type (`Word/__OP` the name).
 //
 // Each carried an extra `|| the value is a Word named "(" / ")" / "end"`
 // fallback, left over from the legacy fixture tokenizer that produced bare
@@ -1262,27 +1292,25 @@ function wordNamed(v: Value, name: string): boolean {
 // it there is what closed 9 core/spec rows — `run end 1` was the value 1
 // here and undefined_word in Go, because core has no WORD called end.
 export function isOpenParen(v: Value): boolean {
-  return v.vType.equal(TOpenParen) || wordNamed(v, "(");
+  return v.isMarker(TOpenParen) || wordNamed(v, "(");
 }
 
 export function isCloseParen(v: Value): boolean {
-  return v.vType.equal(TCloseParen) || wordNamed(v, ")");
+  return v.isMarker(TCloseParen) || wordNamed(v, ")");
 }
 
-// Go's IsEnd (core/go/value.go:2744) tests the vType alone, and so does
-// this. See above for why its two siblings still carry a word fallback.
+// The End marker, and no word fallback — see above for why its two
+// siblings still carry one.
 //
-// KNOWN DIVERGENCE, one row, deliberately left: `Word/__ED` resolves to
-// the End type LITERAL, whose vType is TEnd and whose payload is null, so
-// the step loop calls stepEnd on it and DROPS the value — `run Word/__ED`
-// produces nothing where Go renders the leaf `__ED`. It is exactly the
-// conflation isWord() had (a type literal of a marker type is not the
-// marker), and the obvious fix — also requiring a payload here — takes 11
-// eng/ts rows with it, because that module builds a payload-less End
-// somewhere. Measured, not assumed. Pinned in core/spec/divergent.tsv
-// rather than traded for a red module.
+// `Word/__ED` resolves to the End type LITERAL, which is not the marker:
+// the step loop used to call stepEnd on it and DROP the value, so
+// `run Word/__ED` produced nothing where Go renders the leaf `__ED`.
+// Requiring a PAYLOAD was the obvious fix and took eleven eng/ts rows with
+// it: check mode strips an End to a payload-free carrier (eng/ts check.ts
+// `toCarrier`), and that carrier must still step as the barrier. The line
+// that separates the two is isMarker's — a carrier is not a bare literal.
 export function isEnd(v: Value): boolean {
-  return v.vType.equal(TEnd);
+  return v.isMarker(TEnd);
 }
 
 /**

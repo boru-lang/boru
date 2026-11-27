@@ -242,6 +242,22 @@ run 1 Scalar/String	1 String
 run Cidron	Cidron
 run Scalar/String	String
 run Scalar/Nope	ERROR:undefined_word	an undeclared path does not mint a type
+run Number/Integer	Integer	the first part of a path may be a short name, expanded like any other
+run FlexMap/WeakFlexMap	WeakFlexMap
+run Module	Module	the leaf table is the whole builtin table: core/ts was thirteen nodes short
+run [ Module ]	[Module]
+run [ Ipon WeakFlexList KeyVal ]	[Ipon WeakFlexList KeyVal]
+
+# The type LITERAL of a marker type is a type, not the marker. `Word/__ED`
+# names the End type; core/ts tested a marker by its vType alone, so the
+# literal was STEPPED as the barrier and rendered nothing — and the others
+# died in an uncoded host error (`AsMark: nil data`), outside the taxonomy.
+run Word/__ED	__ED
+run [ Word/__ED ]	[__ED]
+run Word/__OP Word/__CP	__OP __CP	neither paren literal opens or closes anything
+run Word/__FW Word/__MK Word/__MV	__FW __MK __MV
+run Word/__IS Word/__XI	__IS __XI
+run addq 1 Word/__ED	ERROR:signature_error	so it does not end a collection: it is the operand, and the wrong type
 
 # --- an UNMATCHED `(` is a scan boundary, not a syntax error ------------
 # The core engine receives VALUES, not text, so it has no syntax to be
@@ -301,8 +317,9 @@ run ( [ ( ] )	ERROR:syntax_error	inside a paren group
 # A call FRAME's body is no different while it runs: the paren bounds the
 # tokens after it, and they run or fail on their own terms. (How a body
 # that ENDS with the paren unmatched is refused is NUR392: core/go hands
-# the paren to the return check, core/ts refuses it as the top level does.
-# The row where the two then differ is in divergent.tsv.)
+# the paren to the return check, core/ts refuses it as the top level does;
+# and a driven loop's body, which core/ts does not have, collects it as a
+# value. The rows where the two differ are in divergent.tsv.)
 run def inc fn( n Integer Any [ ( boomq ] ) ; inc 1	ERROR:signature_error	a word after it fails on its own terms
 run def inc fn( n Integer Any [ ( boomq n ] ) ; inc 1	ERROR:fixture_boom	or runs
 run def inc fn( n Integer Any [ ( n ] ) ; inc 1	ERROR:syntax_error	and a body whose results are in order is refused for the paren
@@ -719,6 +736,9 @@ run negq -9223372036854775808	-9223372036854775808	and the minimum is its own ne
 # parameter names and types, declared returns — and no body.
 run tyq/v	fn [[t:Any][Any][]]	a word's function, as a value
 run depthq/v	fn [[][][]]	a word of no parameters and no declared returns
+run negq/v	fn [[a:Integer][Integer][]]	a typed word: parameter and return types are written by their leaf names
+run addq/v	fn [[a:Integer b:Integer][Integer][]]	every parameter, in signature order
+run def f fn( n Integer Integer [ addq n 1 ] ) ; f/v	fn [[n:Integer][Integer][addq n 1]]	a typed boru-bodied function, body and all
 run def inc fn( n Any Any [ n ] ) ; inc/v	fn [[n:Any][Any][n]]	a boru-bodied function likewise, body and all
 run def x 7 ; x/v	7	/v on a plain binding is the bound value
 run def x 5 ; negq x/v	-5	which fills a slot exactly as the bare name would
@@ -739,8 +759,18 @@ run def inc fn( n Any Any [ n ] ) ; inc/v 5	fn [[n:Any][Any][n]] 5	a boru-bodied
 run tyq/sv Integer	fn [[t:Any][Any][]] Integer	the arity and the s/f modifiers written beside `v` are not read: a reference is a reference
 run Integer tyq/fv	Integer fn [[t:Any][Any][]]	whichever is written
 run tyq/2v	fn [[t:Any][Any][]]	an arity the word does not have included
+run negq/v 5	fn [[a:Integer][Integer][]] 5	an Integer after a reference to `negq` is not negated
+run 5 negq/v	5 fn [[a:Integer][Integer][]]	nor is the one beneath
+run negq/sv 5	fn [[a:Integer][Integer][]] 5	with /s written beside the v
+run 5 negq/sv	5 fn [[a:Integer][Integer][]]	which reads no stack
+run negq/2v 5	fn [[a:Integer][Integer][]] 5	or with an arity
+run addq/v 1 2	fn [[a:Integer b:Integer][Integer][]] 1 2	a two-argument word's reference takes neither operand
+run 1 addq/v 2	1 fn [[a:Integer b:Integer][Integer][]] 2	from either side
 run [ tyq/v ]	[fn [[t:Any][Any][]]]	in a list literal
 run [ tyq/v Integer ]	[fn [[t:Any][Any][]] Integer]	where it is placed too
+run [ negq/v 5 ]	[fn [[a:Integer][Integer][]] 5]	beside an operand the bare word would have taken
+run [ 5 negq/v ]	[5 fn [[a:Integer][Integer][]]]	from either side
+run { a: negq/v }	{a:fn [[a:Integer][Integer][]]}	a typed word's reference as a map member
 run { a: tyq/v }	{a:fn [[t:Any][Any][]]}	as a map member
 run { a: [ tyq/v Integer ] }	{a:[fn [[t:Any][Any][]] Integer]}	and in a member's list
 
@@ -753,6 +783,9 @@ run bothq tyq/v tyq/v	fn [[t:Any][Any][]]	twice over
 run boomq tyq/v	ERROR:fixture_boom	it reaches the handler like any argument
 run boomq negq/v	ERROR:fixture_boom	whatever the function
 run bothq negq/v 1	1	and the word goes on collecting after it
+run bothq 1 negq/v	fn [[a:Integer][Integer][]]	handed back by the word with nothing beside it to be called on, it is left as the value
+run bothq 1 negq/v 5	-5	and with an operand after it, it is called
+run 5 bothq 1 negq/v	-5	or one beneath
 run tyq tyq/v	fn [[t:Any][Any][]]	a function is a type, so it fills a type-arg slot
 run addq 1 negq/v	ERROR:signature_error	but not an Integer one
 run qanyq tyq/v	fn [[t:Any][Any][]]	a /q slot is handed the VALUE: the reference is read before the name is captured
@@ -809,6 +842,8 @@ run def f fn( n Integer Integer [ n ] ) ; def f fn( n String String [ n ] ) ; f 
 run def f fn( n Integer Integer [ n ] ) ; def f fn( n String String [ n ] ) ; f true	ERROR:signature_error	and what neither takes is a miss
 run def f fn( n Integer Integer [ n ] ) ; def f fn( n String String [ n ] ) ; ( f/v 5 )	5	the reference carries both
 run def f fn( n Integer Integer [ n ] ) ; def f fn( n String String [ n ] ) ; ( f/v 'a' )	'a'	in either order
+run def f fn( n Integer Integer [ n ] ) ; def f fn( n String String [ n ] ) ; f/v	fn [[n:String][String][n] [n:Integer][Integer][n]]	NUR391, as the kernel has it: the reference is ONE function built from both definitions, the newer first
+run def f fn( n Integer Integer [ n ] ) ; def f fn( n String String [ n ] ) ; f/v 5	fn [[n:String][String][n] [n:Integer][Integer][n]] 5	and it is placed like any reference
 run def f fn( n Any Integer [ 1 ] ) ; def f fn( n Integer Integer [ 2 ] ) ; f 5	2	the more specific overload answers first
 run def f fn( n Integer Integer [ 1 ] ) ; def f fn( n Integer Integer [ 2 ] ) ; f 5	2	and of two alike, the newer
 run def f fn( n Integer Integer [ n ] ) ; def f 7 ; f	7	a VALUE bound over a function simply shadows it
@@ -849,9 +884,25 @@ run addq/u 1	ERROR:uncalled_function
 run 1 addq/u	ERROR:uncalled_function
 run bothq/u 1 ; 2	ERROR:uncalled_function
 run bothq/u ; 1 2	fn [[b:Any a:Any][Any][]] 1 2
+run addq/u	fn [[b:Integer a:Integer][Integer][]]	with nothing at all beside it the wrapper is left as a value: both parameters, reversed
+run negq/u	fn [[a:Integer][Integer][]]	a one-parameter word's wrapper reads as the word's own function
+run sumq/u	fn [[b:Integer a:Integer][Integer][]]	and a stack-form word's is all-forward like the rest
 
 # `/uv` is that wrapper as a VALUE: placed, not called. The arity and the
 # s/f modifiers written beside `u` or `v` are not read.
+run negq/uv	fn [[a:Integer][Integer][]]	the wrapper of a one-parameter word
+run negq/uv 5	fn [[a:Integer][Integer][]] 5	placed: the 5 after it is not its argument
+run 5 negq/uv	5 fn [[a:Integer][Integer][]]	nor is the one beneath
+run addq/uv	fn [[b:Integer a:Integer][Integer][]]	two parameters, reversed
+run sumq/uv	fn [[b:Integer a:Integer][Integer][]]	a stack-form word's wrapper is the same all-forward function
+run addq/suv	fn [[b:Integer a:Integer][Integer][]]	with /s written beside it
+run addq/2uv	fn [[b:Integer a:Integer][Integer][]]	or an arity
+run def f fn( n Integer Integer [ addq n 1 ] ) ; f/uv	fn [[n:Integer][Integer][]]	a boru-bodied function's wrapper carries no body: it re-dispatches the original
+run [ negq/uv ]	[fn [[a:Integer][Integer][]]]	in a list
+run [ negq/uv 5 ]	[fn [[a:Integer][Integer][]] 5]	where it is placed too
+run { a: negq/uv }	{a:fn [[a:Integer][Integer][]]}	as a map member
+run ( negq/uv ) 5	fn [[a:Integer][Integer][]] 5	alone in its group it is placed again (the paren re-step rule)
+run ( negq/uv 5 )	-5	and with an operand in the group it is called there
 run addq/2u 1 2	3
 run addq/su 1 2	3
 run 1 2 addq/fu	3
@@ -871,6 +922,7 @@ run def x Integer ; x/u	ERROR:illegal_ref
 # in the other slot.
 run bothq 1 negq/uv	ERROR:signature_error
 run boomq negq/uv	ERROR:signature_error
+run bothq negq/uv 1	fn [[a:Integer][Integer][]]	passed over, then taken all the same: the collection takes the 1, and the wrapper left behind it becomes the second operand
 
 # The wrapper is a function VALUE like any other once it exists: placed by
 # `/uv`, called where something re-steps it, and collected by a waiting
@@ -900,7 +952,6 @@ run ( Integer tyq/v 'x' )	Integer 'x'	and with a type beneath it, it takes that 
 
 # --- `/u` and `/uv` name a FUNCTION -------------------------------------------
 # A name bound to nothing is undefined, whatever modifier is written on it.
-# (What `/u` does to a function is in divergent.tsv until core/ts reads it.)
 run nosuch/u	ERROR:undefined_word
 run nosuch/uv	ERROR:undefined_word
 
@@ -911,12 +962,3 @@ run nosuch/uv	ERROR:undefined_word
 # again at the frame's close, and unbound the global with it.)
 run def n 50 ; def f fn( n Integer Integer [ addq n 1 ] ) ; f 5 ; n	6 50
 run def n 50 ; def f fn( n Integer Integer [ addq n 1 ] ) ; f n	51
-
-# --- an unmatched `(` ---------------------------------------------------------
-# At the top level and in a container literal an open paren with no close is
-# refused. (In a loop's body and a function's it is not — NUR392; those rows
-# are in divergent.tsv.)
-run (	ERROR:syntax_error
-run 1 (	ERROR:syntax_error
-run [ ( ]	ERROR:syntax_error
-run { a: ( }	ERROR:syntax_error

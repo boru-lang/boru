@@ -2294,6 +2294,11 @@ export class Engine {
    * sub-engine identical — so the flag has no analogue here.
    */
   private resolveInertTypeShape(v: Value): Value | undefined {
+    // A NAMED type is finished: its body was resolved when it was defined,
+    // and it is the name that renders and compares. Rebuilding a named
+    // typed container here dropped the name — `Ints`, left on the stack,
+    // came back as `[:Integer]`.
+    if (v.typeName !== undefined) return undefined;
     if (v.isTypedList() || v.isTypedMap()) {
       const ct = v.asChildType();
       const child = resolveWordsDeep(ct.child, this.registry);
@@ -2629,6 +2634,12 @@ export class Engine {
       );
       return this.buildList(sub);
     }
+    // An INERT TYPE SHAPE left on the stack — a typed container's child
+    // constraint, a disjunct's alternatives — resolves in its cell, as Go's
+    // autoEvalStack resolves it (resolveInertTypeShapeIn): names become the
+    // types they spell and a plain disjunct takes its canonical form. A
+    // quoted value never auto-evaluates and stays as written.
+    if (!v.quoted) return this.resolveInertTypeShape(v) ?? v;
     return v;
   }
 
@@ -2751,7 +2762,9 @@ export class Engine {
     // and was stored as DATA, rendering `{a:end}`.
     else if (v.isWord() || isEnd(v) || isOpenParen(v) || isCloseParen(v))
       program = [v];
-    if (program === null) return v;
+    // Anything else is data — except an inert type shape (a disjunct, a
+    // typed container), which deepEvalData resolves in place.
+    if (program === null) return this.deepEvalData(v);
     const sub = this.subRun("region", [...program]).map((e) =>
       this.deepEvalData(e),
     );

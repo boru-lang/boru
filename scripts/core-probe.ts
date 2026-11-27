@@ -18,6 +18,7 @@ import {
   newBoolean,
   newDisjunct,
   unifiesValue,
+  unify,
   newCloseParen,
   newDispatchMod,
   newEnd,
@@ -428,9 +429,8 @@ function fixtureRegistry(): Registry {
   // typed defs, record shapes) are basic-layer words and a bare core
   // registry called it from nowhere.
   //
-  // The PREDICATE half only: did the two values unify. Go's UnifyR also
-  // returns the unified VALUE, and core/ts has no meet to return, so
-  // asking for it would pin a port gap as a language contract.
+  // The PREDICATE half: did the two values unify. `meetq` below is the
+  // VALUE half.
   r.registerNativeFunc({
     name: "unifyq",
     signatures: [
@@ -439,9 +439,36 @@ function fixtureRegistry(): Registry {
         argNames: ["a", "b"],
         returns: [TBoolean],
         barrierPos: 2,
-        handler: (a: Value[]): Value[] => [
-          newBoolean(unifiesValue(a[0]!, a[1]!)),
-        ],
+        handler: (
+          a: Value[],
+          _c: unknown,
+          _s: Value[],
+          reg: Registry,
+        ): Value[] => [newBoolean(unifiesValue(a[0]!, a[1]!, reg))],
+      },
+    ],
+  });
+  // meetq: the unified value itself, or `fixture_no_meet`.
+  r.registerNativeFunc({
+    name: "meetq",
+    signatures: [
+      {
+        args: [TAny, TAny],
+        argNames: ["a", "b"],
+        returns: [TAny],
+        barrierPos: 2,
+        handler: (
+          a: Value[],
+          _c: unknown,
+          _s: Value[],
+          reg: Registry,
+        ): Value[] => {
+          const meet = unify(a[0]!, a[1]!, reg);
+          if (meet === undefined) {
+            throw new BoruError("fixture_no_meet", "the two values do not unify");
+          }
+          return [meet];
+        },
       },
     ],
   });

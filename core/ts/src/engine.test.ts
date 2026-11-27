@@ -1266,6 +1266,27 @@ describe("Engine.run — a map argument's values", () => {
     assert.equal(out, "{k:{:Integer}}");
   });
 
+  it("leaves a NAMED typed container as the name it is", () => {
+    // A named type is finished — its body was resolved when it was
+    // defined. Left on the stack, or as a map value a word takes, it must
+    // not be rebuilt as an anonymous shape: the name is what renders.
+    const r = fixture();
+    r.pushDef("Ints", newTypedList(newTypeLiteral(TInteger), []).named("Ints"));
+    r.pushDef("IMap", newTypedMap(newTypeLiteral(TInteger), []).named("IMap"));
+    assert.equal(canon(new Engine(r).run([newWord("Ints")])), "Ints");
+    assert.equal(canon(new Engine(r).run([newWord("IMap")])), "IMap");
+    const named = newTypedList(newTypeLiteral(TInteger), []).named("Ints");
+    assert.equal(
+      canon(new Engine(r).run([newWord("idq"), mapOf([["k", named]])])),
+      "{k:Ints}",
+    );
+    // the unnamed shape still resolves and renders as its shape
+    assert.equal(
+      canon(new Engine(r).run([newTypedList(newWord("Integer"), [])])),
+      "[:Integer]",
+    );
+  });
+
   it("resolves a disjunct's alternatives", () => {
     const r = fixture();
     const d = newDisjunct([newWord("Integer"), newWord("String")]);
