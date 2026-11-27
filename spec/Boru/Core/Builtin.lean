@@ -39,9 +39,21 @@ abbrev TBoolean : TypeId := "Scalar/Boolean"
 
 namespace Value
 
-/-- `v` is a value of type `t`: the kernel's `Value.Is` under the default
-    behaviour — the value's node conforms to `t`. -/
-def is (v : Value) (t : TypeId) : Bool := conforms v.typeOf t
+/-- `v` is a TYPE: a bare lattice node or a structural type body — a
+    typed container, a disjunct, a function (core/go/core_boundedtype.go
+    `TypeMembership`). -/
+def isType (v : Value) : Bool :=
+  match v.unquote with
+  | typeLit _ | typedList _ _ | typedMap _ _ | disjunct _ | fn _ _ => true
+  | _ => false
+
+/-- `v` is a value of type `t` (the kernel's `Value.Is`). By default the
+    value's node conforms to `t`. `Type` is the one builtin node with a
+    membership of its own: every type is a `Type`, whatever branch of the
+    lattice it sits on — `Integer` the type literal is a `Type`, though
+    the Integer node is a Scalar. -/
+def is (v : Value) (t : TypeId) : Bool :=
+  if t == TType then v.isType || conforms v.typeOf t else conforms v.typeOf t
 
 /-- `v` carries a real, readable payload. -/
 def isConcrete (v : Value) : Bool := !v.isBareTypeNode

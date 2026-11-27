@@ -274,7 +274,7 @@ function fixtureRegistry(): Registry {
         returns: [TInteger],
         barrierPos: 2,
         handler: (args: Value[]): Value[] => [
-          newInteger(args[0]!.asInteger() + args[1]!.asInteger()),
+          newInteger(BigInt.asIntN(64, args[0]!.asInteger() + args[1]!.asInteger())),
         ],
       },
     ],
@@ -295,7 +295,7 @@ function fixtureRegistry(): Registry {
         returns: [TInteger],
         barrierPos: 1,
         handler: (args: Value[]): Value[] => [
-          newInteger(-args[0]!.asInteger()),
+          newInteger(BigInt.asIntN(64, -args[0]!.asInteger())),
         ],
       },
     ],
@@ -322,7 +322,7 @@ function fixtureRegistry(): Registry {
         returns: [TInteger],
         barrierPos: 0, // STACK form: both operands come off the stack
         handler: (args: Value[]): Value[] => [
-          newInteger(args[0]!.asInteger() + args[1]!.asInteger()),
+          newInteger(BigInt.asIntN(64, args[0]!.asInteger() + args[1]!.asInteger())),
         ],
       },
     ],

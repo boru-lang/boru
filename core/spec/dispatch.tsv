@@ -438,3 +438,10 @@ run addq/2f 1 2	3	arity and forward form together
 # these are the rows the two engines share: the value collected as an
 # argument, and the notation's own limit.
 run boomq fn( n Integer Any [ n ] )	ERROR:fixture_boom	a function value fills an Any slot like any other value
+
+# An Integer is a signed 64-bit integer (REFERENCE.md:84), so the fixture
+# arithmetic WRAPS. The TypeScript fixture computed in bigint and handed
+# back an Integer outside the type's range; all three runners wrap now.
+run addq 9223372036854775807 1	-9223372036854775808	int64 max plus one wraps to the minimum
+run 9223372036854775807 1 sumq	-9223372036854775808	in stack form too
+run negq -9223372036854775808	-9223372036854775808	and the minimum is its own negation

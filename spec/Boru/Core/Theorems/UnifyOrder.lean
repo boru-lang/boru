@@ -90,6 +90,32 @@ theorem disjunct_meet_is_first_alternative :
             (.disjunct [.typeLit TInteger, .typeLit TString])).map canon == some "Integer") = true := by
   native_decide
 
+/-! ## `Type` -/
+
+/-- EVERY TYPE IS A `Type`. `Type` is the one builtin node whose
+    membership is not lattice ancestry: a type literal from any branch, a
+    typed container, a disjunct and a function are all `Type`s, and no
+    concrete value is. -/
+theorem every_type_is_a_Type :
+    (([Value.typeLit TInteger, .typeLit "Any", .typeLit "None", .typeLit TList, .typeLit "Word",
+        .typedList (.typeLit TInteger) [], .typedMap (.typeLit TString) [],
+        .disjunct [.typeLit TInteger, .typeLit TString], .fn "f" []].all (·.is TType))
+      && ([Value.int 1, .str "a", .bool true, .none, .atom "x", .list [] false, .map [] false].all
+            (fun v => !v.is TType))) = true := by
+  native_decide
+
+/-- …while ancestry alone decides every other slot: `Integer` the type
+    literal sits on the Integer node, so it is an Integer by type — and
+    is then DECLINED at a concrete-payload slot, because a type is not a
+    value of itself. -/
+theorem type_literal_is_not_its_own_value :
+    ((Value.typeLit TInteger).is TInteger
+      && rejectsTypeLiteral (.typeLit TInteger) TInteger
+      && !rejectsTypeLiteral (.typeLit TInteger) TType
+      && !rejectsTypeLiteral (.typeLit TInteger) TAny
+      && !rejectsTypeLiteral (.int 1) TInteger) = true := by
+  native_decide
+
 /-! ## The total order -/
 
 /-- The order is ANTISYMMETRIC in the comparison sense: swapping the

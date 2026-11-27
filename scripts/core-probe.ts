@@ -201,7 +201,7 @@ function fixtureRegistry(): Registry {
         args: [TInteger, TInteger],
         returns: [TInteger],
         barrierPos: 2,
-        handler: (a: Value[]): Value[] => [newInteger(int(a[0]!) + int(a[1]!))],
+        handler: (a: Value[]): Value[] => [newInteger(BigInt.asIntN(64, int(a[0]!) + int(a[1]!)))],
       },
     ],
   });
@@ -212,7 +212,7 @@ function fixtureRegistry(): Registry {
         args: [TInteger],
         returns: [TInteger],
         barrierPos: 1,
-        handler: (a: Value[]): Value[] => [newInteger(-int(a[0]!))],
+        handler: (a: Value[]): Value[] => [newInteger(BigInt.asIntN(64, -int(a[0]!)))],
       },
     ],
   });
@@ -237,7 +237,7 @@ function fixtureRegistry(): Registry {
         args: [TInteger, TInteger],
         returns: [TInteger],
         barrierPos: 0,
-        handler: (a: Value[]): Value[] => [newInteger(int(a[0]!) + int(a[1]!))],
+        handler: (a: Value[]): Value[] => [newInteger(BigInt.asIntN(64, int(a[0]!) + int(a[1]!)))],
       },
     ],
   });

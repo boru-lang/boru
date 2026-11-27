@@ -161,3 +161,11 @@ run boomq { a: nosuchword }	ERROR:undefined_word
 run boomq { a: p( ) b: nosuchword }	ERROR:undefined_word
 run boomq { a: {q b: p( nosuchword ) } }	ERROR:fixture_boom
 run negq (	ERROR:signature_error
+
+# --- a repeated key SETS, it does not append -----------------------------
+# A plain map is built by setting each key in turn, so a key written twice
+# keeps its first position and takes its last value. A TYPED map's retained
+# entries are a list and keep every one (the canon row in canon.tsv).
+run {q a: 1 a: 2 }	{a:2}
+run {q a: 1 b: 3 a: 2 }	{a:2 b:3}
+run { a: 1 a: 2 }	{a:2}

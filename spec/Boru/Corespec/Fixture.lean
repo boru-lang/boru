@@ -25,6 +25,12 @@ private def asInt : Value → Int
   | .int n => n
   | _ => 0
 
+/-- An Integer is a signed 64-bit integer: the fixture arithmetic wraps,
+    as the Go runner's `int64` does. -/
+private def wrap64 (n : Int) : Int :=
+  let m := n % (2 ^ 64 : Int)
+  if m ≥ (2 ^ 63 : Int) then m - (2 ^ 64 : Int) else m
+
 /-- The fixture words, as bindings. -/
 def fixtureDefs : Defs :=
   [ word "addq" [p "a" TInteger, p "b" TInteger] [TInteger] 2,
@@ -53,10 +59,10 @@ def fixtureDefs : Defs :=
 
 /-- The fixture handlers. -/
 def fixtureNatives : Natives :=
-  [ ("addq", .plain fun a d => pure ([.int (asInt (a.getD 0 .none) + asInt (a.getD 1 .none))], d)),
-    ("negq", .plain fun a d => pure ([.int (-(asInt (a.getD 0 .none)))], d)),
+  [ ("addq", .plain fun a d => pure ([.int (wrap64 (asInt (a.getD 0 .none) + asInt (a.getD 1 .none)))], d)),
+    ("negq", .plain fun a d => pure ([.int (wrap64 (-(asInt (a.getD 0 .none))))], d)),
     ("pairq", .plain fun a d => pure ([a.getD 0 .none, a.getD 0 .none], d)),
-    ("sumq", .plain fun a d => pure ([.int (asInt (a.getD 0 .none) + asInt (a.getD 1 .none))], d)),
+    ("sumq", .plain fun a d => pure ([.int (wrap64 (asInt (a.getD 0 .none) + asInt (a.getD 1 .none)))], d)),
     ("boomq", .plain fun _ _ => throw { code := "fixture_boom", detail := "the fixture word always raises" }),
     ("patq", .plain fun _ d => pure ([.int 1], d)),
     ("dupq", .plain fun a d => pure ([a.getD 0 .none, a.getD 0 .none], d)),

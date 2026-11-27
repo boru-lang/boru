@@ -76,6 +76,14 @@ def token (tok : String) : Value :=
           | some w => .word w
           | none => .word { name := tok }
 
+/-- A plain map is built by SETTING each key in turn: a repeated key
+    keeps its first position and takes the last value. (A typed map's
+    retained entries are a list and keep every one.) -/
+def setEntries (entries : List (String × Value)) : List (String × Value) :=
+  entries.foldl (fun acc (k, v) =>
+    if acc.any (·.1 == k) then acc.map (fun (k', v') => if k' == k then (k', v) else (k', v'))
+    else acc ++ [(k, v)]) []
+
 mutual
 
 /-- Read ONE item from the token list. -/
@@ -103,10 +111,10 @@ partial def item : List String → Except String (Value × List String)
     pure (.typedMap child entries, rest)
   | "{" :: rest => do
     let (entries, rest) ← entriesUntil rest
-    pure (.map entries true, rest)
+    pure (.map (setEntries entries) true, rest)
   | "{q" :: rest => do
     let (entries, rest) ← entriesUntil rest
-    pure (.map entries false, rest)
+    pure (.map (setEntries entries) false, rest)
   | "fn(" :: pname :: ptype :: rtype :: rest => do
     match typeLit? ptype, typeLit? rtype with
     | some pt, some rt =>
@@ -136,8 +144,6 @@ partial def entriesUntil : List String → Except String (List (String × Value)
       let k := String.ofList (key.toList.take (key.length - 1))
       let (v, rest) ← item rest
       let (es, rest) ← entriesUntil rest
-      -- a repeated key keeps its first position and takes the last value
-      let es := if es.any (·.1 == k) then es else es
       pure ((k, v) :: es, rest)
 
 end
