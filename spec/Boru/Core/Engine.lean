@@ -107,16 +107,27 @@ def findCloseAfter (tape : List Value) (openIdx : Nat) : Option Nat :=
   let rec go : List Value → Nat → Nat → Option Nat
     | [], _, _ => none
     | .openParen :: rest, i, depth => go rest (i + 1) (depth + 1)
+    | .frameOpen :: rest, i, depth => go rest (i + 1) (depth + 1)
     | .closeParen :: rest, i, depth => if depth == 0 then some i else go rest (i + 1) (depth - 1)
     | _ :: rest, i, depth => go rest (i + 1) depth
   go (tape.drop (openIdx + 1)) (openIdx + 1) 0
+
+/-- The nearest call-frame open before `i`. Frames collapse innermost
+    first, so when a frame's cleanup marker is reached the nearest frame
+    open is its own. -/
+def frameOpenBefore (tape : List Value) : Nat → Option Nat
+  | 0 => none
+  | i + 1 =>
+    match tape[i]? with
+    | some .frameOpen => some i
+    | _ => frameOpenBefore tape i
 
 /-- The nearest open paren before `i`. -/
 def openBefore (tape : List Value) : Nat → Option Nat
   | 0 => none
   | i + 1 =>
     match tape[i]? with
-    | some .openParen => some i
+    | some .openParen | some .frameOpen => some i
     | _ => openBefore tape i
 
 /-- Is a parked forward's NEXT slot a name-capturing (`/q`) one. -/
@@ -238,7 +249,7 @@ def stepToken (nat : Natives) : Nat → Engine → Except BoruError Engine
     | none => pure e
     | some (.word w) => stepWord nat fuel e w
     | some (.forward _ _) => pure { e with ptr := e.ptr + 1 }
-    | some .openParen => pure { e with ptr := e.ptr + 1 }
+    | some .openParen | some .frameOpen => pure { e with ptr := e.ptr + 1 }
     | some .closeParen => stepCloseParen nat fuel e
     | some .endMark => stepEnd nat fuel e
     | some (.returnCheck _) => pure { e with ptr := e.ptr + 1 }
@@ -367,7 +378,7 @@ def collectWalk (nat : Natives) :
       | some tok =>
         if scanBoundary tok then pure e
         else match tok with
-          | .openParen =>
+          | .openParen | .frameOpen =>
             if !consumes then pure e
             else do
               let e ← evalParenGroupAt nat fuel e scanIdx
@@ -406,22 +417,35 @@ def evalParenGroupAt (nat : Natives) : Nat → Engine → Nat → Except BoruErr
   | 0, _, _ => Engine.outOfFuel
   | fuel + 1, e, scanIdx => do
     let saved := e.ptr
-    let e ← groupLoop nat fuel { e with ptr := scanIdx + 1 } 1
+    let e ← groupLoop nat fuel { e with ptr := scanIdx + 1 } scanIdx 1
     pure { e with ptr := saved }
 
-def groupLoop (nat : Natives) : Nat → Engine → Nat → Except BoruError Engine
-  | 0, _, _ => Engine.outOfFuel
-  | fuel + 1, e, depth =>
+/-- The group opened at `scanIdx` ends at its own close — or, when it has
+    none, where the structure around it ends: the tape, the close of the
+    sealed region it stands in, or the cleanup marker of the call frame it
+    stands in. In those three cases the open is UNMATCHED and is left as
+    it is: a scan boundary. The enclosing structure's own close is never
+    taken for the group's. -/
+def groupLoop (nat : Natives) : Nat → Engine → Nat → Nat → Except BoruError Engine
+  | 0, _, _, _ => Engine.outOfFuel
+  | fuel + 1, e, scanIdx, depth =>
     if depth == 0 then pure e
     else match e.tok? e.ptr with
       | none => pure e
-      | some .openParen => groupLoop nat fuel { e with ptr := e.ptr + 1 } (depth + 1)
-      | some .closeParen => do
-        let e ← stepCloseParen nat fuel e
-        groupLoop nat fuel e (depth - 1)
+      | some .openParen | some .frameOpen => groupLoop nat fuel { e with ptr := e.ptr + 1 } scanIdx (depth + 1)
+      | some .closeParen =>
+        if e.sealed && e.ptr + 1 == e.tape.length then pure e
+        else do
+          let e ← stepCloseParen nat fuel e
+          groupLoop nat fuel e scanIdx (depth - 1)
+      | some (.defCleanup _) =>
+        if (frameOpenBefore e.tape e.ptr).any (· < scanIdx) then pure e
+        else do
+          let e ← stepToken nat fuel e
+          groupLoop nat fuel e scanIdx depth
       | some _ => do
         let e ← stepToken nat fuel e
-        groupLoop nat fuel e depth
+        groupLoop nat fuel e scanIdx depth
 
 /-- Step a value that is not a word: it is collected by the nearest
     parked forward if it fits that forward's next slot, and closes the
@@ -570,6 +594,16 @@ def stepCloseParen (nat : Natives) : Nat → Engine → Except BoruError Engine
   | 0, _ => Engine.outOfFuel
   | fuel + 1, e =>
     let closeIdx := e.ptr
+    if e.sealed && closeIdx + 1 == e.tape.length then do
+      -- THE REGION'S OWN CLOSE — the last token of a sealed tape. It pairs
+      -- with the region's own open (cell 0), whatever stands between: an
+      -- unmatched `(` among the tokens does not take it. Collections still
+      -- parked are resolved, the pair is removed, and the residual is NOT
+      -- re-stepped.
+      let e ← regionForwards nat fuel e
+      let tape := removeAt (removeAt e.tape (e.tape.length - 1)) 0
+      pure { e with tape := tape, ptr := tape.length, sealed := false }
+    else
     match openBefore e.tape closeIdx with
     | none => Engine.err "syntax_error" "unmatched closing parenthesis"
     | some openIdx => do
@@ -578,13 +612,9 @@ def stepCloseParen (nat : Natives) : Nat → Engine → Except BoruError Engine
       | none => Engine.err "syntax_error" "unmatched closing parenthesis"
       | some closeIdx =>
         if e.sealed && openIdx == 0 then
-          -- the region's own close: it must be the last token, and the
-          -- residual is NOT re-stepped
-          if closeIdx + 1 != e.tape.length then
-            Engine.err "syntax_error" "unmatched closing parenthesis"
-          else
-            let tape := removeAt (removeAt e.tape closeIdx) openIdx
-            pure { e with tape := tape, ptr := tape.length, sealed := false }
+          -- a close that reaches the region's open without being the
+          -- region's own: a stray `)`
+          Engine.err "syntax_error" "unmatched closing parenthesis"
         else
         -- an EMPTY group: remember who stood before it
         let e :=
@@ -610,6 +640,35 @@ def stepCloseParen (nat : Natives) : Nat → Engine → Except BoruError Engine
               (match tape[openIdx]? with | some (.fn _ _) => 1 | _ => 0)
             else 0
           pure { e with tape := tape, ptr := openIdx + park }
+
+/-- Resolve every collection still parked in a sealed region when its
+    close is reached, stepping what each resolution leaves before it. -/
+def regionForwards (nat : Natives) : Nat → Engine → Except BoruError Engine
+  | 0, _ => Engine.outOfFuel
+  | fuel + 1, e =>
+    let last := e.tape.length - 1
+    match (List.range last).find? (fun i => i > 0 && (e.tape[i]?).any Value.isForward) with
+    | none => pure e
+    | some i =>
+      match e.tok? i with
+      | some (.forward f _) => do
+        let tape := removeAt e.tape i
+        let funcIdx := if i < f.funcIndex then f.funcIndex - 1 else f.funcIndex
+        let e := curryOrStack { e with tape := tape } funcIdx f.collected f.stackArgs
+        let e ← regionSteps nat fuel e
+        regionForwards nat fuel e
+      | _ => pure e
+
+/-- Step until the pointer reaches the region's close (the last token). -/
+def regionSteps (nat : Natives) : Nat → Engine → Except BoruError Engine
+  | 0, _ => Engine.outOfFuel
+  | fuel + 1, e =>
+    if e.ptr + 1 ≥ e.tape.length then pure e
+    else match e.tok? e.ptr with
+      | some .openParen | some .frameOpen => regionSteps nat fuel { e with ptr := e.ptr + 1 }
+      | _ => do
+        let e ← stepToken nat fuel e
+        regionSteps nat fuel e
 
 /-- Resolve every collection still parked inside the group at `openIdx`,
     stepping what each resolution leaves before the close. -/
@@ -641,7 +700,7 @@ def stepsToClose (nat : Natives) : Nat → Engine → Nat → Except BoruError E
     | some closeIdx =>
       if e.ptr ≥ closeIdx then pure e
       else match e.tok? e.ptr with
-        | some .openParen => stepsToClose nat fuel { e with ptr := e.ptr + 1 } openIdx
+        | some .openParen | some .frameOpen => stepsToClose nat fuel { e with ptr := e.ptr + 1 } openIdx
         | _ => do
           let e ← stepToken nat fuel e
           stepsToClose nat fuel e openIdx
@@ -742,7 +801,7 @@ def execMatch (nat : Natives) :
           let bind (a : Value) : Value := if a.isListShape && !a.isQuoted then .quoted a else a
           let defs := (names.zip args).foldl (fun d (nm, a) => d.push nm (bind a)) e.defs
           let tail := Value.defCleanup names :: (if s.returns.isEmpty then [] else [.returnCheck s.returns])
-          pure (.openParen :: body ++ tail ++ [.closeParen], defs)
+          pure (.frameOpen :: body ++ tail ++ [.closeParen], defs)
       let e := { e with defs := defs }
       if indices.length == n && n > 0 then
         let first := indices.foldl min e.ptr
@@ -856,7 +915,7 @@ def orphanSteps (nat : Natives) : Nat → Engine → Except BoruError Engine
   | fuel + 1, e =>
     if e.ptr ≥ e.tape.length then pure e
     else match e.tok? e.ptr with
-      | some .openParen => orphanSteps nat fuel { e with ptr := e.ptr + 1 }
+      | some .openParen | some .frameOpen => orphanSteps nat fuel { e with ptr := e.ptr + 1 }
       | _ => do
         let e ← stepToken nat fuel e
         orphanSteps nat fuel e

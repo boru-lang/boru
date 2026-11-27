@@ -2072,6 +2072,7 @@ func (e *Engine) evalParenGroupAt(scanIdx int) error {
 	// depth so inner parens are processed without prematurely breaking on
 	// their ")" tokens.
 	depth := 1
+	regionEnd := false
 	// The group is a budget scope of its own, as it was with its own
 	// counter: it meters stepsTaken from its entry, its steps are never
 	// charged to the run that collects it (the base moves up by what the
@@ -2098,7 +2099,25 @@ func (e *Engine) evalParenGroupAt(scanIdx int) error {
 			e.Pointer++
 			continue
 		}
+		// The cleanup marker of an ENCLOSING call frame: the body has ended
+		// with the group opened at scanIdx still open — the same unmatched
+		// `(`, in a fn body rather than a literal (NUR387). The marker and
+		// the close after it are the frame's and are left for it.
+		if IsDefCleanup(&v) {
+			if fo := e.frameOpenBefore(e.Pointer); fo >= 0 && fo < scanIdx {
+				regionEnd = true
+				break
+			}
+		}
 		if IsCloseParen(&v) {
+			// The close of an ENCLOSING region: the group opened at scanIdx
+			// has no close of its own before it, so it is an unmatched `(` —
+			// a scan boundary, exactly as when the tape simply runs out
+			// (NUR387). The close is the region's and is left for it.
+			if ro := e.regionOpenFor(e.Pointer); ro >= 0 && ro < scanIdx {
+				regionEnd = true
+				break
+			}
 			depth--
 			if err := e.stepCloseParen(false, depth == 0); err != nil {
 				e.Pointer = savedPointer
@@ -2199,7 +2218,7 @@ func (e *Engine) evalParenGroupAt(scanIdx int) error {
 	// left to process). Report it explicitly rather than silently
 	// returning a half-evaluated group, which would later surface as a
 	// phantom "unmatched opening parenthesis" at the top-level drain.
-	if depth > 0 && e.Pointer < e.Tape.Len() { //covergate:allow interpreter step/dispatch defensive index+error arm; unreachable via eng harness (design/COVERAGE-ALLOWLIST.10.md §engine)
+	if depth > 0 && e.Pointer < e.Tape.Len() && !regionEnd { //covergate:allow interpreter step/dispatch defensive index+error arm; unreachable via eng harness (design/COVERAGE-ALLOWLIST.10.md §engine)
 		e.Pointer = savedPointer
 		return e.evalLimitError(e.stepLimit)
 	}
@@ -7790,14 +7809,48 @@ func (e *Engine) stepPastOpenParen(val Value) {
 // candidates in written order, where a paren nested inside the group is
 // re-stepped by the group's own loop exactly as the main loop would
 // (NUR184's trailing-fn arm reads it).
+// frameOpenBefore returns the index of the nearest call-FRAME open paren
+// before i, or -1. Frames nest and collapse innermost first, so by the time
+// a frame's cleanup marker is stepped the nearest frame open is its own.
+func (e *Engine) frameOpenBefore(i int) int {
+	for j := i - 1; j >= 0; j-- {
+		if IsFrameOpen(e.Tape.Ref(j)) {
+			return j
+		}
+	}
+	return -1
+}
+
+// regionOpenFor returns the tape index of the open paren of the sealed
+// REGION that the close paren at closeIdx ends, or -1 when that close is not
+// a region's own. A region is laid out `mark (ₗ … ) move` (Loop.splice,
+// spliceSealedRegion): its close is the one directly followed by the loop's
+// move, and its open the one carrying that loop's LoopOpenInfo.
+func (e *Engine) regionOpenFor(closeIdx int) int {
+	if closeIdx+1 < e.Tape.Len() {
+		if mv, err := AsMove(e.Tape.Ref(closeIdx + 1)); err == nil && mv.Cont != nil {
+			for i := closeIdx - 1; i >= 0; i-- {
+				if loi, ok := e.Tape.Ref(i).Data().(LoopOpenInfo); ok && loi.Loop == mv.Cont {
+					return i
+				}
+			}
+		}
+	}
+	return -1
+}
+
 func (e *Engine) stepCloseParen(reStepped, feedsForward bool) error {
 	closeIdx := e.Pointer
 
-	openIdx := -1
-	for i := closeIdx - 1; i >= 0; i-- {
+	// A region's close pairs with the region's OWN open, whatever stands
+	// between: an unmatched `(` among a literal's elements used to take the
+	// sealing paren for its close, so `[ negq ( ]` collapsed a stolen empty
+	// group and blamed negq for a missing value where `negq (` is a
+	// signature_error (NUR387). Every other close pairs with the nearest open.
+	openIdx := e.regionOpenFor(closeIdx)
+	for i := closeIdx - 1; i >= 0 && openIdx < 0; i-- {
 		if IsOpenParen(e.Tape.Ref(i)) {
 			openIdx = i
-			break
 		}
 	}
 

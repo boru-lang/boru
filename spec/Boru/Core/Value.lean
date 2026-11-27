@@ -91,6 +91,10 @@ inductive Value where
   | word (w : WordInfo)
   /-- `Word/__OP` — the open-paren marker. -/
   | openParen
+  /-- `Word/__OP` carrying a frame — the open paren of a CALL FRAME. To
+      everything that asks "is this an open paren" it is one; it is told
+      apart only where a frame's own tail must find its own open. -/
+  | frameOpen
   /-- `Word/__CP` — the close-paren marker. -/
   | closeParen
   /-- `Word/__ED` — the collection barrier (`end` / `;`). -/
@@ -191,7 +195,7 @@ def isTypeLiteral : Value → Bool
 
 def isWord : Value → Bool | word _ => true | _ => false
 def isForward : Value → Bool | forward _ _ => true | _ => false
-def isOpenParen : Value → Bool | openParen => true | _ => false
+def isOpenParen : Value → Bool | openParen | frameOpen => true | _ => false
 def isCloseParen : Value → Bool | closeParen => true | _ => false
 def isEnd : Value → Bool | endMark => true | _ => false
 def isFn : Value → Bool | fn _ _ => true | _ => false
@@ -217,6 +221,7 @@ def typeOf : Value → TypeId
   | parenExpr _ => "Word/__PE"
   | word _ => "Word"
   | openParen => "Word/__OP"
+  | frameOpen => "Word/__OP"
   | closeParen => "Word/__CP"
   | endMark => "Word/__ED"
   | dispatchMod _ => "Word/__DM"

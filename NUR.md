@@ -119,7 +119,6 @@ list only by becoming **Resolved** (the record is then deleted) or
 | [NUR384](#nur384) | A name a fn-body `unpack` binds for the FIRST time stays bound past the call interpreted and is undefined compiled (loud on the VM's side; a rebound outer name agrees on both lanes) | the interpreter fn-kind inlining pass (2026-10-08) |
 | [NUR385](#nur385) | A disjunct is reduced to its canonical alternatives only when resolution rebuilt one of them: `d( 5 5 Integer )` stays as written, `d( [q 1 ] 5 5 Integer )` is deduplicated and ordered | the Lean core specification's differential search (2026-11-27) |
 | [NUR386](#nur386) | The kernel's `Unify` of two disjuncts answers their first matching alternative, not their meet (`tand` answers the disjunct); the empty disjunct unifies with neither itself nor `Never` | the Lean core specification, `Theorems/UnifyOrder.lean` (2026-11-27) |
-| [NUR387](#nur387) | An unmatched `(` inside a container literal takes the literal's sealing paren for its close: `[ negq ( ]` raises no_value_error and `[ negq ( 5 ]` syntax_error where `negq (` and `negq ( 5` raise signature_error | the Lean core specification's differential search (2026-11-27) |
 
 Pending records normally use a compact form (rule / divergence /
 evidence / documentation status, plus a proposed verdict where one is
@@ -1592,37 +1591,5 @@ Pinned as the kernel has it by the Lean specification
 **Proposed verdict:** resolve by fix — a disjunct against a disjunct is the
 disjunct of the pairwise meets (what `TandValues` already computes), and the
 empty disjunct folds as `Never`.
-
----
-
-## NUR387 — an unmatched `(` inside a container literal closes on the literal's sealing paren {#nur387}
-
-**Status:** Pending · **Recorded:** 2026-11-27 · measured on core/go through `scripts/core-probe.sh` · loud on both sides, the CODE differs
-
-**Rule:** the kernel receives values, not text: an open paren with no close
-is a scan boundary, and the dispatch that met it fails on its own terms
-(core/spec/dispatch.tsv, "an UNMATCHED `(` is a scan boundary, not a syntax
-error"). The same tokens answer the same wherever they stand.
-
-**Divergence:** a container literal is evaluated as a sealed region of the
-tape — its elements between a paren pair of the region's own
-(core/go/sealed.go). An unmatched `(` among the elements therefore HAS a
-close: the region's. The inner group collapses, the region is left
-unclosed, and the error is the region's rather than the word's:
-
-```
-run negq (              ERROR:signature_error
-run [ negq ( ]          ERROR:no_value_error      the stolen pair is an EMPTY group, blamed on negq
-run negq ( 5            ERROR:signature_error
-run [ negq ( 5 ]        ERROR:syntax_error        negq fires over (5); the region never closes
-```
-
-The Lean specification models the region with its real paren pair, so it
-reproduces all four (`spec/Boru/Core/Engine.lean` `runSealed`).
-
-**Proposed verdict:** resolve by fix — the region's close should pair only
-with the region's open (a `LoopOpenInfo` close matched by identity, not by
-nearest open paren), so an unmatched `(` in a literal is the scan boundary
-it is at the top level.
 
 ---

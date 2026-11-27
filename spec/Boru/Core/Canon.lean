@@ -60,6 +60,7 @@ def canon : Value → String
   | .none => "none"
   | .closeParen => ")"
   | .openParen => "("
+  | .frameOpen => "("
   | .dispatchMod val => if val then "/v" else "/q"
   | .endMark => "end"
   | .typeLit t => leafOf t

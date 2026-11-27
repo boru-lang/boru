@@ -147,7 +147,7 @@ def scopeStart (tape : List Value) : Nat → Nat
   | 0 => 0
   | i + 1 =>
     match tape[i]? with
-    | some .openParen => i + 1
+    | some .openParen | some .frameOpen => i + 1
     | _ => scopeStart tape i
 
 /-- The nearest parked forward before `i` in the same paren scope. -/
@@ -155,7 +155,7 @@ def pendingForwardIdx (tape : List Value) : Nat → Option Nat
   | 0 => none
   | i + 1 =>
     match tape[i]? with
-    | some .openParen => none
+    | some .openParen | some .frameOpen => none
     | some (.forward _ _) => some i
     | _ => pendingForwardIdx tape i
 
@@ -164,7 +164,7 @@ def scopeForwards (tape : List Value) : Nat → List ForwardInfo
   | 0 => []
   | i + 1 =>
     match tape[i]? with
-    | some .openParen => []
+    | some .openParen | some .frameOpen => []
     | some (.forward f _) => f :: scopeForwards tape i
     | _ => scopeForwards tape i
 
@@ -192,7 +192,7 @@ def resolvedIdxBack (tape : List Value) : Nat → Nat → List Nat
   | _, 0 => []
   | i + 1, n + 1 =>
     match tape[i]? with
-    | some .openParen => []
+    | some .openParen | some .frameOpen => []
     | some (.forward _ _) => resolvedIdxBack tape i (n + 1)
     | _ => i :: resolvedIdxBack tape i n
 
@@ -225,7 +225,7 @@ def scanAdmits (defs : Defs) (s : Sig) (fwd : Nat) (tok : Value) : Bool :=
           && !(!s.isTypeArg fwd && rejectsTypeLiteral (.typeLit t) expected)
       | none => sigArgMatches s fwd (.atom w.name) || expected == TAny
   match tok with
-  | .forward _ _ | .endMark | .closeParen | .openParen | .defCleanup _ | .returnCheck _ => false
+  | .forward _ _ | .endMark | .closeParen | .openParen | .frameOpen | .defCleanup _ | .returnCheck _ => false
   | .word w =>
     if s.isQuote fwd then conforms TAtom expected                  -- `/q`: the name is the operand
     else match defs.top? w.name with
