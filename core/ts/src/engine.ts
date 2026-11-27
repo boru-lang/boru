@@ -1644,6 +1644,11 @@ export class Engine {
    * sub-engine identical — so the flag has no analogue here.
    */
   private resolveInertTypeShape(v: Value): Value | undefined {
+    // A NAMED type is finished: its body was resolved when it was defined,
+    // and it is the name that renders and compares. Rebuilding a named
+    // typed container here dropped the name — `Ints`, left on the stack,
+    // came back as `[:Integer]`.
+    if (v.typeName !== undefined) return undefined;
     if (v.isTypedList() || v.isTypedMap()) {
       const ct = v.asChildType();
       const child = resolveWordsDeep(ct.child, this.registry);
