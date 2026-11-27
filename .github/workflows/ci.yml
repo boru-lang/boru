@@ -228,6 +228,21 @@ jobs:
           node: 'true'
       - run: scripts/ci-steps.sh parser-parity
 
+  # The Lean specification of the kernel (spec/): the one job that needs
+  # a Lean toolchain. elan reads spec/lean-toolchain, so the pin lives in
+  # the tree and not here.
+  spec:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install elan
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh \
+            | sh -s -- -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+      - run: scripts/ci-steps.sh spec
+
   # The post-test gates that need nothing installed but Go, and vuln.
   gates:
     runs-on: ubuntu-latest

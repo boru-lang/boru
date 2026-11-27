@@ -30,6 +30,11 @@
 #   cover-check-ci       the merged ADR-008 gate over the profiles the test
 #                        jobs wrote under COVER=1 (coverage/ci/*.xout)
 #   vuln                 govulncheck (advisory: never fails the run)
+#   spec                 the Lean specification of the kernel: its lattice
+#                        matches core/go, the model and theorems build, and
+#                        the model answers core/spec (make -C spec check).
+#                        Needs a Lean toolchain; without one it fails in CI
+#                        and is skipped, loudly, anywhere else
 #   direction-gates      the direction lane as a job of its own — the
 #                        local form; CI renders the same table from the
 #                        shards (gate-table) and has no such job
@@ -100,6 +105,15 @@ case "$step" in
     # stack (the test walks' parallel rows found it).
     ( cd core/go && run go test . -run 'TestUnifyRegistryArmedConcurrentNoRace' -race ) ;;
   wasm)             run make -C wpg wasm ;;
+  spec)
+    if command -v "${LAKE:-lake}" >/dev/null 2>&1; then
+      run make -C spec check
+    elif [ -n "${CI:-}" ]; then
+      echo "==> [ci] spec: no Lean toolchain on PATH (lake) — the spec job must install one" >&2
+      exit 1
+    else
+      echo "==> [ci] spec: SKIPPED — no Lean toolchain on PATH (see spec/README.md); CI runs it"
+    fi ;;
   vuln)            run make vuln || echo "==> [ci] vuln is advisory (see STATIC_ANALYSIS_REPORT.md); continuing" ;;
   direction-gates)  run make test-direction || echo "==> [ci] the direction lane is red by design until the debt is paid; its table is the output" ;;
   race-modules)     run make test-race ;;
@@ -124,7 +138,7 @@ case "$step" in
     done
     exit $rc ;;
   all)
-    for s in build-cli kg-verify vet vet-copies lint-assertions lint test-modules test-langspec-all parser-parity cover-gate-core race-gates wasm vuln; do
+    for s in build-cli kg-verify vet vet-copies lint-assertions lint test-modules test-langspec-all parser-parity cover-gate-core race-gates wasm vuln spec; do
       "$0" "$s"
     done
     echo "==> [ci] every CI step ran" ;;

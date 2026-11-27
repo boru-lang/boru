@@ -133,6 +133,7 @@ Full REPL reference: [CLI.md → REPL meta-commands](CLI.md#repl-meta-commands).
 | The recorded non-uniformities of the language and their verdicts | [NUR.md](NUR.md) |
 | The formal semantics | [FORMAL-SPEC.md](FORMAL-SPEC.md) |
 | The executable language spec (the rows tests run against) | [`lang/spec/*.tsv`](lang/spec/) |
+| The kernel stated in Lean — a machine-checked, executable description of `core/go` | [`spec/README.md`](spec/README.md); what it covers: [`spec/COVERAGE.md`](spec/COVERAGE.md) |
 | See the repository itself as a graph (modules, packages, docs, concepts, evidence) | [`kg/out/graph.md`](kg/out/graph.md) to read, [`kg/out/graph.json`](kg/out/graph.json) to query — guide: [kg/README.md](kg/README.md) |
 | Know what a Go module depends on, or what depends on it | [`kg/out/graph.md`](kg/out/graph.md) §Code units — read from `go.work` + `go.mod`, not from prose |
 
@@ -300,6 +301,7 @@ A few rules from those guides that bite hardest when missed:
 | `core/go/` | The interpreter kernel: values, types, matching, the step loop — the one execution path. Standalone (apd only); every other module builds on it. |
 | `parser/go/` | The parser module: boru source text → `[]core.Value` (tabnas/jsonic lexer + the embedded declarative grammar). Depends on core alone. |
 | `lang/spec/` | The executable language spec (TSV files). |
+| `spec/` | The Lean specification of the kernel: `core/go` as total Lean functions, checked against `core/spec` and against `core/go` itself (`make -C spec check`). The core only — nothing above it. |
 | `calc/go/` | A small calculator built on `core` + `parser` (learning example). |
 | `wpg/` | The wasm web playground. |
 | `test/` | Shared TSV spec-runner scaffolding and HTTP fixtures. |

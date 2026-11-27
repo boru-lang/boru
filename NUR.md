@@ -117,6 +117,9 @@ list only by becoming **Resolved** (the record is then deleted) or
 | [NUR382](#nur382) | A FILE-module fn whose `each` callback forward-applies its `Function` param to another param raises `signature_error` compiled; the interpreter answers (loud) | downstream: the voxgig-boru interpreter-entry pass (found 2026-10-02, recorded 2026-10-05) |
 | [NUR383](#nur383) | A module-made closure bound by a program-level `def` and read by `/v` in a property body fails the property compiled (`undefined word: q`); the interpreter passes it (loud) | downstream: voxgig-boru/sort (found 2026-10-02, recorded 2026-10-05) |
 | [NUR384](#nur384) | A name a fn-body `unpack` binds for the FIRST time stays bound past the call interpreted and is undefined compiled (loud on the VM's side; a rebound outer name agrees on both lanes) | the interpreter fn-kind inlining pass (2026-10-08) |
+| [NUR385](#nur385) | A disjunct is reduced to its canonical alternatives only when resolution rebuilt one of them: `d( 5 5 Integer )` stays as written, `d( [q 1 ] 5 5 Integer )` is deduplicated and ordered | the Lean core specification's differential search (2026-11-27) |
+| [NUR386](#nur386) | The kernel's `Unify` of two disjuncts answers their first matching alternative, not their meet (`tand` answers the disjunct); the empty disjunct unifies with neither itself nor `Never` | the Lean core specification, `Theorems/UnifyOrder.lean` (2026-11-27) |
+| [NUR387](#nur387) | An unmatched `(` inside a container literal takes the literal's sealing paren for its close: `[ negq ( ]` raises no_value_error and `[ negq ( 5 ]` syntax_error where `negq (` and `negq ( 5` raise signature_error | the Lean core specification's differential search (2026-11-27) |
 
 Pending records normally use a compact form (rule / divergence /
 evidence / documentation status, plus a proposed verdict where one is
@@ -1514,5 +1517,112 @@ the call.
 **Proposed verdict:** the pinned discipline is the whole unpack set binding
 past the call, so resolve by fix on the VM's side — or narrow the discipline
 on both lanes together.
+
+---
+
+## NUR385 — a disjunct is canonicalised only when resolution rebuilt an alternative {#nur385}
+
+**Status:** Pending · **Recorded:** 2026-11-27 · measured on core/go through `scripts/core-probe.sh` (the core/spec notation) · silent
+
+**Rule:** a value's canonical form is a function of the value (ADR-015): two
+disjuncts with the same alternatives render the same.
+
+**Divergence:** `resolveWordsDeep` (core/go/resolve.go) re-simplifies a
+disjunct — duplicates dropped, an alternative absorbed by a wider bare type
+dropped, the rest put in the total order — only "when an alternative
+changed", and decides "changed" with `ExactEqual`, which for a container is
+IDENTITY (compare.go `sameContainer`). A scalar or a type literal comes back
+as itself, so the disjunct is left as written; a non-empty plain list or a
+plain map is rebuilt, so the same disjunct with one more alternative is
+reduced. Two empty lists count as identical, so an empty list does not
+trigger it either.
+
+```
+run d( 5 5 Integer )            5 tor 5 tor Integer        as written: duplicate kept, unordered
+run d( [q 1 ] 5 5 Integer )     Integer tor 5 tor [1]      reduced and ordered
+run d( [q ] [q ] 1 1 )          [] tor [] tor 1 tor 1      an EMPTY list does not trigger it
+run d( {q } {q } 1 1 )          1 tor {}                   an empty map does
+```
+
+The source-level constructor `tor` simplifies always, so the shape is
+reachable through the paths that build a disjunct raw (`NewDisjunct`: the
+`{a?:T}` desugar, a stored shape, a host). The Lean specification models
+the rule as the kernel has it (`spec/Boru/Core/Unify.lean`
+`disjunctAltRebuilt`).
+
+**Proposed verdict:** resolve by fix — simplify whenever a disjunct is
+resolved, so the canonical form does not depend on container identity.
+
+---
+
+## NUR386 — the kernel's `Unify` of two disjuncts is their first alternative, not their meet {#nur386}
+
+**Status:** Pending · **Recorded:** 2026-11-27 · measured on core/go (`UnifyR`) and through `boru do` · the VALUE half only; the predicate is right
+
+**Rule:** one unifier — the meet of two values has one answer, and `v` unified
+with `v` is `v`.
+
+**Divergence:** `unifyDisjunct` (core/go/unify_disjunct.go) returns the
+result of the first alternative that unifies with the other side. When the
+other side is itself a disjunct that result is one alternative, so the meet
+of a disjunct with itself is its first member, where `tand` — which goes
+through `TandValues` — answers the disjunct:
+
+```
+UnifyR(Integer tor String, Integer tor String)   Integer
+UnifyR(5 tor 6, 5 tor 6)                         5
+boru do '(Integer tor String) tand (Integer tor String)'    Integer tor String
+```
+
+The same walk gives the EMPTY disjunct no alternative to match, so it
+unifies with nothing but `Any` — not with itself, and not with `Never`,
+though both denote the empty set and `Never` unifies with `Never`:
+
+```
+run unifyq d( ) d( )      false        (pinned in core/spec/unify.tsv)
+UnifyR(d(), Never)        fails
+UnifyR(Never, Never)      Never
+```
+
+Pinned as the kernel has it by the Lean specification
+(`spec/Boru/Core/Theorems/UnifyOrder.lean`:
+`disjunct_meet_is_first_alternative`,
+`unifies_refl_except_empty_disjunct`).
+
+**Proposed verdict:** resolve by fix — a disjunct against a disjunct is the
+disjunct of the pairwise meets (what `TandValues` already computes), and the
+empty disjunct folds as `Never`.
+
+---
+
+## NUR387 — an unmatched `(` inside a container literal closes on the literal's sealing paren {#nur387}
+
+**Status:** Pending · **Recorded:** 2026-11-27 · measured on core/go through `scripts/core-probe.sh` · loud on both sides, the CODE differs
+
+**Rule:** the kernel receives values, not text: an open paren with no close
+is a scan boundary, and the dispatch that met it fails on its own terms
+(core/spec/dispatch.tsv, "an UNMATCHED `(` is a scan boundary, not a syntax
+error"). The same tokens answer the same wherever they stand.
+
+**Divergence:** a container literal is evaluated as a sealed region of the
+tape — its elements between a paren pair of the region's own
+(core/go/sealed.go). An unmatched `(` among the elements therefore HAS a
+close: the region's. The inner group collapses, the region is left
+unclosed, and the error is the region's rather than the word's:
+
+```
+run negq (              ERROR:signature_error
+run [ negq ( ]          ERROR:no_value_error      the stolen pair is an EMPTY group, blamed on negq
+run negq ( 5            ERROR:signature_error
+run [ negq ( 5 ]        ERROR:syntax_error        negq fires over (5); the region never closes
+```
+
+The Lean specification models the region with its real paren pair, so it
+reproduces all four (`spec/Boru/Core/Engine.lean` `runSealed`).
+
+**Proposed verdict:** resolve by fix — the region's close should pair only
+with the region's open (a `LoopOpenInfo` close matched by identity, not by
+nearest open paren), so an unmatched `(` in a literal is the scan boundary
+it is at the top level.
 
 ---

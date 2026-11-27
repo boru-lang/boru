@@ -564,6 +564,8 @@
       attributes: { path: "lang/spec" } }
     { key: "utils", type: "Product", label: "utils coreutils subset"
       attributes: { path: "utils" } }
+    { key: "lean-spec", type: "Product", label: "spec Lean kernel specification"
+      attributes: { path: "spec", language: "lean" } }
     { key: "boru-cli", type: "Product", label: "boru:cli module"
       attributes: { path: "lang/go/modules/cli.boru", language: "boru" } }
     { key: "readme", type: "Document", label: "README.md" }
@@ -707,6 +709,16 @@
       evidence: [{ source: "src:agents", locator: "Repository layout",
         quote: "kg/ | The project knowledge graph: an evidence-backed boru pipeline and its generated bundle." }]
       confidence: 0.98 }
+    { subject: "lean-spec", predicate: "part_of"
+      object: { kind: "entity", entity: "repo" }
+      evidence: [{ source: "src:agents", locator: "Repository layout",
+        quote: "spec/ | The Lean specification of the kernel: core/go as total Lean functions, checked against core/spec and against core/go itself (make -C spec check). The core only — nothing above it." }]
+      confidence: 0.98 }
+    { subject: "lean-spec", predicate: "supports"
+      object: { kind: "entity", entity: "core-go" }
+      evidence: [{ source: "src:agents", locator: "Task router",
+        quote: "The kernel stated in Lean — a machine-checked, executable description of core/go" }]
+      confidence: 0.95 }
     { subject: "utils", predicate: "part_of"
       object: { kind: "entity", entity: "repo" }
       evidence: [{ source: "src:agents", locator: "Repository layout",

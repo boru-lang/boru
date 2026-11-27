@@ -14,8 +14,8 @@ CREATE TABLE schema_proposals (id TEXT PRIMARY KEY, term_kind TEXT NOT NULL, ter
 INSERT INTO bundle_meta VALUES ('schema_version', 'boru-kg/1');
 INSERT INTO bundle_meta VALUES ('generated_at', '2026-08-07T00:00:00Z');
 INSERT INTO bundle_meta VALUES ('input_digest_algorithm', 'fnv64');
-INSERT INTO bundle_meta VALUES ('input_digest_combined', '2481992707005135029');
-INSERT INTO input_files VALUES ('../AGENTS.md', '5234076405438115076', 17086);
+INSERT INTO bundle_meta VALUES ('input_digest_combined', '7341456470918128299');
+INSERT INTO input_files VALUES ('../AGENTS.md', '3575205973298903302', 17468);
 INSERT INTO input_files VALUES ('../CLI.md', '6614511129872274083', 80941);
 INSERT INTO input_files VALUES ('../README.md', '8465218850351862288', 13070);
 INSERT INTO input_files VALUES ('../STYLE-GUIDE.md', '8760304484427580303', 16194);
@@ -80,7 +80,7 @@ INSERT INTO input_files VALUES ('../test/specfix/go.mod', '2531219918271998981',
 INSERT INTO input_files VALUES ('../tools/vetcopies/go.mod', '6319204921462677590', 498);
 INSERT INTO input_files VALUES ('../wpg/go.mod', '3058501471481697303', 2680);
 INSERT INTO input_files VALUES ('<go tree: modules + packages>', '7647588430295938990', 544);
-INSERT INTO input_files VALUES ('project/boru-project.jsonic', '6252678089417510241', 101910);
+INSERT INTO input_files VALUES ('project/boru-project.jsonic', '2675861165362024373', 102741);
 INSERT INTO sources VALUES ('src:adr-004-refinement', 'text', 'design/ADR-004-REFINEMENT.0.md', 'ADR-004 refinement — argument-handling categories', NULL, 'adr-004-refinement-2026-08-15', 'primary', '{
   "repository": "boru-lang/boru"
 }');
@@ -408,6 +408,9 @@ INSERT INTO entities VALUES ('ent:Document:8875579216819453768', 'Document', 'de
 INSERT INTO entity_attributes VALUES ('ent:Document:8875579216819453768', 'role', 'the Go/TS parity program for core, parser and basic: the three shared TSV corpora and their two-runner rule, the capability table that forces core/ts before basic/ts, the divergence ledger, and the finding that an uncovered branch in one port is where a divergence hides');
 INSERT INTO entities VALUES ('ent:Document:9071667555031388966', 'Document', 'parser/go/CLAUDE.md', 'parser/go/claude.md', 'accepted');
 INSERT INTO entities VALUES ('ent:Organization:8832543031059216933', 'Organization', 'boru-lang', 'boru-lang', 'accepted');
+INSERT INTO entities VALUES ('ent:Product:1553508488248212663', 'Product', 'spec Lean kernel specification', 'spec lean kernel specification', 'accepted');
+INSERT INTO entity_attributes VALUES ('ent:Product:1553508488248212663', 'language', 'lean');
+INSERT INTO entity_attributes VALUES ('ent:Product:1553508488248212663', 'path', 'spec');
 INSERT INTO entities VALUES ('ent:Product:2046405728378673079', 'Product', 'kg knowledge-graph pipeline', 'kg knowledge-graph pipeline', 'accepted');
 INSERT INTO entity_attributes VALUES ('ent:Product:2046405728378673079', 'path', 'kg');
 INSERT INTO entities VALUES ('ent:Product:4032424380612892464', 'Product', 'boru-lang/boru repository', 'boru-lang/boru repository', 'accepted');
@@ -905,6 +908,8 @@ INSERT INTO assertions VALUES ('ast:8143463681370129906', 'ent:SoftwareModule:41
 INSERT INTO assertion_evidence VALUES ('ast:8143463681370129906', 'src:gomod:wpg', 'require block', 'github.com/boru-lang/boru/lang/go v0.0.0', 'rule', 'kg-gomod');
 INSERT INTO assertions VALUES ('ast:8189213360333637896', 'ent:Product:4976123614970806523', 'part_of', 'entity', 'ent:SoftwareModule:8275629451197117420', NULL, NULL, NULL, NULL, 0.9, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
 INSERT INTO assertion_evidence VALUES ('ast:8189213360333637896', 'src:agents', 'Repository layout', 'utils/ | A coreutils subset written in boru — real programs that prove the CLI story (argv, exit codes, streams, baked permissions).', 'direct_record', 'kg-ingest');
+INSERT INTO assertions VALUES ('ast:8250066834165532769', 'ent:Product:1553508488248212663', 'part_of', 'entity', 'ent:Product:4032424380612892464', NULL, NULL, NULL, NULL, 0.98, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
+INSERT INTO assertion_evidence VALUES ('ast:8250066834165532769', 'src:agents', 'Repository layout', 'spec/ | The Lean specification of the kernel: core/go as total Lean functions, checked against core/spec and against core/go itself (make -C spec check). The core only — nothing above it.', 'direct_record', 'kg-ingest');
 INSERT INTO assertions VALUES ('ast:8305882503258666818', 'ent:SoftwareModule:4361728672720029650', 'has_attribute', 'literal', NULL, '"github.com/boru-lang/boru/cmd/go"', 'String', 'go-module-path', NULL, 1, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
 INSERT INTO assertion_evidence VALUES ('ast:8305882503258666818', 'src:gomod:cmd-go', 'module directive', 'module github.com/boru-lang/boru/cmd/go', 'rule', 'kg-gomod');
 INSERT INTO assertions VALUES ('ast:8334090252473743925', 'ent:Document:2308799538575712501', 'part_of', 'entity', 'ent:Document:520435226487613788', NULL, NULL, NULL, NULL, 0.95, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
@@ -947,6 +952,8 @@ INSERT INTO assertions VALUES ('ast:8946871445019255259', 'ent:Document:87510217
 INSERT INTO assertion_evidence VALUES ('ast:8946871445019255259', 'src:canon-roundtrip', 'The contract', '`canon v` renders a value as boru source text which, re-parsed,', 'direct_record', 'kg-ingest');
 INSERT INTO assertions VALUES ('ast:8955705768046061429', 'ent:Document:203047846460430642', 'supports', 'entity', 'ent:SoftwareModule:6706536563979604982', NULL, NULL, NULL, NULL, 0.95, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
 INSERT INTO assertion_evidence VALUES ('ast:8955705768046061429', 'src:decl-grammar', 'The contract', 'parser/go/grammar.json is the single source of the boru grammar''s STRUCTURE, loaded by both parsers', 'direct_record', 'kg-ingest');
+INSERT INTO assertions VALUES ('ast:8980294465687735737', 'ent:Product:1553508488248212663', 'supports', 'entity', 'ent:SoftwareModule:2013670336276694550', NULL, NULL, NULL, NULL, 0.95, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
+INSERT INTO assertion_evidence VALUES ('ast:8980294465687735737', 'src:agents', 'Task router', 'The kernel stated in Lean — a machine-checked, executable description of core/go', 'direct_record', 'kg-ingest');
 INSERT INTO assertions VALUES ('ast:8982543179606202117', 'ent:SoftwareModule:8275629451197117420', 'part_of', 'entity', 'ent:Product:4032424380612892464', NULL, NULL, NULL, NULL, 1, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
 INSERT INTO assertion_evidence VALUES ('ast:8982543179606202117', 'src:go-work', 'use block', './lang/go', 'rule', 'kg-gomod');
 INSERT INTO assertions VALUES ('ast:8989313594377163134', 'ent:SoftwareModule:2224184413468547100', 'part_of', 'entity', 'ent:SoftwareModule:8275629451197117420', NULL, NULL, NULL, NULL, 1, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
