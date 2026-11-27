@@ -33,8 +33,9 @@
 # dispatch, `name/v`, `name/u`, the word `end`, a def-bound list, an
 # unmatched `(` — to dispatch.tsv, with function identity in unify.tsv.
 # What is left below is what core/ts does not have at all — closures and
-# driven loops — and one recorded kernel defect (NUR392), pinned as the
-# kernel has it.
+# driven loops — one recorded kernel defect (NUR392), pinned as the kernel
+# has it, and, last, what a differential search found once the engine half
+# had closed.
 
 
 # --- ANONYMOUS functions, built at run time -----------------------------------
@@ -141,3 +142,55 @@ run eachq [q 1 2 ] [q ) ]	ERROR:syntax_error	ERROR:undefined_word	DATA: core/ts 
 run eachq [q 1 ] [q ( ]	[1 (]	ERROR:undefined_word	DATA: core/ts has no driven loops — no loop driver, and its fixture registers no `eachq` — so the word is unknown there.
 run eachq [q 1 ] [q negq ( ]	[-1 (]	ERROR:undefined_word	DATA: core/ts has no driven loops — no loop driver, and its fixture registers no `eachq` — so the word is unknown there.
 run def f fn( n Any Any [ ( ] ) ; f 1	ERROR:type_error	ERROR:syntax_error	CODE: NUR392 — Go leaves an unmatched `(` in a function's body for the frame's return check, which counts it as a value; core/ts refuses it there as both refuse it at the top level.
+
+# --- what a differential search found once the ENGINE half had closed --------
+# The six causes the engine half was given are closed. A Go-against-TS search
+# over the same fixture words then turned these up: each is a mechanism
+# core/go has and core/ts does not, and none is one of the six. They are
+# pinned so that the ledger says so. (The Lean model answers every one as Go
+# does.)
+#
+# The forward barrier's COMMIT half. core/ts strands a parked word at a
+# function word only when it has claimed NOTHING — engine.ts's
+# strandedForwardError says why the subset stops there. One that has claimed
+# part of its plan waits through, and is fed the boundary word's result.
+run bothq 1 negq 5	ERROR:signature_error	-5	CODE: the strict forward barrier's commit half is not ported — a parked word that has collected part of its plan is stranded in Go when a function word begins its own dispatch; core/ts waits through and takes that word's result.
+run 7 bothq 1 negq 5	ERROR:signature_error	7 -5	CODE: the strict forward barrier's commit half is not ported — a parked word that has collected part of its plan is stranded in Go when a function word begins its own dispatch; core/ts waits through and takes that word's result.
+run bothq 1 depthq	ERROR:signature_error	1	CODE: the strict forward barrier's commit half is not ported — a parked word that has collected part of its plan is stranded in Go when a function word begins its own dispatch; core/ts waits through and takes that word's result.
+
+# A TYPE-ARG slot plans a WORD. Go's plan counts the word after `tyq` as its
+# forward argument — a name may be bound to a type — so an unbound name is
+# undefined_word and a function word strands the collection. core/ts plans
+# only what is a type already: `tyq` dispatches on what the stack holds, or
+# fails for want of it, and the word runs on its own.
+run tyq zzz	ERROR:undefined_word	ERROR:signature_error	CODE: a type-arg slot plans the word after it in Go, so the unbound name is stepped and is undefined; core/ts does not plan a word there and fails the dispatch for want of an argument.
+run tyq zzz/v	ERROR:undefined_word	ERROR:signature_error	CODE: a type-arg slot plans the word after it in Go, so the unbound reference is stepped and is undefined; core/ts does not plan a word there and fails the dispatch for want of an argument.
+run Integer tyq negq 5	ERROR:signature_error	Integer -5	CODE: a type-arg slot plans the word after it in Go, and a function word then strands the collection; core/ts does not plan a word there, so `tyq` takes the type beneath it and the word runs on its own.
+run List tyq depthq	ERROR:signature_error	List 1	CODE: a type-arg slot plans the word after it in Go, and a function word then strands the collection; core/ts does not plan a word there, so `tyq` takes the type beneath it and the word runs on its own.
+run Integer tyq bothq ( )	ERROR:signature_error	ERROR:no_value_error	CODE: a type-arg slot plans the word after it in Go, and a function word then strands the collection; core/ts does not plan a word there, so `bothq` runs on its own and blames its void group.
+run def inc fn( n Any Any [ n ] ) ; Integer tyq inc 5	ERROR:signature_error	Integer 5	CODE: a type-arg slot plans the word after it in Go, and a function word then strands the collection; core/ts does not plan a word there, so `tyq` takes the type beneath it and the word runs on its own.
+
+# An ORPHANED collection is re-dispatched when the run ends, with what it
+# collected and the stack beneath it (core/go resolveOrphanedForwards).
+# core/ts refuses any collection the end of the run finds unfilled.
+run 1 bothq __pa true	1	ERROR:signature_error	CODE: Go re-dispatches a collection the run's end finds unfilled — what it collected, then the stack — so `bothq` takes the 1 beneath it; core/ts refuses the unfilled collection.
+run [ boomq 1 ] bothq __pa true	ERROR:fixture_boom	ERROR:signature_error	CODE: Go re-dispatches a collection the run's end finds unfilled — what it collected, then the stack — so `bothq` takes the pending list, whose evaluation faults; core/ts refuses the unfilled collection.
+run [ [ boomq 1 ] bothq __pa true ]	ERROR:fixture_boom	ERROR:signature_error	CODE: Go re-dispatches a collection the run's end finds unfilled — what it collected, then the stack — so `bothq` takes the pending list, whose evaluation faults; core/ts refuses the unfilled collection.
+
+# A function VALUE parks its collection like a word in Go, so an
+# engine-internal `__` word after it is stepped and passed over; core/ts
+# matches a boru-bodied function where it stands, and counts the `__` word as
+# an argument it could not take.
+run fn( n Any Any [ negq n ] ) __pa	fn [[n:Any][Any][negq n]]	ERROR:uncalled_function	CODE: Go parks a function value's collection, steps the engine-internal word and, with nothing left, leaves the function as a value; core/ts matches it where it stands and counts the `__` word as a refused argument.
+run fn( n Any Any [ negq n ] ) __pa 5	-5	ERROR:uncalled_function	CODE: Go parks a function value's collection, steps the engine-internal word and collects the 5 after it; core/ts matches it where it stands and counts the `__` word as a refused argument.
+
+# A FRAME's results are stepped again where the call stood: core/go splices
+# the frame into the tape. core/ts's frame is a run of its own and its
+# residual is placed, so a raw WORD a body hands back is called in Go and
+# carried in core/ts.
+run def inc fn( n Any Any [ n ] ) ; def h negq ; inc h	ERROR:signature_error	negq	CODE: a frame's residual is re-stepped in Go, so the word `negq` the body hands back is called, with nothing; core/ts places a frame's residual and carries the word.
+
+# The `undef` FIXTURE reaches further in Go: a native word is a binding
+# there, and `undef` removes it. core/ts keeps natives apart from the def
+# stack, and its fixture pops only a def.
+run undef negq ; negq 2	ERROR:undefined_word	-2	DATA: a native word is a binding `undef` can remove in core/go; core/ts keeps natives apart from the def stack, so the word is still there.
