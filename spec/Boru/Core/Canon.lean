@@ -77,7 +77,7 @@ def canon : Value → String
   | .typedMap child entries =>
     "{" ++ " ".intercalate ((":" ++ canonTag child) :: canonEntries entries) ++ "}"
   | .word w => canonWord w
-  | .parenExpr items => "(" ++ " ".intercalate (canonSeq items) ++ ")"
+  | .parenExpr items => "(" ++ " ".intercalate (canonGroup items) ++ ")"
   | .disjunct alts => " tor ".intercalate (canonAlts alts)
   | .fn _ sigs => "fn [" ++ " ".intercalate (canonSigs sigs) ++ "]"
   | .forward info => "__FW(" ++ info.funcName ++ ")"
@@ -103,10 +103,18 @@ def canonChildren : List Value → List String
   | .disjunct alts :: vs => ("(" ++ " tor ".intercalate (canonAlts alts) ++ ")") :: canonChildren vs
   | v :: vs => canon v :: canonChildren vs
 
-/-- A plain token sequence (a paren expression's items, a fn body). -/
+/-- A plain token sequence (a fn body). -/
 def canonSeq : List Value → List String
   | [] => []
   | v :: vs => canon v :: canonSeq vs
+
+/-- The tokens of a paren expression. Inside a group the collection
+    barrier is written `;` — its punctuation spelling — where on its own
+    it renders as the word `end`. -/
+def canonGroup : List Value → List String
+  | [] => []
+  | .endMark :: vs => ";" :: canonGroup vs
+  | v :: vs => canon v :: canonGroup vs
 
 def canonEntries : List (String × Value) → List String
   | [] => []

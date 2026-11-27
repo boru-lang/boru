@@ -55,8 +55,10 @@ import {
   TMap,
   TNone,
   TString,
+  TWord,
+  Value,
   type BoruType,
-  type Value,
+  type WordInfo,
 } from "./index.ts";
 
 const SPEC_DIR = path.resolve(
@@ -123,6 +125,18 @@ function token(tok: string): Value {
   // (REFERENCE.md:415); the corpus uses the punctuation so a row can still
   // name a WORD called end.
   if (tok === ";") return newEnd();
+  // `name/N`, `name/s`, `name/f`, `name/Ns`, `name/Nf`: a word with
+  // call-site modifiers, as the parser would hand it over. A slash whose
+  // suffix is not a modifier (`Scalar/String`) leaves the token a plain
+  // word. Written independently of the Go runner's copy.
+  const mod = /^(.+)\/(\d*)([sf]?)$/.exec(tok);
+  if (mod !== null && (mod[2] !== "" || mod[3] !== "")) {
+    const info: WordInfo = { name: mod[1]! };
+    if (mod[2] !== "") info.argCount = BigInt(mod[2]!);
+    if (mod[3] === "s") info.forceStack = true;
+    if (mod[3] === "f") info.forceForward = true;
+    return new Value(TWord, info);
+  }
   return newWord(tok);
 }
 
@@ -260,7 +274,7 @@ function fixtureRegistry(): Registry {
         returns: [TInteger],
         barrierPos: 2,
         handler: (args: Value[]): Value[] => [
-          newInteger(args[0]!.asInteger() + args[1]!.asInteger()),
+          newInteger(BigInt.asIntN(64, args[0]!.asInteger() + args[1]!.asInteger())),
         ],
       },
     ],
@@ -281,7 +295,7 @@ function fixtureRegistry(): Registry {
         returns: [TInteger],
         barrierPos: 1,
         handler: (args: Value[]): Value[] => [
-          newInteger(-args[0]!.asInteger()),
+          newInteger(BigInt.asIntN(64, -args[0]!.asInteger())),
         ],
       },
     ],
@@ -308,7 +322,7 @@ function fixtureRegistry(): Registry {
         returns: [TInteger],
         barrierPos: 0, // STACK form: both operands come off the stack
         handler: (args: Value[]): Value[] => [
-          newInteger(args[0]!.asInteger() + args[1]!.asInteger()),
+          newInteger(BigInt.asIntN(64, args[0]!.asInteger() + args[1]!.asInteger())),
         ],
       },
     ],

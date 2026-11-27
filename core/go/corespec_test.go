@@ -119,7 +119,42 @@ func coreSpecToken(tok string) Value {
 		// still name a WORD called end.
 		return NewEnd()
 	}
+	// `name/N`, `name/s`, `name/f` and `name/Ns`, `name/Nf`: a word with
+	// call-site modifiers, as the parser would hand it over. A slash whose
+	// suffix is not a modifier (`Scalar/String`) leaves the token a plain
+	// word.
+	if i := strings.LastIndexByte(tok, '/'); i > 0 && i < len(tok)-1 {
+		if n, forceStack, forceForward, ok := coreSpecModifiers(tok[i+1:]); ok {
+			return NewWordModified(tok[:i], n, forceStack, forceForward)
+		}
+	}
 	return NewWord(tok)
+}
+
+// coreSpecModifiers reads a modifier suffix: optional decimal digits (the
+// forced arity, -1 when absent) and then at most one of `s` (stack only)
+// or `f` (forward only).
+func coreSpecModifiers(mods string) (argCount int, forceStack, forceForward, ok bool) {
+	digits := strings.TrimRight(mods, "sf")
+	rest := mods[len(digits):]
+	argCount = -1
+	if digits != "" {
+		n, err := strconv.Atoi(digits)
+		if err != nil || n < 0 {
+			return 0, false, false, false
+		}
+		argCount = n
+	}
+	switch rest {
+	case "":
+	case "s":
+		forceStack = true
+	case "f":
+		forceForward = true
+	default:
+		return 0, false, false, false
+	}
+	return argCount, forceStack, forceForward, true
 }
 
 func coreSpecFields(s string) []string {

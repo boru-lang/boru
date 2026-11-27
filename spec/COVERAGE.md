@@ -25,6 +25,7 @@ theorem, or by the differential search.
 | The binding store: per-name stacks, lookup across a name's function bindings | `deftable.go`, `registry.go` | `Match.lean` | corpus |
 | Slot admission, type-literal rejection, patterns | `signature.go`, `match.go` | `Match.lean` | `dispatch.tsv`; search |
 | The per-candidate scan and the plan (`/q` preference, inside-a-collection rule, zero-argument fallback) | `collect_kernel.go`, `collect_plan.go` | `Match.lean` | `dispatch.tsv`; search; `Theorems/ArgumentRule.lean` |
+| The call-site modifiers `/s`, `/f`, `/N` | `collect_plan.go`, `engine.go` `effectiveForwardLimit` | `Match.lean` | `dispatch.tsv`; search |
 | The stack-form probe | `signature.go` `MatchSignature` | `Match.lean` | search |
 | The step loop: literals and arrival, word resolution, word literals, undefined words | `engine.go` | `Engine.lean` | corpus; search |
 | Parking and collecting a forward; completion and the stack-only re-dispatch | `engine.go` | `Engine.lean` | corpus; search; theorems |
@@ -33,6 +34,7 @@ theorem, or by the differential search.
 | Paren groups: collapse, re-step, void groups and `no_value_error` | `engine.go` | `Engine.lean` | corpus; search |
 | `end`; curry-or-stack, including the curry list; orphaned forwards | `engine.go` | `Engine.lean` | corpus; search |
 | Running a match: argument evaluation, result splice, full-stack handlers | `engine.go` `execMatch` | `Engine.lean` | corpus; search |
+| A NAMED function value at the pointer: it dispatches as its word would, is sealed to the stack once its forward arguments are in, is `uncalled_function` when it matches nothing it could have been called on, and is PLACED — not called — when a paren group collapses to it alone | `engine.go` `execFnDefLiteral`, `fnReturnPark` | `Engine.lean` | search; `divergent.tsv` (Go column) |
 | Boru-bodied calls: the frame, named parameters, cleanup, the return check | `core_helpers.go`, `engine.go` | `Engine.lean` | `dispatch.tsv`; search |
 | Container literals as sealed regions; map member evaluation; the residual sweep | `sealed.go`, `engine.go` | `Engine.lean` | `data.tsv`; search |
 | Inert type-shape resolution at consumption and in the residual | `engine.go` | `Engine.lean` | search |
@@ -47,11 +49,12 @@ no expression in the `core/spec` notation, so specifying them means
 extending the notation and its fixture in all three runners first.
 
 **The step loop**
-- the dynamic rules of the word modifiers `/v`, `/u`, `/N`, `/s`, `/f`
-  (matching honours the last three; nothing exercises them);
-- a function VALUE stepped as a literal, value-called functions, closures
-  and capture, unnamed parameters and the frame argument span, the args
-  stack and function baselines, tail-call frame elision, return patterns;
+- the word modifiers `/v` (the bound value, never a call) and `/u`
+  (usurp): both deliver a function VALUE, which is the next item;
+- anonymous functions and lambdas, an applied mark, closures and capture,
+  a function from another registry, arity widening of a value call,
+  unnamed parameters and the frame argument span, the args stack and
+  function baselines, tail-call frame elision, return patterns;
 - overload order by slot specificity (`CompareSignatures` beyond arity),
   and `Extends`;
 - loops on the tape (mark / move, the loop driver, `for`, `while`, the

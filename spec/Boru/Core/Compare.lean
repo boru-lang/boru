@@ -227,6 +227,31 @@ A disjunct is reduced (core/go/core_helpers.go `SimplifyDisjunctAlts`):
 alternative absorbed by a strictly wider bare type goes; what is left is
 ordered by the total order, ties by canonical text. -/
 
+mutual
+/-- Value equality as a disjunct's alternatives are deduplicated by
+    (core/go/equal.go `ValuesEqual`): structural, and for maps
+    independent of insertion order. -/
+def valuesEqual : Nat → Value → Value → Bool
+  | 0, _, _ => false
+  | fuel + 1, a, b =>
+    match a.unquote, b.unquote with
+    | .list ea _, .list eb _ => listsEqual fuel ea eb
+    | .map ea _, .map eb _ => ea.length == eb.length && entriesIn fuel ea eb
+    | x, y => x == y
+def listsEqual : Nat → List Value → List Value → Bool
+  | 0, _, _ => false
+  | _ + 1, [], [] => true
+  | fuel + 1, x :: xs, y :: ys => valuesEqual fuel x y && listsEqual fuel xs ys
+  | _ + 1, _, _ => false
+def entriesIn : Nat → List (String × Value) → List (String × Value) → Bool
+  | 0, _, _ => false
+  | _ + 1, [], _ => true
+  | fuel + 1, (k, v) :: rest, other =>
+    (match other.lookup k with
+     | some w => valuesEqual fuel v w
+     | none => false) && entriesIn fuel rest other
+end
+
 def simplifyDisjunctAlts (alts : List Value) : List Value :=
   let live := alts.filter (fun v => v.typeOf != TNever)
   let kept := (List.range live.length).filterMap fun i =>
@@ -234,7 +259,8 @@ def simplifyDisjunctAlts (alts : List Value) : List Value :=
     | none => none
     | some cand =>
       let ct := cand.typeOf
-      let repeated := (live.take i).any fun o => o.typeOf == ct && o.unquote == cand.unquote
+      let repeated := (live.take i).any fun o =>
+        o.typeOf == ct && valuesEqual (2 * (o.size + cand.size) + 8) o cand
       let absorbed := (List.range live.length).any fun j =>
         j != i && (match live[j]? with
           | some other =>
