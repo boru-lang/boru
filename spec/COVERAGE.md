@@ -19,9 +19,9 @@ theorem, or by the differential search.
 | Function values: overloads, parameters, patterns, `/q` and type-arg slots, the barrier, native / boru / full-stack implementations | `signature.go`, `fnsig.go` | `Value.lean`, `Match.lean` | corpus; search |
 | The quoted occurrence flag (as set on a bound list) | `value.go`, `core_helpers.go` | `Value.lean`, `Engine.lean` | search |
 | Canonical rendering of all of the above | `canon.go`, `value.go` | `Canon.lean`, `Number.lean` | `canon.tsv`; search |
-| The total order: family comparers, rank fallback, structural compare | `compare.go`, `compare_types.go`, `compare_scalar_behaviors.go` | `Compare.lean` | search (through disjunct order); `Theorems/UnifyOrder.lean` |
-| A disjunct's canonical alternatives | `core_helpers.go` `SimplifyDisjunctAlts` | `Compare.lean` | search |
-| Unification: the roots and `Any`, disjuncts, the Node literal, list and map families, same-or-subtype, open map unification, the word-resolution prepass | `unify.go`, `unify_list.go`, `unify_map.go`, `unify_disjunct.go`, `match.go` | `Unify.lean` | `unify.tsv`; search; theorems |
+| The total order: family comparers, rank fallback, structural compare | `compare.go`, `compare_types.go`, `compare_scalar_behaviors.go` | `Compare.lean` | `data.tsv` (through disjunct order); search; `Theorems/UnifyOrder.lean` |
+| A disjunct's canonical alternatives | `core_helpers.go` `SimplifyDisjunctAlts` | `Compare.lean` | `data.tsv`; search |
+| Unification: the roots and `Any`, disjuncts, the Node literal, list and map families, same-or-subtype, open map unification, the word-resolution prepass | `unify.go`, `unify_list.go`, `unify_map.go`, `unify_disjunct.go`, `match.go` | `Unify.lean` | `unify.tsv` (the predicate through `unifyq`, the meet itself through `meetq`); search; theorems |
 | The binding store: per-name stacks, lookup across a name's function bindings | `deftable.go`, `registry.go` | `Match.lean` | corpus |
 | Slot admission, type-literal rejection, patterns | `signature.go`, `match.go` | `Match.lean` | `dispatch.tsv`; search |
 | The per-candidate scan and the plan (`/q` preference, inside-a-collection rule, zero-argument fallback) | `collect_kernel.go`, `collect_plan.go` | `Match.lean` | `dispatch.tsv`; search; `Theorems/ArgumentRule.lean` |

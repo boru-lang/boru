@@ -53,19 +53,44 @@ and `v` (the bound value, never a call): `name/s`, `name/2f`, `name/u`,
 `name/uv`, `name/v` —
 which build the modified word a parser would; a slash whose suffix is not
 a modifier (`Scalar/String`) is part of the name. The runners
-register one fixture word, `addq` (`Integer Integer -> Integer`), so the step
-loop, the registry, signature matching and dispatch are all exercised without
-pulling in a word library. (The fixture has since grown a word per mechanism
-— each is declared, with its reason, in the runners. One carries a shipped
-word's name on purpose: `afn n [q body… ]` builds an anonymous one-parameter
+register a small fixture vocabulary — `addq` (`Integer Integer -> Integer`)
+and a word per mechanism after it, each the smallest that reaches one
+dispatch shape — so the step loop, the registry, signature matching and
+dispatch are all exercised without pulling in a word library. (Each is
+declared, with its reason, in the runners. One carries a shipped word's
+name on purpose: `afn n [q body… ]` builds an anonymous one-parameter
 function at run time, which is where closure capture happens, and the
 kernel's frame analysis recognises a function-building body by that name.)
 
+### The unifier's two words
+
+Unification has no client in a bare core registry (`is`, `case` and typed
+defs are basic-layer words), so two fixture words are the door onto it.
+Both take two arguments, forward, and sit directly over the kernel's own
+unifier — Go `UnifyR`, TS `unify`, Lean `unify`:
+
+| word | returns |
+|---|---|
+| `unifyq a b` | the PREDICATE: `true` when the two values unify, `false` when they do not |
+| `meetq a b` | the VALUE: the unified value itself — the meet of the two — or `ERROR:fixture_no_meet` when they do not unify |
+
+`meetq` is the one that states a rule. `d( 5 6 )` against `Integer`
+unifies whether the answer is `5` or `5 tor 6`, so the predicate cannot
+tell the right meet from the wrong one; `core/spec/unify.tsv` closes with
+the value rows for that reason. (It arrived late: `core/ts` had a flat
+predicate and no meet until the unifier was ported, and a question one
+engine cannot answer pins a port gap as a language contract.)
+
+A function is equal only to ITSELF, so two `fn( … )` literals alike in
+text do not unify (`unify.tsv` pins it). A row that needs one function
+twice has to reach it through a reference — `name/v` — which is in
+`divergent.tsv` until `core/ts` reads that modifier.
+
 ### Structure tokens
 
-Three bracket forms assemble a nested VALUE out of the flat token stream, so
-a row can hand the step loop the containers a parser would have built. They
-nest, and they work in `run` and `list` alike.
+A few bracket forms assemble a nested VALUE out of the flat token stream, so
+a row can hand the step loop the containers and types a parser would have
+built. They nest, and they work in `run` and `list` alike.
 
 | form | builds |
 |---|---|
@@ -74,6 +99,10 @@ nest, and they work in `run` and `list` alike.
 | `{ … }` | an **eval** map — what the parser emits for a `{…}` literal |
 | `{q … }` | a plain map, as a word handler would return one |
 | `p( … )` | a paren-EXPRESSION value — the deferred form a map value takes |
+| `d( … )` | a DISJUNCT of the listed items (`d( )` is the empty one) |
+| `[: T … ]` | a typed list: the child constraint, then any retained elements |
+| `{: T k: v … }` | a typed map: the child constraint, then any retained entries |
+| `fn( NAME PTYPE RTYPE [ body ] )` | a function value: one parameter, one return, a boru body |
 
 The bare bracket is always the PARSER's form and the `q` variant the
 runtime's, because that distinction is load-bearing: the step loop
@@ -113,9 +142,18 @@ than silently re-baselined. Each runner also **fails a row whose `go` and
 belongs in, or this stops being an honest debt list. Shrink-only, exactly as
 `parser/spec/divergent.tsv` is.
 
-It holds **16 rows** in ten classes — 135 were measured on 2026-08-08, none
-of them visible to the 1808-row engine crossdiff, and **121 have since been
-closed** and moved into the spec files where they belong. The last two went
+It holds **124 rows** — every one of them in the ENGINE: the call frame's
+return check, a function value standing in the program, the `/v` and `/u`
+modifiers and the function identity a reference carries, closures, the
+`end` word, an unquoted list binding, and an unmatched `(`. 135 were
+measured on 2026-08-08, none of them visible to the 1808-row engine
+crossdiff; the file grew again to 190 as the Lean model's differential
+search, the `d( )` / `[: ]` / `{: }` forms, the `/v` and `/u` modifiers and
+`afn` opened new surface, and 66 of those closed on 2026-11-27 when
+`core/ts` gained a real
+unifier (the meet, not a flat predicate), Go's canonical form for a
+resolved disjunct, the whole builtin type table, and leaf-name rendering
+of a function's types. Of the original 135, the last two went
 together: both `boomq { a: ) }` rows were filed under the strict forward
 barrier and were really a different defect — core/ts resolved a map
 argument's values through `resolveWordsDeep` where Go runs each one as a

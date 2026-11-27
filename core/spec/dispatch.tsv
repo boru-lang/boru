@@ -224,6 +224,22 @@ run 1 Scalar/String	1 String
 run Cidron	Cidron
 run Scalar/String	String
 run Scalar/Nope	ERROR:undefined_word	an undeclared path does not mint a type
+run Number/Integer	Integer	the first part of a path may be a short name, expanded like any other
+run FlexMap/WeakFlexMap	WeakFlexMap
+run Module	Module	the leaf table is the whole builtin table: core/ts was thirteen nodes short
+run [ Module ]	[Module]
+run [ Ipon WeakFlexList KeyVal ]	[Ipon WeakFlexList KeyVal]
+
+# The type LITERAL of a marker type is a type, not the marker. `Word/__ED`
+# names the End type; core/ts tested a marker by its vType alone, so the
+# literal was STEPPED as the barrier and rendered nothing — and the others
+# died in an uncoded host error (`AsMark: nil data`), outside the taxonomy.
+run Word/__ED	__ED
+run [ Word/__ED ]	[__ED]
+run Word/__OP Word/__CP	__OP __CP	neither paren literal opens or closes anything
+run Word/__FW Word/__MK Word/__MV	__FW __MK __MV
+run Word/__IS Word/__XI	__IS __XI
+run addq 1 Word/__ED	ERROR:signature_error	so it does not end a collection: it is the operand, and the wrong type
 
 # --- an UNMATCHED `(` is a scan boundary, not a syntax error ------------
 # The core engine receives VALUES, not text, so it has no syntax to be
