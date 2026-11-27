@@ -22,10 +22,10 @@ SPEC = os.path.dirname(HERE)
 REPO = os.path.dirname(SPEC)
 
 WORDS = ["addq", "negq", "pairq", "sumq", "boomq", "patq", "dupq", "__pa", "undef",
-         "qanyq", "bothq", "tyq", "tpatq", "unifyq", "depthq"]
+         "qanyq", "bothq", "tyq", "tpatq", "unifyq", "depthq", "afn"]
 LITS = ["0", "1", "2", "5", "7", "-3", "'a'", "'x'", "true", "false", "none", "null"]
 TYPES = ["Integer", "String", "Any", "None", "List", "Map", "Boolean", "Word", "Scalar/String"]
-NAMES = ["x", "y", "nosuchword"]
+NAMES = ["x", "y", "n", "nosuchword"]
 MARKS = ["(", ")", ";"]
 
 
@@ -56,6 +56,11 @@ def gen_item(rng, depth):
         return out + ["}"]
     if r < 0.50:
         w = rng.choice(WORDS)
+        if w == "afn" and depth == 2 and rng.random() < 0.8:
+            # mostly well-formed: a parameter name and a quoted body (at
+            # the top level only — a map member is ONE item)
+            body = rng.choice(["addq n 1", "n", "addq n x", "x", "n n", "", "afn m [q addq n m ]", "negq n"])
+            return ["afn", "n", "[q"] + body.split() + ["]"]
         # call-site modifiers: /s stack only, /f forward only, /N arity,
         # /v the bound value, /u the function with its arguments reversed
         if rng.random() < 0.22:
@@ -99,6 +104,17 @@ def gen_program(rng, max_len):
         toks += ["def", "x"] + gen_value(rng, 1) + [";"]
     if rng.random() < 0.08:
         toks += ["def", "y"] + gen_value(rng, 1) + [";"]
+    # a global named like the parameter every generated function takes: a
+    # call shadows it, and must leave it bound
+    if rng.random() < 0.10:
+        toks += ["def", "n"] + gen_value(rng, 0) + [";"]
+    # a function that BUILDS a closure in its frame, and calls of it
+    if rng.random() < 0.10:
+        inner = rng.choice(["addq n x", "x", "n", "addq n y", "afn m [q addq m x ]", "addq x 1", "n x"])
+        toks += ["def", "outer", "fn(", "x", rng.choice(["Integer", "Any"]), "Any",
+                 "[", "afn", "n", "[q"] + inner.split() + ["]", "]", ")", ";"]
+        if rng.random() < 0.8:
+            toks += rng.choice([["bothq", "1", "(", "outer", "10", ")"], ["outer", "10"], ["(", "outer", "10", ")"]])
     if rng.random() < 0.10:
         body = rng.choice(["[ addq n 1 ]", "[ n ]", "[ negq n ]", "[ n n ]", "[ ]", "[ 'a' ]", "[ dupq n ]"])
         toks += ["def", "inc", "fn(", "n", rng.choice(["Integer", "Any"]),

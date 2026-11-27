@@ -74,6 +74,29 @@ def refIdent (d : Defs) (name : String) : Nat × Defs :=
   | some i => (i, d)
   | none => d.freshIdent
 
+/-- How many bindings a name holds. -/
+def depth (d : Defs) (name : String) : Nat := (d.stack name).length
+
+/-- THE FRAME BASELINES ride in the binding table too (core/go
+    `Registry.FnBaselines`): one entry per open call frame, pushed as the
+    frame is entered and before it binds anything. A frame whose body can
+    construct a function records the depth of every name at that moment;
+    a LEAF frame — one whose body cannot — records nothing. -/
+def baselineKey : String := " baselines"
+
+def pushBaseline (d : Defs) (snapshot : Bool) : Defs :=
+  d.push baselineKey
+    (if snapshot then .map (d.map fun (k, s) => (k, .int s.length)) false else .none)
+
+def popBaseline (d : Defs) : Defs := d.pop baselineKey
+
+/-- The innermost frame's baseline: nothing at the top level, and nothing
+    in a leaf frame. -/
+def topBaseline? (d : Defs) : Option (List (String × Value)) :=
+  match d.top? baselineKey with
+  | some (.map entries _) => some entries
+  | _ => none
+
 /-- Insert a signature keeping the dispatch order: more arguments first,
     equal arity in definition order (core/go/signature.go
     `CompareSignatures`; the slot-specificity tie-break is not modelled). -/

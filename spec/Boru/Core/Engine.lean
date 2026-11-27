@@ -239,9 +239,85 @@ def resolveInert : Value → Value
   | .disjunct alts => resolveWordsDeep (.disjunct alts)
   | v => v
 
-/-- A frame's cleanup: unbind its names, newest first. -/
+/-- A frame's cleanup: unbind its names, newest first, and drop the
+    baseline it was entered with. -/
 def popNames (defs : Defs) (names : List String) : Defs :=
-  names.reverse.foldl Defs.pop defs
+  (names.reverse.foldl Defs.pop defs).popBaseline
+
+/-! ## Closures
+
+A function BUILT while a call frame is open captures the bindings that
+frame made (core/go/fn_capture.go). -/
+
+mutual
+/-- The words a body names, in order (`WalkBodyWords`): through lists,
+    paren expressions and map values; a quoted value is data, and a
+    function value keeps its own words to itself. -/
+def bodyWords : Value → List String
+  | .word w => [w.name]
+  | .list elems _ => bodyWordsList elems
+  | .parenExpr items => bodyWordsList items
+  | .map entries _ => bodyWordsEntries entries
+  | _ => []
+def bodyWordsList : List Value → List String
+  | [] => []
+  | v :: vs => bodyWords v ++ bodyWordsList vs
+def bodyWordsEntries : List (String × Value) → List String
+  | [] => []
+  | (_, v) :: es => bodyWords v ++ bodyWordsEntries es
+end
+
+/-- The words whose execution can bind a name in the current scope or
+    construct an inner function (`frameStateWords`). -/
+def frameStateWords : List String :=
+  ["def", "undef", "fn", "afn", "do", "call", "eval", "var", "word", "module", "import", "export",
+   "usurp", "behave"]
+
+/-- A body that names none of them is a LEAF: its frame is entered with
+    no baseline (`bodyNeedsFrameState`). -/
+def bodyNeedsFrameState (body : List Value) : Bool :=
+  (bodyWordsList body).any frameStateWords.contains
+
+mutual
+/-- The names a body binds for itself — `def NAME` at any depth outside a
+    nested function (`CollectBodyLocalDefs`). They are the body's own
+    locals, never captures. -/
+def bodyLocals : List Value → List String
+  | [] => []
+  | .word w :: rest =>
+    (match w.name, rest with
+     | "def", .word n :: _ => [n.name]
+     | _, _ => []) ++ bodyLocals rest
+  | v :: rest => bodyLocalsIn v ++ bodyLocals rest
+def bodyLocalsIn : Value → List String
+  | .list elems _ => bodyLocals elems
+  | .parenExpr items => bodyLocals items
+  | _ => []
+end
+
+/-- THE CAPTURE RULE (`ComputeCaptures`). A word of the body is captured,
+    with the value it is bound to, when it is bound and its binding was
+    made INSIDE the enclosing call frame — deeper than that frame's
+    baseline. The function's own parameters and locals are not; a name
+    bound at the top level is not (it is read when the body runs); and
+    with no baseline — at the top level, or in a leaf frame — nothing is.
+    Sorted by name. -/
+def computeCaptures (d : Defs) (params : List String) (body : List Value) : List (String × Value) :=
+  match d.topBaseline? with
+  | none => []
+  | some baseline =>
+    let locals := bodyLocals body
+    let names := (bodyWordsList body).eraseDups.filter fun n =>
+      !n.isEmpty && !params.contains n && !locals.contains n
+    let captured := names.filterMap fun n =>
+      match d.top? n with
+      | some v =>
+        let base := match baseline.lookup n with
+          | some (.int k) => k.toNat
+          | _ => 0
+        if d.depth n > base then some (n, v) else none
+      | none => none
+    captured.mergeSort (fun a b => a.1 ≤ b.1)
 
 mutual
 
@@ -267,8 +343,11 @@ def stepToken (nat : Natives) : Nat → Engine → Except BoruError Engine
     | some .endMark => stepEnd nat fuel e
     | some (.returnCheck _) => pure { e with ptr := e.ptr + 1 }
     | some (.defCleanup names) => do
+      -- the frame's cleanup runs ONCE: stepped, the marker is spent and
+      -- leaves the tape, so the frame's close finds nothing to run again
+      -- (run twice, it unbound an outer binding a parameter had shadowed)
       let e ← evalFrameResidual nat fuel e e.ptr
-      pure { e with defs := popNames e.defs names, ptr := e.ptr + 1 }
+      pure { e with defs := popNames e.defs names, tape := removeAt e.tape e.ptr }
     | some _ => stepLiteral nat fuel e
 
 /-- Step a word: a bound value substitutes; a function word dispatches. -/
@@ -596,7 +675,9 @@ def dispatchFnValue (nat : Natives) : Nat → Engine → String → List Sig →
       -- what follows, up to a boundary, could have been its arguments
       let upcoming := ((e.tape.drop (e.ptr + 1)).filter (!·.isForward)).takeWhile
         (fun v => !(v.isCloseParen || v.isEnd))
-      if !resolved.isEmpty || !upcoming.isEmpty then
+      -- an ANONYMOUS function is a value until something it can take
+      -- stands beside it: unmatched, it is simply left where it is
+      if !name.isEmpty && (!resolved.isEmpty || !upcoming.isEmpty) then
         Engine.err "uncalled_function" ("call to '" ++ name ++ "' matched no signature")
       else pure { e with ptr := e.ptr + 1 }
     | some p =>
@@ -831,7 +912,7 @@ def execMatch (nat : Natives) :
           let results ← f args stack
           pure { e with tape := splice e.tape base (e.ptr + 1 - base) results, ptr := base }
         | _ => Engine.err "internal_error" ("no full-stack handler for " ++ name)
-      | .boru _ => Engine.err "internal_error" "a boru body is not a full-stack handler"
+      | .boru _ _ => Engine.err "internal_error" "a boru body is not a full-stack handler"
       | .usurp _ _ => Engine.err "internal_error" "a usurp wrapper is not a full-stack handler"
     else do
       let (results, defs) ←
@@ -846,14 +927,21 @@ def execMatch (nat : Natives) :
           -- takes from the stack before it, what it takes forward after
           let k := args.length - min b args.length
           pure (.openParen :: args.take k ++ [orig] ++ (args.drop k).reverse ++ [.closeParen], e.defs)
-        | .boru body =>
+        | .boru body captured =>
           -- a call frame: bind the named parameters, splice the body in
           -- a paren group closed by the cleanup marker and return check
           let names := s.params.map Param.name
+          -- the baseline is recorded BEFORE the frame binds anything, so
+          -- what it binds is what a function built in its body captures
+          let defs := e.defs.pushBaseline (bodyNeedsFrameState body)
+          -- a closure's captures go in first: a parameter of the same
+          -- name shadows one
+          let defs := captured.foldl (fun d (nm, v) => d.push nm v) defs
           -- a list argument is bound QUOTED: the body reads it as data
           let bind (a : Value) : Value := if a.isListShape && !a.isQuoted then .quoted a else a
-          let defs := (names.zip args).foldl (fun d (nm, a) => d.push nm (bind a)) e.defs
-          let tail := Value.defCleanup names :: (if s.returns.isEmpty then [] else [.returnCheck s.returns])
+          let defs := (names.zip args).foldl (fun d (nm, a) => d.push nm (bind a)) defs
+          let tail := Value.defCleanup (captured.map (·.1) ++ names)
+            :: (if s.returns.isEmpty then [] else [.returnCheck s.returns])
           pure (.frameOpen :: body ++ tail ++ [.closeParen], defs)
       let e := { e with defs := defs }
       if indices.length == n && n > 0 then
