@@ -396,3 +396,13 @@ run bothq ;	ERROR:signature_error	including with nothing collected yet
 run bothq __pa true false	false	the empty word is skipped and both operands still arrive
 run bothq __pa true ;	ERROR:signature_error	`end` mid-collection fails the dispatch
 run bothq __pa true	ERROR:signature_error	and so does running out of program
+
+# A function over `Any`. These rows could not be written until the Go
+# runner's `fn(` fixture declared the NAMED type: it took the type
+# literal's Parent(), which is the lattice parent — Number for Integer,
+# and nil for Any, which no argument matches (and whose failed match
+# panicked in the diagnostic, surfacing as internal_error).
+run def inc fn( n Any Any [ n ] ) ; inc 5	5	an Any parameter takes an Integer
+run def inc fn( n Any Any [ n ] ) ; inc 'x'	'x'	and a String
+run def inc fn( n Integer Any [ 'a' ] ) ; inc 2	'a'	an Any return admits whatever the body leaves
+run def inc fn( n Any Any [ n ] ) ; inc [q 1 2 ]	(quote [1 2])	a list bound to a named parameter is bound QUOTED, so the body reads it as data

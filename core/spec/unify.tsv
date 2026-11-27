@@ -120,3 +120,24 @@ run unifyq d( Integer String ) Any	true
 # handed to asMap(), so these answer cleanly instead of throwing.
 run unifyq { a: 'x' } {: Integer }	false
 run unifyq {: Integer } {: String }	false
+
+# --- a ROOT type literal is not `Any` to a disjunct ------------------------
+# `Any` keeps a disjunct whole; nothing else does. core/go asked "is the
+# value's Parent() Any", which is a CARRIER's question: a bare literal's
+# Parent() is its LATTICE parent, and Scalar, Node, Ideal, Word and Type
+# all sit directly under Any — so each of them passed for Any, and
+# `d( 'a' )` unified with `Node`, an empty disjunct with `Scalar`. Found
+# by the Lean model's differential search (spec/tools/diff-fuzz.py); the
+# pairs below are the point — the same disjunct against `Any` still holds.
+run unifyq d( 0 ) Word	false
+run unifyq d( 'a' ) Node	false
+run unifyq d( 0 ) Ideal	false
+run unifyq Node d( 0 )	false
+run unifyq d( ) Scalar	false
+run unifyq d( ) Node	false
+run unifyq d( 0 ) Any	true
+run unifyq d( ) Any	true
+
+# An EMPTY disjunct has no alternative to match, so it unifies with
+# nothing but `Any` — itself included (NUR386).
+run unifyq d( ) d( )	false

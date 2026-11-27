@@ -119,8 +119,12 @@ func unifyDisjunct(disj DisjunctInfo, val Value, r *Registry) (Value, *UnifyErro
 	// "any" unifies with the whole disjunct, preserving it. Covers
 	// two value shapes: the bare type literal NewTypeLiteral(TAny)
 	// (Data=nil; the value IS the TAny lattice node) and the Any-
-	// typed carrier (Data=nil, Carrier=true, Parent=TAny).
-	if !IsConcrete(&val) && (val.Parent().Equal(TAny) || (&val).Equal(TAny)) {
+	// typed carrier (Data=nil, Carrier=true, Parent=TAny). Shape asks
+	// the node for a bare literal and the Parent for a carrier; probing
+	// Parent() on both made every ROOT literal — Scalar, Node, Ideal,
+	// Word, Type, whose lattice parent is Any — pass for Any here, so
+	// `d( 'a' )` unified with `Node` (found by spec/tools/diff-fuzz.py).
+	if !IsConcrete(&val) && Shape(val) == ShapeAny {
 		return NewDisjunct(disj.Alternatives), nil
 	}
 

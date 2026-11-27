@@ -271,7 +271,7 @@ func unifyResolvedPredicate(def *Type, candidate Value, r *Registry) (Value, *Un
 // alternative via unifyInner with r so predicate-fn alternatives are
 // evaluated correctly.
 func unifyDisjunctR(disj DisjunctInfo, val Value, r *Registry) (Value, *UnifyError) {
-	if !IsConcrete(&val) && (val.Parent().Equal(TAny) || (&val).Equal(TAny)) {
+	if !IsConcrete(&val) && Shape(val) == ShapeAny {
 		return NewDisjunct(disj.Alternatives), nil
 	}
 	for _, alt := range disj.Alternatives {
