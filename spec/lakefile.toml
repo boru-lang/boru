@@ -1,0 +1,10 @@
+name = "boru-spec"
+version = "0.1.0"
+defaultTargets = ["Boru"]
+
+[[lean_lib]]
+name = "Boru"
+
+[[lean_exe]]
+name = "corespec"
+root = "Corespec"

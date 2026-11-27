@@ -1,11 +1,15 @@
 # Formal Verification for boru — a layered plan
 
-**Status:** draft / proposal (`.0`). A first machine-checked **seed of
-milestone 6 now exists** at [`formal/lean/BoruCore.lean`](formal/lean/BoruCore.lean)
-(Lean 4.15.0, no Mathlib): a deep embedding of the binary-word + forward-collection
-fragment that *proves* source-spelling equivalence, the `end`-barrier
-negative result, determinism, and the type-lattice order — and
-cross-validates against the engine. The rest of `FORMAL-SPEC.md` §10–§11
+**Status:** draft / proposal (`.0`). Milestone 6's seed — a one-file Lean
+prototype of binary words and forward collection, at `formal/lean` — was
+replaced on 2026-11-27 by the Lean specification of the kernel in
+[`spec/`](../spec/README.md) (Lean 4.36.0, no Mathlib): values, the type
+lattice, canon, the total order, unification, signature matching and the
+step loop of `core/go`, executable, held to the kernel's own parity corpus
+(`core/spec`) as its third runner, and differentially searched against
+`core/go`. [`spec/COVERAGE.md`](../spec/COVERAGE.md) says what of the
+kernel it covers and what it does not yet.
+The rest of `FORMAL-SPEC.md` §10–§11
 names a mechanized model only as an aspiration. This note turns that aspiration into a concrete, staged
 plan and — crucially — connects it to machinery the repo *already*
 ships: the carrier-based static checker (`check/go`,

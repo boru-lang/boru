@@ -206,8 +206,12 @@ func coreSpecItem(t *testing.T, r *Registry, toks []string, pos int) (Value, int
 		// caller's `def` clause then rebinds; the VALUE is what the clause
 		// wants, so read it back off the def stack.
 		InstallFnDef(r, coreSpecFnScratch, FnDefInfo{Signatures: []Signature{{
-			Params:     []FnParam{{Name: pname, Type: ptype.Parent()}},
-			Returns:    []*Type{rtype.Parent()},
+			// The NAMED type itself, as core/ts's runner declares it. A
+			// type literal IS its lattice node, so Parent() here would be
+			// the node's PARENT — Number for Integer, and nil for Any,
+			// which no slot matches (found by spec/tools/diff-fuzz.py).
+			Params:     []FnParam{{Name: pname, Type: TypeNodeOf(ptype)}},
+			Returns:    []*Type{TypeNodeOf(rtype)},
 			Impl:       Boru(bl.Slice()),
 			BarrierPos: 1,
 		}}})

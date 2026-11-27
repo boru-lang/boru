@@ -136,4 +136,6 @@ run unifyq {: Integer } { a: 1 }	true	false	DATA: core/ts unifiesValue has no ty
 run unifyq {: Integer } {: Integer }	true	false	DATA: core/ts unifiesValue has no typed-MAP arm: the child constraint neither narrows nor compares. Was an UNCODED CRASH until the payload gate landed.
 run unifyq {: Integer a: 1 } {: Integer a: 1 }	true	false	DATA: core/ts unifiesValue has no typed-MAP arm: the child constraint neither narrows nor compares. Was an UNCODED CRASH until the payload gate landed.
 run unifyq [: d( Integer String ) ] [q 1 'a' ]	true	false	DATA: core/ts unifiesValue has NO disjunct arm — the disjunct logic lives only in isValueOfType, not in the symmetric unifier.
-
+run unifyq d( 0 ) Type	false	true	DATA: core/ts unifiesValue has NO disjunct arm, and its fallback admits the `Type` root literal against the disjunct value; Go walks the alternatives and none is a Type.
+run unifyq d( 0 ) Scalar	true	false	DATA: core/ts unifiesValue has NO disjunct arm — the disjunct logic lives only in isValueOfType, not in the symmetric unifier.
+run def inc fn( n Any Integer [ n ] ) ; inc 'x'	ERROR:type_error	'x'	DATA: core/ts does not run the call frame's return check, so a body that leaves a String under a declared Integer return is not refused.
