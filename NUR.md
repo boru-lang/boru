@@ -113,6 +113,7 @@ list only by becoming **Resolved** (the record is then deleted) or
 | [NUR389](#nur389) | A source module's owner token is unique only among its importer's modules: a module body's `def` on a core word over a type of a module it imports is admitted — and replaces that module's own tuple — when the two hold the same import ordinal, and is `extend_owner` otherwise (always, for a program) | the `Registry.ModuleScope` removal: checking what enforces the rule the flag was for (2026-11-27) |
 | [NUR390](#nur390) | A `/uv` value is not collected by a waiting word, where a `/v` value is: `bothq 1 negq/uv` strands the collection, and `bothq negq/uv 1` silently binds the two the other way round | the Lean core specification, modelling `/u` (2026-11-27) |
 | [NUR391](#nur391) | A word with more than one definition is not `eq` to itself: every reference to it (`f/v`) is a new function, so `f/v eq f/v` is false once `f` has an overload | the Lean core specification, modelling function identity (2026-11-27) |
+| [NUR392](#nur392) | An unmatched `(` is refused at the top level and in a container literal, collected as a value in a driven loop's body, and handed to the return check in a function's body | the Lean core specification, modelling driven loops (2026-11-27) |
 
 Pending records normally use a compact form (rule / divergence /
 evidence / documentation status, plus a proposed verdict where one is
@@ -1266,5 +1267,42 @@ The Lean specification models the rule as the kernel has it
 that is stable while its set of definitions is unchanged (cached with the
 aggregate, or derived from the entries' identities), so a reference read
 twice is one function.
+
+---
+
+## NUR392 — an unmatched `(` is refused in two places and a value in two others {#nur392}
+
+**Status:** Pending · **Recorded:** 2026-11-27 · measured on core/go through the core/spec notation · silent in a loop body, a different error in a function body
+
+**Rule:** one construct, one verdict — a malformed program is refused the
+same way wherever the malformed part stands (NUR387: "a structure's close
+pairs with its own open", and an unmatched `(` is a scan boundary in a
+literal exactly as at the top level).
+
+**Divergence:** the refusal of an open paren that is never closed is made
+in two places only: the top-level drain (`engine.go`, "unmatched opening
+parenthesis") and the sealed region of a container literal (`sealed.go`).
+A driven loop's region and a call frame have no such check, so the marker
+is left in what they collect:
+
+```
+run (                                     ERROR:syntax_error
+run [ ( ]                                 ERROR:syntax_error
+run { a: ( }                              ERROR:syntax_error
+run eachq [q 1 ] [q ( ]                   [1 (]                 collected as a value, no error
+run eachq [q 1 ] [q negq ( ]              [-1 (]
+run def f fn( n Any Any [ ( ] ) ; f 1     ERROR:type_error      the return check counts it as a result
+```
+
+An unmatched `)` is refused in all four places (`run eachq [q 1 2 ] [q ) ]`
+is syntax_error). core/ts refuses the function-body case as a
+syntax_error (core/spec/divergent.tsv); it has no driven loops.
+
+The Lean specification models the rule as the kernel has it
+(`spec/Boru/Core/Engine.lean` `runRegion`, against `runSealed`).
+
+**Proposed verdict:** resolve by fix — a loop's region and a call frame
+refuse an open paren left unmatched in their body as the top level and a
+literal do.
 
 ---

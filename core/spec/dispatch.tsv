@@ -836,3 +836,12 @@ run nosuch/uv	ERROR:undefined_word
 # again at the frame's close, and unbound the global with it.)
 run def n 50 ; def f fn( n Integer Integer [ addq n 1 ] ) ; f 5 ; n	6 50
 run def n 50 ; def f fn( n Integer Integer [ addq n 1 ] ) ; f n	51
+
+# --- an unmatched `(` ---------------------------------------------------------
+# At the top level and in a container literal an open paren with no close is
+# refused. (In a loop's body and a function's it is not — NUR392; those rows
+# are in divergent.tsv.)
+run (	ERROR:syntax_error
+run 1 (	ERROR:syntax_error
+run [ ( ]	ERROR:syntax_error
+run { a: ( }	ERROR:syntax_error

@@ -258,3 +258,62 @@ run def outer fn( x Integer Any [ afn n [q afn m [q addq n m ] ] ] ) ; bothq 1 (
 run def outer fn( x Integer Any [ afn n [q afn m [q addq n x ] ] ] ) ; bothq 1 ( bothq 1 ( outer 10 ) 1 ) 2	11	ERROR:undefined_word	DATA: core/ts has no closures — its fixture registers no `afn`, and the engine keeps no frame baseline and no captured bindings — so the word is unknown there.
 run afn n [q afn m [q addq n m ] ] 1 2	fn [[m:Any][Any][addq n m]] 2	ERROR:undefined_word	DATA: core/ts has no closures — its fixture registers no `afn`, and the engine keeps no frame baseline and no captured bindings — so the word is unknown there.
 run def outer fn( x Integer Any [ afn n [q addq n x ] ] ) ; unifyq ( outer 10 ) ( outer 10 )	false	ERROR:undefined_word	DATA: core/ts has no closures — its fixture registers no `afn`, and the engine keeps no frame baseline and no captured bindings — so the word is unknown there.
+
+# --- DRIVEN LOOPS: a body runs in a region of its own -------------------------
+# `eachq xs [q body… ]` is the loop fixture: an iteration per element, the
+# element the region's one input, and EVERYTHING a region leaves collected,
+# in order, into the one list the loop answers. The body's stack is its
+# input — nothing beneath the loop's word is in its sight (`depthq` answers
+# 1, and `addq` cannot reach the 7 and 8). An empty body leaves its input;
+# an empty list runs no body at all. A body's error is the loop's.
+run eachq [q 1 2 3 ] [q negq ]	[-1 -2 -3]	ERROR:undefined_word	DATA: core/ts has no driven loops — no loop driver, and its fixture registers no `eachq` — so the word is unknown there.
+run eachq [q 1 2 3 ] [q ]	[1 2 3]	ERROR:undefined_word	DATA: core/ts has no driven loops — no loop driver, and its fixture registers no `eachq` — so the word is unknown there.
+run eachq [q ] [q boomq ]	[]	ERROR:undefined_word	DATA: core/ts has no driven loops — no loop driver, and its fixture registers no `eachq` — so the word is unknown there.
+run eachq [q 1 2 3 ] [q dupq ]	[1 1 2 2 3 3]	ERROR:undefined_word	DATA: core/ts has no driven loops — no loop driver, and its fixture registers no `eachq` — so the word is unknown there.
+run eachq [q 1 2 3 ] [q addq 10 ]	[11 12 13]	ERROR:undefined_word	DATA: core/ts has no driven loops — no loop driver, and its fixture registers no `eachq` — so the word is unknown there.
+run 7 8 eachq [q 1 2 ] [q depthq ]	7 8 [1 1 2 1]	ERROR:undefined_word	DATA: core/ts has no driven loops — no loop driver, and its fixture registers no `eachq` — so the word is unknown there.
+run 7 8 eachq [q 1 2 ] [q addq ]	ERROR:signature_error	ERROR:undefined_word	DATA: core/ts has no driven loops — no loop driver, and its fixture registers no `eachq` — so the word is unknown there.
+run eachq [q 1 2 ] [q boomq ]	ERROR:fixture_boom	ERROR:undefined_word	DATA: core/ts has no driven loops — no loop driver, and its fixture registers no `eachq` — so the word is unknown there.
+run eachq [q 1 'a' 3 ] [q negq ]	ERROR:signature_error	ERROR:undefined_word	DATA: core/ts has no driven loops — no loop driver, and its fixture registers no `eachq` — so the word is unknown there.
+
+# An INPUT is data, whatever it is: a word or a function standing as an
+# element is carried, never stepped. In the BODY the same function is a
+# call. And what a region leaves is not stepped again: a function a body
+# leaves is collected, and the list the loop answers is not called with
+# what follows it.
+run eachq [q negq/v ] [q 5 ]	[negq/v 5]	ERROR:undefined_word	DATA: core/ts has no driven loops — no loop driver, and its fixture registers no `eachq` — so the word is unknown there.
+run eachq [q fn( n Integer Integer [ addq n 1 ] ) ] [q 5 ]	[fn [[n:Integer][Integer][addq n 1]] 5]	ERROR:undefined_word	DATA: core/ts has no driven loops — no loop driver, and its fixture registers no `eachq` — so the word is unknown there.
+run eachq [q 5 ] [q fn( n Integer Integer [ addq n 1 ] ) ]	[6]	ERROR:undefined_word	DATA: core/ts has no driven loops — no loop driver, and its fixture registers no `eachq` — so the word is unknown there.
+run eachq [q 1 2 ] [q negq/v ]	[1 fn [[a:Integer][Integer][]] 2 fn [[a:Integer][Integer][]]]	ERROR:undefined_word	DATA: core/ts has no driven loops — no loop driver, and its fixture registers no `eachq` — so the word is unknown there.
+run eachq [q 1 2 ] [q negq ] 5	[-1 -2] 5	ERROR:undefined_word	DATA: core/ts has no driven loops — no loop driver, and its fixture registers no `eachq` — so the word is unknown there.
+
+# A region ENDS as a run does: `;` and the region's close resolve what is
+# still collecting, and a pending literal left in it is evaluated as it is
+# collected. Loops nest, each region sealed again; a loop in a call frame
+# reads the frame's bindings, and a closure built in a body is called on the
+# element beneath it.
+run eachq [q 1 2 ] [q ; ]	[1 2]	ERROR:undefined_word	DATA: core/ts has no driven loops — no loop driver, and its fixture registers no `eachq` — so the word is unknown there.
+run eachq [q 1 2 ] [q addq 1 ; ]	[2 3]	ERROR:undefined_word	DATA: core/ts has no driven loops — no loop driver, and its fixture registers no `eachq` — so the word is unknown there.
+run eachq [q 1 2 ] [q [ negq 5 ] ]	[1 [-5] 2 [-5]]	ERROR:undefined_word	DATA: core/ts has no driven loops — no loop driver, and its fixture registers no `eachq` — so the word is unknown there.
+run eachq [q 1 2 ] [q eachq [q 10 20 ] [q addq 1 ] ]	[1 [11 21] 2 [11 21]]	ERROR:undefined_word	DATA: core/ts has no driven loops — no loop driver, and its fixture registers no `eachq` — so the word is unknown there.
+run def f fn( n Integer Any [ eachq [q 1 2 ] [q addq n ] ] ) ; f 10	[11 12]	ERROR:undefined_word	DATA: core/ts has no driven loops — no loop driver, and its fixture registers no `eachq` — so the word is unknown there.
+run def x 5 ; eachq [q 1 2 ] [q addq x ]	[6 7]	ERROR:undefined_word	DATA: core/ts has no driven loops — no loop driver, and its fixture registers no `eachq` — so the word is unknown there.
+run eachq [q 1 2 ] [q afn n [q addq n 1 ] ]	[2 3]	ERROR:undefined_word	DATA: core/ts has no driven loops — no loop driver, and its fixture registers no `eachq` — so the word is unknown there.
+
+# A TYPED list fills a List slot. One that retains elements is read as
+# them; one that retains none is a type, not a sequence — the fixtures
+# refuse it by name, and as a loop BODY it is the one token it is.
+run eachq [: Integer 1 2 ] [q negq ]	[-1 -2]	ERROR:undefined_word	DATA: core/ts has no driven loops — no loop driver, and its fixture registers no `eachq` — so the word is unknown there.
+run eachq [: Integer ] [q negq ]	ERROR:fixture_not_a_list	ERROR:undefined_word	DATA: core/ts has no driven loops — no loop driver, and its fixture registers no `eachq` — so the word is unknown there.
+run eachq [q 1 2 ] [: Integer ]	[1 [:Integer] 2 [:Integer]]	ERROR:undefined_word	DATA: core/ts has no driven loops — no loop driver, and its fixture registers no `eachq` — so the word is unknown there.
+run afn n [: Integer ]	ERROR:fixture_not_a_list	ERROR:undefined_word	DATA: core/ts has no closures — its fixture registers no `afn` — so the word is unknown there.
+
+# NUR392, pinned as the kernel has it: an unmatched `)` is refused in a
+# loop body as everywhere, but an unmatched `(` is NOT — it is collected
+# like any value — where the top level and a list literal refuse it
+# (`run (` and `run [ ( ]` are syntax_error), and a function's body hands
+# it to the return check.
+run eachq [q 1 2 ] [q ) ]	ERROR:syntax_error	ERROR:undefined_word	DATA: core/ts has no driven loops — no loop driver, and its fixture registers no `eachq` — so the word is unknown there.
+run eachq [q 1 ] [q ( ]	[1 (]	ERROR:undefined_word	DATA: core/ts has no driven loops — no loop driver, and its fixture registers no `eachq` — so the word is unknown there.
+run eachq [q 1 ] [q negq ( ]	[-1 (]	ERROR:undefined_word	DATA: core/ts has no driven loops — no loop driver, and its fixture registers no `eachq` — so the word is unknown there.
+run def f fn( n Any Any [ ( ] ) ; f 1	ERROR:type_error	ERROR:syntax_error	CODE: NUR392 — Go leaves an unmatched `(` in a function's body for the frame's return check, which counts it as a value; core/ts refuses it there as both refuse it at the top level.
