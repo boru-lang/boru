@@ -94,6 +94,24 @@ run [ 1 end 2 ]	ERROR:undefined_word
 run 1 2 addq end	ERROR:undefined_word
 run 1 negq end	ERROR:undefined_word
 
+# The same holds in a forward WINDOW: the word `end` there is a name the
+# call plans like any other, not the marker that closes the window — so it
+# is stepped, and reported, before the call can fire or fail on its own.
+run boomq end	ERROR:undefined_word	a word named `end` in the window is an unbound name, not the end of the window
+run 1 boomq end	ERROR:undefined_word	even with an argument on the stack the call could have taken instead
+run bothq 1 end	ERROR:undefined_word	in a later slot
+run 1 bothq end	ERROR:undefined_word	and beside a stack operand
+run dupq end	ERROR:undefined_word	whatever the word
+run ( boomq end )	ERROR:undefined_word	inside a paren group
+run [ boomq end ]	ERROR:undefined_word	inside a list literal
+run { a: p( boomq end ) }	ERROR:undefined_word	and in a map member
+run def inc fn( n Any Any [ n ] ) ; inc end	ERROR:undefined_word	a boru-bodied call plans it the same way
+run fn( n Any Any [ n ] ) end	ERROR:undefined_word	and so does a function value's
+run addq 1 end	ERROR:signature_error	an Integer slot never plans a word: the call fails first, for want of its argument
+run negq end	ERROR:signature_error	at arity one too
+run boomq ;	ERROR:signature_error	the MARKER, by contrast, closes the window: there is no argument
+run 1 boomq ;	ERROR:fixture_boom	and the call takes the one on the stack
+
 # --- a type literal is not a word ---------------------------------------
 # `Word` names the lattice branch, and its literal shares that branch's
 # vType. core/ts's isWord() tested the vType ALONE, so stepWord resolved

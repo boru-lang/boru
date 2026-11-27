@@ -34,6 +34,9 @@ import type { FunctionEntry, Registry } from "./registry.ts";
 import type { Signature } from "./signature.ts";
 import { TAtom, TNode, TScalar, TType, TWord, typeNameTable } from "./type.ts";
 import {
+  isCloseParen,
+  isEnd,
+  isOpenParen,
   isSugar,
   newAtom,
   newBoolean,
@@ -339,9 +342,15 @@ function isStructuralBoundary(v: Value): boolean {
   // at the pointer (stepSugar) and its expansion is what dispatch
   // sees; collecting the raw marker as data would skip the lowering.
   if (v.isForward() || v.isMark() || v.isMove() || isSugar(v)) return true;
-  if (!v.vType.matches(TWord)) return false;
-  const name = (v.data as { name?: string } | null)?.name;
-  return name === "(" || name === ")" || name === "end";
+  // The three tape markers, read as the step loop reads them. `end` is
+  // the END MARKER only: a WORD named `end` is an ordinary name — core
+  // defines no word by it — and the scan must take it for one, so that
+  // stepping it reports the name. This test used to match the word too,
+  // a leftover of the legacy fixture tokenizer that the step loop's own
+  // isEnd had already shed: `boomq end` stopped collecting at the word
+  // and failed for want of an argument, and `1 boomq end` fired boomq on
+  // the 1, where core/go reports `end` undefined in both.
+  return isOpenParen(v) || isCloseParen(v) || isEnd(v);
 }
 
 /**

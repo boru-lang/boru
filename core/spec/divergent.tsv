@@ -28,15 +28,6 @@
 
 
 
-# --- a type-mismatched paren operand: which error ---------------------------
-# Both refuse; they disagree about the code. Go reports signature_error (the
-# operand does not fit the slot); core/ts reports no_value_error (it treats
-# the group as having produced nothing usable). Same refusal, different
-# taxonomy, so a caller matching on the code behaves differently.
-
-run boomq end	ERROR:undefined_word	ERROR:signature_error	DATA: TS resolves the WORD `end` to the end marker; core/go has no such word and raises undefined_word.
-run 1 boomq end	ERROR:undefined_word	ERROR:fixture_boom	DATA: TS resolves the WORD `end` to the end marker; core/go has no such word and raises undefined_word.
-
 # --- the builtin type-name table, and slash paths ---------------------------
 # core/ts's leaf name table is narrower than core/go's and has no path form.
 # `Word` is worse than a miss: core/ts CRASHES with an uncoded error
