@@ -73,6 +73,17 @@ reference to a deleted `NURnnn` stays unambiguous forever.
 > resolved before 2026-09-27 also keep their full bodies in
 > [design/NUR-ARCHIVE.0.md](design/NUR-ARCHIVE.0.md).
 
+> **Compiled lane removed 2026-10-16; its records discharged 2026-11-27.**
+> The compiler lane is gone
+> ([design/COMPILER-LANE-REMOVAL.0.md](design/COMPILER-LANE-REMOVAL.0.md))
+> and the interpreter is the one execution path, so the "two lanes" of the
+> scope ruling above are history. By the maintainer's ruling of 2026-11-27
+> every Pending record whose divergence existed only against the compiled
+> lane was deleted as Resolved, and each record that also made a claim
+> about the interpreter, or about `boru check` against the run, was
+> re-measured on the interpreter and kept only as far as it still
+> reproduces.
+
 > **Spelling note (2026-08-19).** The modifier `/r` was renamed **`/v`**
 > and the word `ref` became **`valof`** (see [ADR.md](ADR.md), ADR-011).
 > Records dated before that day quote the old spellings verbatim, because
@@ -92,31 +103,13 @@ list only by becoming **Resolved** (the record is then deleted) or
 
 | # | Title | Surfaced by / provenance |
 |---|-------|--------------------------|
-| [NUR334](#nur334) | A read after a computed keep-defs body: a returned `/v` splice at a tail call, a compound read before the call or a call after the lazy list, and a spliced word read twice or nested, stay loud | main's 50 uncovered statements (2026-09-28); narrowed five times, the fifth round 6's first slice (2026-10-05) |
-| [NUR336](#nur336) | A paren apply over a data member: loop continuations beyond a counted loop's first statement, a word collecting the paren forward, a type value before the stop, stay loud | main's 50 uncovered statements (2026-09-28); narrowed four times |
-| [NUR356](#nur356) | A native that raises by value inside a literal handed to a call matched at run time raises before the no-match; a computed arm's pending literal defers | the NUR351/352 pass (2026-09-29); narrowed twice |
-| [NUR359](#nur359) | A computed run re-stepping an argument-taking fn value defers compiled (loud) | the NUR355 pass (2026-09-29); narrowed 2026-09-30 |
-| [NUR361](#nur361) | A gradual read nested in an inline body that holds a fn defers compiled (loud; was silent) | the NUR356 pass (2026-09-29); narrowed 2026-09-30 |
-| [NUR364](#nur364) | A failed call over a pending literal in a fn body renders a wider operand window compiled (notes only) | the NUR235 pass (2026-09-30) |
-| [NUR366](#nur366) | A stored fn whose stamp declined and whose result count breaks its declared returns raises internal_error compiled; the interpreter raises the return contract's type_error | downstream: the voxgig-boru/decision migration (2026-10-02) |
-| [NUR367](#nur367) | A local rebound in a loop body and read bare in an arm after the loop, holding a fn: compiled returns the fn uncalled (`for`/`while`, silent) or raises (`each`/`for-each`); the interpreter calls it | downstream: the voxgig-boru/decision migration (2026-10-02) |
-| [NUR368](#nur368) | A fn value obtained at run time and held in a local, applied at the main program: `print (41 f)` prints the argument and the call lands on the next value (silent); a 0-arg one bound through a paren reads back undefined | downstream: the voxgig-boru/decision migration (2026-10-02) |
-| [NUR369](#nur369) | A fn value passed as a param and called from an `each` callback, when the callee re-enters the same fn: the outer loop applies the inner call's fn compiled (silent) | downstream: the voxgig-boru/template migration (2026-10-02) |
-| [NUR370](#nur370) | A fn param called on a def made in the same `each`/`var` body from a gradual read raises internal_error DISPATCH_GENERIC compiled | downstream: the voxgig-boru/template migration (2026-10-02) |
-| [NUR371](#nur371) | A def in an `if` arm of an imported fn's fold body clobbers a same-named local of the caller compiled (`undefined_word`) | downstream: the voxgig-boru/template migration (2026-10-02) |
-| [NUR372](#nur372) | A module fn whose fold body reads its param raises `undefined_word` on its 5th–8th compile in one process compiled (library-scale repro) | downstream: the voxgig-boru/template migration (2026-10-02) |
-| [NUR373](#nur373) | A fn whose result is an ungrouped `r.list-of` over its random-source param draws once and repeats the value compiled (silent); the `[List]`-declared twin is refused by a checker false positive | downstream: the voxgig-boru/aless migration (2026-10-02) |
-| [NUR374](#nur374) | A `Test.check-prop` generator whose body is a grouped `r.list-of` raises `undefined word: r` compiled (the element body does not see the generator's `r`); the check pass refuses a var-bound `r` there | downstream: the voxgig-boru/aless migration (2026-10-02) |
-| [NUR375](#nur375) | A callback that binds an `r.int` draw with `def` and leaves the bindings raises internal_error "a landed fn value takes arguments (NUR298)" compiled; in a `check-prop` generator the property fails | downstream: the voxgig-boru property-generator rewrites (2026-10-02) |
-| [NUR376](#nur376) | A fn-local name read inside a `do {k: [expr]}` map value leaves a later same-named `var`/`def` binding undefined compiled (`undefined_word`), even in an unrelated fn | downstream: the voxgig-boru/stats migration (2026-10-02) |
-| [NUR377](#nur377) | `boru:test` mints its record types from a fresh ID counter: a user type made after `import "boru:test"` fails its own return contract (`expected Box, got Box`) and `is` answers false compiled (silent) | downstream: the voxgig-boru/bloom-filter and stats migrations (2026-10-02) |
-| [NUR378](#nur378) | An `each` callback applying its fn's `Function` param reuses the FIRST call's fn on later calls compiled (silent) | downstream: the voxgig-boru interpreter-entry pass (found 2026-10-02, recorded 2026-10-05) |
-| [NUR379](#nur379) | A param named after a built-in word: the interpreter raises `reserved_word`, `boru check` is silent, and the compiled lane runs and may apply the BUILT-IN instead of the passed fn (silent) | downstream: the voxgig-boru interpreter-entry pass (found 2026-10-02, recorded 2026-10-05) |
-| [NUR380](#nur380) | NUR123's shape in a recursive helper: a `Function` param read bare or forward and by `/v`, reached from an `each` body, corrupts a LATER unrelated call's loop state compiled (silent; library-scale repro) | downstream: voxgig-boru/sort (found 2026-10-02, recorded 2026-10-05) |
-| [NUR381](#nur381) | A `var`-bound name in a plain map literal inside an `if` arm of a fold body resolves to a same-named top-level def INTERPRETED; compiled reads the `var` (silent; the interpreter's side) | downstream: voxgig-boru/trie (found 2026-10-02, recorded 2026-10-05) |
-| [NUR382](#nur382) | A FILE-module fn whose `each` callback forward-applies its `Function` param to another param raises `signature_error` compiled; the interpreter answers (loud) | downstream: the voxgig-boru interpreter-entry pass (found 2026-10-02, recorded 2026-10-05) |
-| [NUR383](#nur383) | A module-made closure bound by a program-level `def` and read by `/v` in a property body fails the property compiled (`undefined word: q`); the interpreter passes it (loud) | downstream: voxgig-boru/sort (found 2026-10-02, recorded 2026-10-05) |
-| [NUR384](#nur384) | A name a fn-body `unpack` binds for the FIRST time stays bound past the call interpreted and is undefined compiled (loud on the VM's side; a rebound outer name agrees on both lanes) | the interpreter fn-kind inlining pass (2026-10-08) |
+| [NUR366](#nur366) | A return-contract error raised by a FILE-module fn is drawn over the wrong file's text: the run draws the caller's position over the module's source, `boru check` the module's position over the caller's (code and message are right) | downstream: the voxgig-boru/decision migration (2026-10-02); narrowed 2026-11-27 to the interpreter's rendering |
+| [NUR373](#nur373) | The check pass refuses a `[List]`-declared fn whose result is `r.list-of` over its `r:Map` random-source param (`expected List, got Integer`); the run answers the list | downstream: the voxgig-boru/aless migration (2026-10-02); narrowed 2026-11-27 to the check false positive |
+| [NUR374](#nur374) | The check pass refuses a `var`-bound random source read in `r.list-of`'s element body inside an `each` callback (`undefined word: r`); the run answers | downstream: the voxgig-boru/aless migration (2026-10-02); narrowed 2026-11-27 to the check false positive |
+| [NUR377](#nur377) | `boru:test` mints its record types from a fresh ID counter: a user class is `teq` to an unrelated `Test` record type and its instances `tis` it (silent) | downstream: the voxgig-boru/bloom-filter and stats migrations (2026-10-02); narrowed 2026-11-27 to what the interpreter shows |
+| [NUR379](#nur379) | A fn param or an `unpack` name may be a built-in word's name, where `def` and a `var` name raise `reserved_word`: the param replaces the built-in in the body and in every fn the body calls, `unpack` for the rest of the program; `boru check` is silent | downstream: the voxgig-boru interpreter-entry pass (found 2026-10-02, recorded 2026-10-05); restated 2026-11-27 |
+| [NUR381](#nur381) | A container literal a `var` body or a `=>` body leaves as its value is evaluated after the body's names are unbound: a name read in it resolves to a same-named outer binding (silent) or raises `undefined_word`; a `fn` body keeps it in scope | downstream: voxgig-boru/trie (found 2026-10-02, recorded 2026-10-05); restated 2026-11-27 |
+| [NUR384](#nur384) | A name a fn-body `unpack` binds outlives the call when the body names no other binding word (a new name stays bound, an outer one stays rebound) and is call-local when it does; `boru check` reads it as call-local | the interpreter fn-kind inlining pass (2026-10-08); narrowed 2026-11-27 |
 | [NUR385](#nur385) | A disjunct is reduced to its canonical alternatives only when resolution rebuilt one of them: `d( 5 5 Integer )` stays as written, `d( [q 1 ] 5 5 Integer )` is deduplicated and ordered | the Lean core specification's differential search (2026-11-27) |
 | [NUR386](#nur386) | The kernel's `Unify` of two disjuncts answers their first matching alternative, not their meet (`tand` answers the disjunct); the empty disjunct unifies with neither itself nor `Never` | the Lean core specification, `Theorems/UnifyOrder.lean` (2026-11-27) |
 | [NUR387](#nur387) | An unmatched `(` inside a container literal takes the literal's sealing paren for its close: `[ negq ( ]` raises no_value_error and `[ negq ( 5 ]` syntax_error where `negq (` and `negq ( 5` raise signature_error | the Lean core specification's differential search (2026-11-27) |
@@ -806,609 +799,251 @@ names this split). `lang/go/context_boundary_differential_test.go` (the
 
 ---
 
-## NUR334 — a read after a computed keep-defs body: the loud remainder {#nur334}
+## NUR366 — a file-module fn's return-contract error is rendered over the wrong file's text {#nur366}
 
-**Status:** Pending (loud) · **Recorded:** 2026-09-28 · **Narrowed:** 2026-10-05 (five times; the fifth is round 6's first slice, landed with the baseline)
+**Status:** Pending (notes only) · **Recorded:** 2026-10-02 · **Narrowed:** 2026-11-27 (the compiled replay's `internal_error` went with the compiled lane; what the record had noted of the interpreter's own rendering remains) · measured at d1db0f8 · surfaced downstream (the voxgig-boru/decision migration)
 
-A unit returning a `/v`-read splice now takes a per-call-site result island
-(compiler `call_result_island.go`, eng `callResultRestart`), and a live read
-inside a spliced word's body an island of the spliced body at its firing
-(`spliceBody`). Since 2026-10-05 the island also writes what the compiled
-code READ in the statement before the call as the value it read there,
-never reading it again over the call's effects: a def-bound scalar before
-the call on its level (`def k 3 end k f …`, folded to the constant the
-island writes), a member read before it (`c.n f …`, alone, in a paren or
-chained) and a member read written after a lazy list holding the call
-(`[(cg) f …] c.n`) agree on both lanes (lang
-`TestNUR334CallResultReadsWritten`, with its negative half). Still a loud
-compiled defer where the interpreter answers:
+**Rule:** a diagnostic's position is drawn over the source it was taken
+in, and a position in another file names that file — as the second label
+below does.
 
-- the call at a fn body's tail (the interpreter's tail call depends on the
-  caller's context) and a tail replacement;
-- a read of a COMPOUND binding before the call (`def k [1] end k f …`,
-  whose identity the island cannot write) and a call written after the lazy
-  list that the compiled code ran before it (`[(cg) f …] c.n add 1`);
-- a spliced word read more than once or nested (`[w]`, `(w)`), redefined,
-  or preceded by a word that may collect it.
-
-Pinned by lang `TestNUR334CallResultEdges`, `TestNUR334SplicedWordEdges`,
-`TestNUR334CallResultReadsWritten`.
-
-**Verdict (maintainer, 2026-09-29):** resolve by fix — compile every remaining shape and agree.
-
----
-
-## NUR336 — a paren apply over a data member: the loud remainder {#nur336}
-
-**Status:** Pending (loud) · **Recorded:** 2026-09-28 · **Narrowed:** 2026-09-30 (four times)
-
-A two-argument lambda's landing lead in a counted `for` body's first
-statement resumes the interpreter's own loop on the stopping iteration
-(`LoopCont`, eng `loopContRestart`); a multi-result def's results are all
-promoted (`multiOutToSlots`); a statement that took an earlier value or
-pushed a literal late starts its island after the taking word
-(`lateStart`, `NoteParenStack`). Still a loud compiled defer:
-
-- a loop continuation with body or carried defs, a `while`/condition loop,
-  nested loops, a stop in a later body statement, or an effect before it;
-- a word that collects the paren forward (`drop print (q.f 7)`,
-  `size [(q.f 7)]`), root `drop [(m.f 7)]`;
-- a type value written or read before the stop in a unit
-  (`Integer end (q.f 7) drop drop` — a silent wrong answer before, now loud).
-
-Pinned by lang `TestNUR336LoopContinuationEdges`, `TestNUR336LateStartEdges`.
-
-**Verdict (maintainer, 2026-09-29):** resolve by fix — compile every remaining shape and agree.
-
----
-
-## NUR356 — a literal handed to a call matched at run time: the remainder {#nur356}
-
-**Status:** Pending (a wrong error; one designed defer) · **Recorded:** 2026-09-29 · **Narrowed:** 2026-09-30 (twice)
-
-No-match notes now render the literal as written (`CallWindows`,
-`PolySplit.Words`), native effects are declared (`core.CompileSideEffect`,
-censused) and an effectful native in such a literal declines "(NUR356)"; a
-poly only some of whose overloads have an effect is guarded at run time
-(`vm:quiet-poly-effect`). What remains:
-
-- a native that raises by VALUE inside a literal handed to a call matched
-  at run time raises before the interpreter's no-match:
-  `def h fn [[] [Any] [3]] end def s fn [[] [String] ["abc"]] end each (h) [convert Integer (s)]`
-  (compiled `convert`'s error, interpreted `each`'s), and `get (l) 5` out of
-  range likewise. Declining every native call there breaks real programs;
-  owed: evaluate the literal only after the match, or a pre-match guard.
-- a computed arm holding a pending literal (`if c (mk) [0]`) is a designed
-  runtime defer (only carriers reach the arm at compile time).
-
-**Verdict (maintainer, 2026-09-29):** resolve by fix — render as written; classify native effects.
-
----
-
-## NUR359 — a computed run applying an argument-taking fn value defers {#nur359}
-
-**Status:** Pending (loud) · **Recorded:** 2026-09-29 · **Narrowed:** 2026-09-30
-
-A plain computed run whose only re-stepped values are zero-argument fns now
-re-steps them in place (VM `plainReSteps`, `doReStep`), so
-`for 2 [do (mk)] 7` over `quote [f/v]` with `f` breaking answers `[7]`.
-Still the loud `vm:dyn-body-plain` defer: a run holding a fn that takes an
-argument (`TestNUR359ArgTakingFnStaysLoud`).
-
-**Verdict (maintainer, 2026-09-29):** resolve by fix — compile it.
-
----
-
-## NUR361 — a nested gradual read holding a fn defers {#nur361}
-
-**Status:** Pending (loud; was silent) · **Recorded:** 2026-09-29 · **Narrowed:** 2026-09-30
-
-A gradual read nested in a body the unit or the root runs inline (a `var`
-body in an `each` callback, an arm, a loop body) is now guarded where it
-happens (compiler `read_site_guard.go`): data values compile and agree, and
-a fn value raises the loud NUR123 defer instead of the silent `[[fn v]]`.
-An exact compile needs an island that resumes mid nested body. Root
-`var [[] v]` is loud likewise. Pinned by lang
-`TestNUR361NestedGradualReadGuarded`.
-
-**Verdict (maintainer, 2026-09-29):** resolve by fix, first priority (the only silent wrong answer open): guard the read, or decline soundly.
-
----
-
-## NUR364 — a failed call over a pending literal in a fn body renders a wider window {#nur364}
-
-**Status:** Pending (notes only) · **Recorded:** 2026-09-30 · pre-existing at 474954ff1
-
-```
-def g fn [[x:Integer][Any][{f: (1 add 1)} mul x]] end g 3
-  interpreted   the argument was {f:(1 add 1)}
-  compiled      the arguments were 3 and {f:(1 add 1)}
-```
-
-The user-call twin (`h {f: (1 add 1)} x` in a fn body) splits the same way.
-Code and caret agree.
-
----
-
-## NUR366 — a declined stored fn that breaks its declared return count raises internal_error compiled {#nur366}
-
-**Status:** Pending · **Recorded:** 2026-10-02 · measured at 64c5ab2 · surfaced downstream (the voxgig-boru/decision migration)
-
-```
-# lib.boru, imported from a FILE, so `tail-arity` is a stored fn unit; its
-# stamp declines: "stored fn: bare read of `r` may hold a fn the
-# interpreter dispatches as a word (NUR279)"
-def tail-arity fn [[m:Map] [Any] [ def r (m get "x") 10 r ]]
-export "L" { tail-arity: tail-arity/v }
-
-import "<dir>/lib.boru" L.tail-arity {x: 5}
-  interpreted   [boru/type_error] tail-arity: expected 1 return value(s), got 2 — [10 5]
-  compiled      [boru/internal_error] bytecode: internal: dynamic frame replay tail-arity:
-                result count 2 differs from the declared 1; the compiled runtime cannot
-                execute it (pc=0, src 0:0) — "this is a compiler defect"
-```
-
-With a fn in `x` (`(n:Integer => [n add 1])`) the tail read takes the `10`
-and both lanes answer `[11]`. A STAMPED fn that breaks the same contract
-(`def two-plain fn [[m:Map] [Any] [ 10 (m get "x") ]]`, same file) raises
-the type_error on both lanes. So the compiled caller's dynamic frame
-replay over the declined unit sees the count breach but reports it as its
-own internal failure, where the contract's error is owed. (Both lanes also
-render the caller's column against line 1 of the module file; that part
-agrees.)
-
-**Proposed verdict:** resolve by fix — the replay raises the return
-contract's `type_error` with the interpreter's text. The stamp decline
-behind it is a refusal, tracked separately in
-[design/legacy/COMPILABLE-SUBSET.ignore](design/legacy/COMPILABLE-SUBSET.ignore) §5 ("open
-refusals recorded 2026-10-02").
-
----
-
-## NUR367 — a loop-rebound local read bare in an arm after the loop returns its fn uncalled compiled {#nur367}
-
-**Status:** Pending · **Recorded:** 2026-10-02 · measured at 64c5ab2 · surfaced downstream (the voxgig-boru/decision migration)
-
-```
-def f ([] => [42])
-def g fn [[m:Map] [Any] [ def r 0 for 1 [def r (m get "x")] end if (m has "x") [r] [0] ]]
-def o (g {x: f/v})
-print (o/v typeof)
-  interpreted   Integer    (the arm's bare `r` calls f, per ADR-011)
-  compiled      Function   (the fn comes back uncalled; `boru check`: 0 errors)
-```
-
-The same body with the rebinding in other loops (`r` rebound in the loop
-body, then the arm read after the loop, `x` holding `f`):
-
-| loop around `def r (m get "x")` | interpreted | compiled |
-|---|---|---|
-| `for 1 [ … ] end` | `Integer` | `Function` (silent) |
-| `def k 0 while [k 1 lt] [ … def k (k 1 add)]` | `Integer` | `Function` (silent) |
-| `[1] each [ … 0] drop` | `Integer` | `[boru/type_error] g: expected 1 return value(s), got 2 — [[0] 42]` |
-| `def ys ([1] each [ … 0])` | `Integer` | `` [boru/internal_error] bytecode: internal: dynamic-scope read of a dispatching binding `r` `` |
-| `[1] for-each [ … ]` | `Integer` | `[boru/type_error] g: expected 1 return value(s), got 2 — [[] 42]` |
-
-The lanes agree when the rebinding is straight-line (`def r 0 def r (m
-get "x") if … [r] [0]`), when the read after the loop is the body's tail
-(`… end r`), when `x` holds data, and on `r/v` in the arm. The init does
-not matter: `def r {a: 1}`, `def r None` and a gradual `def r (m get
-"y")` diverge alike, as does a read in the else arm or inside `def z (if
-… [r] [0])`. The read is a gradual read nested in an arm, the case
-[NUR361](#nur361)'s read-site guard makes loud; here the guard does not
-fire, so the `for`/`while` rows are a silent wrong answer beside the one
-NUR361's verdict names.
-
-Live instance: voxgig-boru/decision's `unique` hit policy ended `if
-(match-count 1 eq) [result] [ … ]` after a `for` that rebinds `result`.
-On 64c5ab2 its stamped unit returned a stored fn `then` uncalled, while
-the `first` and `priority` paths (declined under NUR279, so interpreted)
-called it. The library now reads `result/v` on every path, because a
-stored `then` is data under its own contract, so it no longer depends on
-either lane.
-
-**Proposed verdict:** resolve by fix — guard the post-loop read
-(dispatch a fn as the interpreter does) or decline soundly, as NUR361's
-verdict asks for its family.
-
----
-
-## NUR368 — a run-time fn value in a local, applied at the main program, applies late compiled {#nur368}
-
-**Status:** Pending · **Recorded:** 2026-10-02 · measured at 64c5ab2 · surfaced downstream (the voxgig-boru/decision migration)
-
-```
-def inc (n:Integer => [n add 1])
-def out2 ({x: inc/v} get "x")      # a fn value obtained at run time
-print (41 out2) 7
-  interpreted   prints 42, leaves [7]
-  compiled      prints 41, leaves [8]   (`boru check`: 0 errors; exit 0)
-```
-
-The compiled lane prints the argument and the deferred call of `out2`
-then takes the next value. Without the trailing `7`, `print (41 out2)`
-prints `41` and only then raises the NUR123 defer (`` internal_error:
-gradual read `out2` holds a fn the interpreter dispatches here and the
-unit could not re-step ``), so the defer is loud only after a wrong
-effect, and silent whenever a value follows. A lead returned by a fn instead
-(`def give fn [[m:Map] [Any] [m get "x"]]`, `def out2 (give {x:
-inc/v})`) gives the same two rows. A 0-arg fn returned by a fn and bound
-through a paren reads back undefined:
-
-```
-def give fn [[m:Map] [Any] [m get "x"]]
-def f42 ([] => [42])
-def out (give {x: f42/v})
-def r (out)
-print (r/v)
-  interpreted   prints 42
-  compiled      [boru/undefined_word] undefined word: r   (at the `def r`)
-```
-
-The lanes agree on `41 out2/v apply` (in `print`, in a `def`, or followed
-by more values), on `(41 out2) 7 add`, on `print (out)` over a returned
-0-arg fn, when the value is passed to a fn whose param is declared
-`g:Function`, and when the lead is statically a fn (`def out2 inc/v`). The other spellings of
-the same call decline to compile; they are listed in
-[design/legacy/COMPILABLE-SUBSET.ignore](design/legacy/COMPILABLE-SUBSET.ignore) §5 ("open
-refusals recorded 2026-10-02"). The `print (41 out2)` read is a gradual
-read the root runs inline, the case [NUR361](#nur361)'s guard covers; it
-fires, but after `print` has consumed the paren's value.
-
-Downstream: voxgig-boru/decision's evaluators return a fn stored in a
-rule's `then` or a leaf's `result` as data, for the caller to apply; its
-docs now name `apply` and a `Function`-typed param as the spellings that
-agree.
-
-**Proposed verdict:** resolve by fix — apply the run-time lead where the
-paren closes (as the interpreter does), or decline before any effect of
-the enclosing call runs; bind `def r (out)` as the interpreter does.
-
----
-
-## NUR369 — a re-entered fn-value param called from an `each` callback applies the inner call's fn compiled {#nur369}
-
-**Status:** Pending · **Recorded:** 2026-10-02 · measured at 64c5ab2 · surfaced downstream (the voxgig-boru/template migration)
-
-```
-def tj fn [ [xs:List body:Function] [List] [ (xs each [ var [[x] (body x) ] ]) ] ]
-def b2 fn [ [c:Integer] [Integer] [ c mul 10 ] ]
-def b1 fn [ [c:Integer] [Integer] [ (tj [7 8] b2/v) size ] ]
-print (tj [1 2] b1/v)
-  interpreted   [2, 2]
-  compiled      [10, 20]    (`boru check` clean; exit 0)
-```
-
-`b1`'s call re-enters `tj` with `b2`; when it returns, the outer loop's
-callback applies `b2` (the inner frame's `body`) instead of its own `b1`.
-A silent wrong answer. voxgig-boru/template's block renderers had this
-shape whenever blocks nested (a liquid `for` inside a `for` rendered one
-outer iteration); the library now lowers every block to a named generated
-fn and passes no fn values.
-
-**Proposed verdict:** resolve by fix — each activation's callback reads its
-own frame's param.
-
----
-
-## NUR370 — a fn param called on a def made in the same `each`/`var` body raises DISPATCH_GENERIC compiled {#nur370}
-
-**Status:** Pending · **Recorded:** 2026-10-02 · measured at 64c5ab2 · surfaced downstream (the voxgig-boru/template migration)
-
-```
-def apply-each fn [ [xs:List f:Function] [List] [
-  (xs each [ var [[e] def x (e get "k") (f x) ] ])
-] ]
-print (apply-each [{k:1} {k:2}] (fn [ [c:Any] [Any] [ c ] ]))
-  interpreted   [1, 2]
-  compiled      [boru/internal_error] bytecode: internal: DISPATCH_GENERIC at f: the live
-                plan claims 1 forward of 1 where the record claimed 0 of 1; the compiled
-                runtime cannot execute it (vm:generic-claim-drift)
-```
-
-`(f x/v)`, `(f (x))` and `(f (e get "k"))` answer `[1, 2]` on both lanes.
-
-**Proposed verdict:** resolve by fix.
-
----
-
-## NUR371 — a def in an `if` arm of an imported fn's fold body clobbers the caller's same-named local compiled {#nur371}
-
-**Status:** Pending · **Recorded:** 2026-10-02 · measured at 64c5ab2 · surfaced downstream (the voxgig-boru/template migration)
-
-```
-# mod.boru (imported from a file)
-def collect fn [ [n:Integer] [List] [
-  def out (flex [])
-  def res (do {k:[""]} (iota n) [ var [[i acc]
-    if (i eq 1) [ def _ (out push i)  do {k:[""]} ] [ acc ]
-  ] ] fold)
-  slice 0 (out size) out
-] ]
-def work fn [ [s:String] [String] [ if (s eq "zz") [ convert String ((collect 3) size) ] [ add "?" s ] ] ]
-export "M" { work: work/v }
-
-# main.boru
-import "<dir>/mod.boru"
-def f fn [ [s:String] [String] [ def out (M.work s) `out=${out}` ] ]
-print (f "ab")
-  interpreted   out=ab?
-  compiled      [boru/undefined_word] undefined word: out
-```
-
-`work` only reaches `collect` in an arm never taken. Renaming either
-`out`, or reading it with a plain `print (out)` instead of the template
-string, makes the lanes agree.
-
-**Proposed verdict:** resolve by fix — a callee's defs never touch the
-caller's frame.
-
----
-
-## NUR372 — a fold body reading its fn's param raises undefined_word on the 5th–8th compile in a process {#nur372}
-
-**Status:** Pending · **Recorded:** 2026-10-02 · measured at 64c5ab2 · surfaced downstream (the voxgig-boru/template migration) · **library-scale repro; not isolated below it**
-
-`template.aql` at voxgig-boru/template `bea732e`, whose `split-args`
-folds over the characters of its param `s` reading `s` inside the fold
-body. Calling `Template.compile` twelve times on a liquid template with a
-filter argument (`{{ v | append: "a" }}`), each in
-`do [(… Template.compile).program size)] error [get "message"]`:
-
-```
-  interpreted   5635 (all twelve)
-  compiled      5635 ×4, then `undefined word: s` ×4, then 5635 ×4
-```
-
-A cut-down standalone module did not reproduce it. The library's current
-`split-args` folds over `StringUtil.split "" s` and reads no outer name in
-the fold body, and agrees on every call.
-
-**Proposed verdict:** resolve by fix (owed: a minimal repro).
-
----
-
-## NUR373 — a fn whose result is an ungrouped `r.list-of` over its random-source param repeats the first draw compiled {#nur373}
-
-**Status:** Pending · **Recorded:** 2026-10-02 · measured at 64c5ab2 · surfaced downstream (the voxgig-boru/aless migration) · **silent**
-
-```
-import "boru:rand"
-def g fn [[r:Map] [Any] [ r.list-of [r.int 0 999] 4 ]]
-print (g (Rand.with-seed 7))
-  interpreted   [550, 417, 502, 54]
-  compiled      [550, 550, 550, 550]
-```
-
-The compiled call draws once and repeats that value. The same happens
-with `[r.float]` (`[0.9188921592527635, 0.9188921592527635, …]`), with
-`r:Any`, with a trailing `end`, with a computed count
-(`[[n:Integer r:Map] [Any] [ r.list-of [r.int 0 999] n ]]`), and when the
-fn is called from a `Test.check-prop` generator (`[ (g r) ]`), where
-every property still passes on the repeated lists — only a value-level
-diff shows it. Grouping the call (`[ (r.list-of [r.int 0 999] 4) ]`) or
-binding it first (`def xs (r.list-of [r.int 0 999] 4) xs`) agrees with
-the interpreter.
-
-Related, not a divergence: with the declared return `[List]` instead of
-`[Any]`, the pre-flight check refuses the program — `type_error: g:
-return value 1: expected List, got Integer` — for the grouped body too,
-which runs and answers `[550, 417, 502, 54]` on both lanes under
-`-no-check`. A checker false positive over `r.list-of`'s result.
-
-**Proposed verdict:** resolve by fix.
-
----
-
-## NUR374 — a `check-prop` generator whose body is a grouped `r.list-of` raises `undefined word: r` compiled {#nur374}
-
-**Status:** Pending · **Recorded:** 2026-10-02 · measured at 64c5ab2 · surfaced downstream (the voxgig-boru/aless migration)
-
-```
-import "boru:test"
-def p (Test.check-prop "p" [(r.list-of [r.int 0 999] 4)] [ var [[ops] (ops size) eq 4 ] ] 3 7 0)
-print (p)
-  interpreted   {"name": "p", "ok": true, "runs": 3, …, "error": null}
-  compiled      {"name": "p", "ok": false, "runs": 1, …, "error": error(undefined word: r)}
-```
-
-`r.list-of` runs its element body (`[r.int 0 999]`) by itself (on a
-pooled interpreter, see [design/legacy/COMPILABLE-SUBSET.ignore](design/legacy/COMPILABLE-SUBSET.ignore)
-§5), and there the generator's random source `r` is not bound. The
-property reports a failure the interpreter does not. The same call in a
-named fn whose PARAM is `r` (`def ints fn [[n:Integer r:Map] [List] [
-(r.list-of [r.int 0 999] n) ]]`, generator `[ (ints 4 r) ]`), or in a
-lambda handed to a `Function`-typed param, agrees. The check pass has
-the same blind spot for a var-bound `r`: `print (rs each [ var [[r]
-(r.list-of [r.int 0 999] 4) ] ])` over `def rs [(Rand.with-seed 7)]` is
-refused by the pre-flight check (`undefined_word: undefined word: r` at
-the element body), and answers `[[550, 417, 502, 54]]` on the
-interpreter.
-
-**Proposed verdict:** resolve by fix — the element body sees the
-bindings of the code that calls `r.list-of`, on both lanes and in the
-check pass.
-
----
-
-## NUR375 — a callback that binds a draw with `def` and leaves the binding raises "a landed fn value takes arguments" compiled {#nur375}
-
-**Status:** Pending · **Recorded:** 2026-10-02 · measured at 64c5ab2 · surfaced downstream (the voxgig-boru property-generator rewrites)
-
-```
-import "boru:rand"
-def rs [(Rand.with-seed 1)]
-print (rs each [ var [[r] def a (r.int 0 9) def b (r.int 0 9) [a b] ] ])
-  interpreted   [[5, 7]]
-  compiled      [boru/internal_error] bytecode: internal: a landed fn value takes
-                arguments: the interpreter's re-step applies it here over the value
-                written after it, and no compiled apply re-steps it (NUR298); the
-                compiled runtime cannot execute it (pc=5, src 3:34)
-```
-
-`boru check` is clean and the program compiles; the compiled runtime
-then fails at the first `r.int`. In a `Test.check-prop` generator the
-same body (`[ def a (r.int 0 9) def b (r.int 0 9) [a b] ]`, or `[ def xs
-(r.list-of [r.int 0 999] 4) xs ]`) does not stop the program: the
-property reports `ok: false` with that error after one run, where the
-interpreter passes. The same body in a lambda handed to a fn whose param
-is `cb:Function` (`(cb (Rand.with-seed 1))`) answers `[5, 7]` on both
-lanes, and so does the generator `[ [(r.int 0 9) (r.int 0 9)] ]`. The
-error text names NUR298 (closed 2026-09-27); this is a shape its fix
-does not reach.
-
-**Proposed verdict:** resolve by fix.
-
----
-
-## NUR376 — a name read inside a `do {k: [expr]}` map value leaves a same-named callback binding undefined compiled {#nur376}
-
-**Status:** Pending · **Recorded:** 2026-10-02 · measured at 64c5ab2 · surfaced downstream (the voxgig-boru/stats migration)
-
-```
-def f fn [[x:Integer] [Map] [ def r (x add 1) do {k: [r]} ]]
-def g fn [[xs:List] [List] [ xs each [var [[r] r]] ]]
-print (f 1)
-print (g [1 2])
-  interpreted   {"k": 2}
-                [1, 2]
-  compiled      {"k": 2}
-                each: element 0: [boru/undefined_word]: undefined word: r (at g's `r`)
-```
-
-A fn-local name read inside a `do {…}` map value makes a later binding
-of the same name unresolvable — here a `var` in a later, unrelated fn's
-`each` callback; a def-bound name does the same (`def f fn [[xs:List]
-[Map] [ def fs xs do {k: [fs get 0]} ]]`, then `def g fn [[xs:List]
-[List] [ def fs xs fs each [var [[x] (x add 1)]] ]]`: `g [1 2]` answers
-`[2, 3]` interpreted, `undefined word: fs` compiled). `boru check` is
-clean. voxgig-boru/stats met it three ways (`Stats.mode`, `Stats.ols`
-after `Stats.linreg`, `Stats.zscores` after `Stats.mode`), so one failing
-call broke later, unrelated ones; it now writes plain map literals
-(`{k: (expr)}`), which agree. A `do {…}` map also runs every value body
-on the interpreter at run time (design/legacy/COMPILABLE-SUBSET.ignore §5).
-
-**Proposed verdict:** resolve by fix.
-
----
-
-## NUR377 — `boru:test` mints its record types from a fresh ID counter; a type made after it compares as a different type compiled {#nur377}
-
-**Status:** Pending · **Recorded:** 2026-10-02 · measured at 64c5ab2 · surfaced downstream (the voxgig-boru/bloom-filter and stats migrations) · **silent** (`is`)
+**Divergence:**
 
 ```
 # lib.boru
-def Box class { v: 0 }
-def mk fn [ [n:Integer] [Box] [ make Box {v: n} ] ]
-def mk-any fn [ [n:Integer] [Any] [ make Box {v: n} ] ]
-export "L" { mk: mk/v, mk-any: mk-any/v, Box: Box }
+def tail-arity fn [[m:Map] [Any] [ def r (m get "x") 10 r ]]
+export "L" { tail-arity: tail-arity/v }
 
 # main.boru
-import "boru:test"
-import "./lib.boru"
-print (L.mk 1)
-  interpreted   Class/Box{v:1}
-  compiled      [boru/type_error] mk: return value 1: expected Box, got Box
-print ((L.mk-any 2) is L.Box)
-  interpreted   true
-  compiled      false
+import "./lib.boru" L.tail-arity {x: 5}
+
+boru -no-check main.boru
+  error: [boru/type_error]: tail-arity: expected 1 return value(s), got 2 — [10 5]
+    --> 1:21
+    1 | def tail-arity fn [[m:Map] [Any] [ def r (m get "x") 10 r ]]
+                            ^ tail-arity: expected 1 return value(s), got 2 — [10 5]
+    --> <dir>/lib.boru:1:28
+    1 | def tail-arity fn [[m:Map] [Any] [ def r (m get "x") 10 r ]]
+                                   - the declaration of `tail-arity` expects 1 return value(s)
+
+boru check main.boru     (and plain `boru main.boru`, which its pre-flight check stops)
+  check: 1:36: [error] type_error: tail-arity: expected 1 return value(s), got 2 — [10 Integer]
+    1 | import "./lib.boru" L.tail-arity {x: 5}
+                                           ^^^^^^^^^^
 ```
+
+The code and the message are right. The run's first label is the CALL's
+position (`main.boru` 1:21, the `L`) drawn over line 1 of `lib.boru`; the
+check's is the module body's first token (`lib.boru` 1:36, the `def`)
+drawn over line 1 of `main.boru`, with no file named. For `def two fn
+[[m:Map] [Any] [ 10 (m get "x") ]]` on line 2 of the module, called as
+`L.two {x: 5}` at 4:4 of the caller, the run draws `--> 4:4` over lines
+2–4 of the module file and the check draws the module's `2:29` over the
+caller's blank line 2. An error raised INSIDE a module fn's body is
+labelled with the module file and drawn over it (`def boom fn [[m:Map]
+[Any] [ raise oops/q "x" ]]` on the module's line 1: `-->
+<dir>/lib.boru:1:30`), and the same fn defined in the calling file is
+drawn right — so what loses its file is the contract's call-site label on
+the run, and on the check every diagnostic taken in a file-module fn's
+body (an `unused_def` warning for a `def` on line 3 of a module is drawn
+at `3:7` of the importing file likewise).
+
+**Proposed verdict:** resolve by fix — the call-site label keeps the
+caller's source, and a check diagnostic taken in a module body names the
+module file.
+
+---
+
+## NUR373 — the check pass refuses a `[List]`-declared fn whose result is `r.list-of` over its `r:Map` param {#nur373}
+
+**Status:** Pending (a check false positive) · **Recorded:** 2026-10-02 · **Narrowed:** 2026-11-27 (the compiled lane's repeated draw went with the lane; the false positive the record had noted beside it remains) · measured at d1db0f8 · surfaced downstream (the voxgig-boru/aless migration)
+
+**Rule:** the check pass refuses only a program the run would refuse.
+`boru <file>` runs it as a pre-flight, so a false positive stops a correct
+program.
+
+**Divergence:**
+
+```
+import "boru:rand"
+def g fn [[r:Map] [List] [ r.list-of [r.int 0 999] 4 ]]
+print (g (Rand.with-seed 7))
+  boru check <file>       2:28: [error] type_error: g: return value 1: expected List, got Integer
+  boru <file>             the same error, from the pre-flight check; nothing runs
+  boru -no-check <file>   [550, 417, 502, 54]
+```
+
+The grouped body (`[ (r.list-of [r.int 0 999] 4) ]`) is refused alike,
+and a `[String]` declaration is refused as `expected String, got Integer`
+where the run raises `expected String, got List`: the pass types the
+member call's result as an Integer. Clean on the check, with the same
+list on the run: the declared return `[Any]`, the param typed `r:Any`,
+the result bound first (`def xs (r.list-of [r.int 0 999] 4) xs`), and a
+module-level `r` read from a 0-arg fn.
+
+**Proposed verdict:** resolve by fix, in the check pass.
+
+---
+
+## NUR374 — the check pass refuses a `var`-bound `r` read in `r.list-of`'s element body inside an `each` callback {#nur374}
+
+**Status:** Pending (a check false positive) · **Recorded:** 2026-10-02 · **Narrowed:** 2026-11-27 (the compiled `check-prop` failure went with the compiled lane; the check pass's refusal the record had noted beside it remains) · measured at d1db0f8 · surfaced downstream (the voxgig-boru/aless migration)
+
+**Rule:** as [NUR373](#nur373) — the check pass refuses only a program
+the run would refuse.
+
+**Divergence:**
+
+```
+import "boru:rand"
+def rs [(Rand.with-seed 7)]
+print (rs each [ var [[r] (r.list-of [r.int 0 999] 4) ] ])
+  boru check <file>       3:39: [error] undefined_word: undefined word: r     (the element body's `r`)
+                          3:39: [error] no_signature: cannot call `dot` — no signature matches the arguments; got (Atom, Word) …
+  boru <file>             the same two errors, from the pre-flight check; nothing runs
+  boru -no-check <file>   [[550, 417, 502, 54]]
+```
+
+The run reads the `var`'s `r` in the element body; the pass does not see
+the binding there. It refuses the def-bound spelling too (`var [[r] def
+xs (r.list-of [r.int 0 999] 4) xs ]`). Clean on the check: an element
+body that reads no `r` (`[1]`), a draw outside a body (`var [[r] (r.int 0
+999) ]`), the same `var` at the top level (`(Rand.with-seed 7) var [[r]
+print (r.list-of [r.int 0 999] 4) ]`), a named fn whose PARAM is `r`
+(declared `[Any]`; declared `[List]` it meets NUR373), and a program that
+also has a top-level `r` — the pass is then silent, with a different `r`
+in reach. Probably the check pass's face of [NUR381](#nur381) (the
+element body is a literal the pass still holds when the `var` names are
+gone); read from the shape, not proven.
+
+**Proposed verdict:** resolve by fix — the element body sees the bindings
+of the code that calls `r.list-of`, in the check pass as on the run.
+
+---
+
+## NUR377 — `boru:test` mints its record types from a fresh ID counter: a user type is `teq` to an unrelated `Test` type {#nur377}
+
+**Status:** Pending · **Recorded:** 2026-10-02 · **Narrowed:** 2026-11-27 (the compiled return check and `is`, which looked the declared type up by ID, went with the compiled lane; the colliding IDs remain, and the interpreter shows them through `teq` and `tis`) · measured at d1db0f8 · surfaced downstream (the voxgig-boru/bloom-filter and stats migrations) · **silent**
+
+**Rule:** type identity is the lattice node's ID, and an ID is unique
+across a registry tree — "one counter per registry TREE"
+(`core/go/typetable.go`, `mintID`). A module sub-registry whose minted
+types can reach the importing program adopts the importer's counter
+(`AdoptSeqFrom`).
+
+**Divergence:**
+
+```
+import "boru:test"
+def A class { v: 0 }
+def a (make A {v: 1})
+print (A teq Test.TestSet)       true      two unrelated types, one ID
+print (a tis Test.TestSet)       true
+print (a is Test.TestSet)        false
+print (A tcmp Test.TestSet)      1
+```
+
+The same four answers with the class made BEFORE the import; `boru check`
+reports nothing either way. Of four classes made in a row after the
+import, the first three are `teq` to `Test.TestSet`, `Test.PropertySpec`
+and `Test.TestResult` in turn and the fourth to none of the six; `A teq
+B` is `false`.
 
 `BuildTestModule` (`lang/go/modules/test.go`) builds its sub-registry
 with `newDefaultRegistry()` and never calls
 `modReg.Types.AdoptSeqFrom(parent.Types)`, so the record types its
-preamble mints draw IDs from a fresh counter and collide with types
-minted elsewhere in the program. e69b9ac35 ("Fix minted-type ID
-collisions across sibling registries") added the call to the module-body
-path and to `parse`, `model`, `matrix-util`, `time-util`, `io`, `net` and
-`minilang`, not to `boru:test`. The compiled return check and `is` look
-the declared type up by ID (`core.CanonicalType`) and find `boru:test`'s
-type; the interpreter compares the nodes directly. With `./lib.boru`
-imported BEFORE `boru:test` both lanes answer `Class/Box{v:1}`, which is
-the workaround every affected library documents.
+preamble mints and exports (`Test.TestCase`, `TestSet`, `TestSpec`,
+`TestResult`, `PropertySpec`, `PropertyResult`) draw IDs from a fresh
+counter, and the importing program's own mints repeat them. e69b9ac35
+("Fix minted-type ID collisions across sibling registries") added the
+call to the module-body path and to `parse`, `model`, `matrix-util`,
+`time-util`, `io`, `net` and `minilang`, not to `boru:test`.
 
 **Proposed verdict:** resolve by fix — `BuildTestModule` adopts the
 parent's type-ID sequence like its siblings.
 
 ---
 
-## NUR378 — an `each` callback applying its fn's `Function` param reuses the first call's fn compiled {#nur378}
+## NUR379 — a fn param or an `unpack` name may be a built-in word's name, where `def` and a `var` name raise `reserved_word` {#nur379}
 
-**Status:** Pending · **Recorded:** 2026-10-05 (found 2026-10-02 by the voxgig-boru interpreter-entry pass, [design/legacy/VOXGIG-BORU-HANDOVER.0.ignore](design/legacy/VOXGIG-BORU-HANDOVER.0.ignore) U1) · measured at 64c5ab2 on both lanes, re-verified 2026-10-05 · **silent**
+**Status:** Pending · **Recorded:** 2026-10-05 (found 2026-10-02 by the voxgig-boru interpreter-entry pass) · **Restated:** 2026-11-27 — the interpreter no longer raises on the param (a fn frame has closed with its cleanup marker, not an `undef` per param, since 571a8a77d, 2026-10-08), so the first record's three answers for one program are now one; what remains is that the rule it was recorded against is kept by two binders and not by two others · measured at d1db0f8 · **silent** unless the replaced built-in then fails
 
-```
-def f fn [[c:Function x:Integer] [List] [ [x] each [ var [[e] (e 3 c) ] ] ]]
-print (f add/v 5)
-  interpreted   [8]
-  compiled      [8]
-print (f sub/v 7)
-  interpreted   [4]
-  compiled      [10]      (`boru check` clean; exit 0)
-```
+**Rule:** a built-in word's name is not rebound to a value: `def` and
+`undef` raise `reserved_word` (REFERENCE.md, "Core bindings are frozen;
+core words are open"), and so does a `var` name, which desugars to `def`.
+One binding store, one admission rule.
 
-The second call's callback applies the FIRST call's fn: `10` is `3 add 7`,
-not `7 sub 3`. The forward spelling `(c 3 e)` is affected the same way;
-`(e 3 c/v apply)` agrees on both lanes. Possibly the root of
-[NUR369](#nur369), whose shape is re-entrant where this one is sequential.
-
-**Proposed verdict:** resolve by fix — each activation's callback reads its
-own frame's param (NUR369's verdict).
-
----
-
-## NUR379 — a param named after a built-in word runs compiled where the interpreter raises `reserved_word` {#nur379}
-
-**Status:** Pending · **Recorded:** 2026-10-05 (found 2026-10-02 by the voxgig-boru interpreter-entry pass, U2) · measured at 64c5ab2 on both lanes, re-verified 2026-10-05 · **silent** (a wrong value, or a run where the interpreter refuses)
+**Divergence:** a fn param (the `fn` and the `=>` form) and an `unpack`
+name are bound without that guard, and `boru check` accepts both.
 
 ```
+def sub 3                    [boru/reserved_word] def sub: 'sub' is a built-in word and cannot be redefined
+5 var [[sub] sub]            the same error                     (both: run and check)
+
 def g fn [[sub:Function] [List] [ [5] each [ var [[e] (e 3 sub/v apply) ] ] ]]
 print (g add/v)
-  interpreted   [boru/reserved_word] undef sub: 'sub' is a built-in word and cannot be redefined
-  compiled      [2]        (`boru check`: 0 errors; `add` would give [8])
+  run     [8]                (2026-10-05: reserved_word, from the frame's closing `undef sub`)
+  check   0 errors
+
+def h fn [[a:Integer b:Integer] [Integer] [a sub b]]
+def g fn [[sub:Function] [Integer] [h 5 3]]
+print (h 5 3)  print (g add/v)  print (h 5 3)
+  run     2  8  2            (inside g's call, h's `sub` is g's param)
+  check   0 errors
+
+def h fn [[a:Integer b:Integer] [Integer] [a sub b]]
+def g fn [[sub:Integer] [Integer] [h 5 3]]
+print (g 4)
+  run     [boru/type_error] h: expected 1 return value(s), got 3 — [5 4 3]
+  check   0 errors
+
+unpack [sub] {sub: 5}
+print sub  print (10 sub 3)
+  run     5, then 10 with `5 3` left on the stack   (`sub` is 5 for the rest of the program)
+  check   0 errors
 ```
 
-Three answers for one program: the interpreter refuses the param name,
-the check pass says nothing, and the compiled lane runs and applies the
-BUILT-IN `sub` instead of the passed `add`. With `[[cmp:Function xs:List]
-…]` and `sub/v` passed, the compiled lane answers `[1, -1]` where `sub`
-gives `[2, -2]`. The likely mechanism, read from the VM and not proven:
-the frame renames a native word value to its param name and the native
-fast path looks the native up by that name — the same mechanism as the
-`cmp/v` island in design/legacy/COMPILABLE-SUBSET.ignore §5 ("recorded 2026-10-05",
-U11). The libraries' params are not built-in names.
+So a param named after a built-in replaces the built-in for the call —
+in the body and, by dynamic scope, in every fn the body calls — and the
+check pass does not model it; `unpack` replaces it at the top level for
+good. A param may even be named `if`, `def` or `true` (`def g fn
+[[def:Integer] [Integer] [ 1 ]] print (g 4)` prints `1`).
 
-**Proposed verdict:** resolve by fix — the check pass and the compiled
-lane raise the interpreter's `reserved_word`, and the native fast path
-keys on the value's own native identity, never on the param's name.
+**Proposed verdict:** resolve by fix — one admission rule for the four
+binders. Either a param and an `unpack` name raise `reserved_word` as
+`def` and `var` do (this record's first verdict), or a scoped binder may
+shadow a built-in and `var` joins the params; a top-level `unpack` should
+raise on either reading.
 
 ---
 
-## NUR380 — NUR123's shape in a recursive helper corrupts a later call's loop state compiled {#nur380}
+## NUR381 — a container literal a `var` or `=>` body leaves as its value is evaluated after the body's names are unbound {#nur381}
 
-**Status:** Pending · **Recorded:** 2026-10-05 (found 2026-10-02 in the voxgig-boru/sort migration, U3) · measured at 64c5ab2 · **silent** · **library-scale repro; a minimal one is owed**
+**Status:** Pending · **Recorded:** 2026-10-05 (found 2026-10-02 in the voxgig-boru/trie migration) · **Restated:** 2026-11-27 — re-measured on the interpreter, where the shape is wider than first recorded: neither the `if` arm, the fold nor the map is needed · measured at d1db0f8 · **silent** with a same-named outer binding, `undefined_word` without one
 
-[NUR123](design/NUR-ARCHIVE.0.md) (a bare read of a fn-valued frame binding
-is a word dispatch) is archived as fixed, yet its shape reproduces inside a
-recursive helper: a `Function` param read bare (`def c ((arr get 0) (arr
-get 1) comp)`) or forward (`def c (comp (arr get 1) (arr get 0))`) and by
-`/v`, reached from an `each` body, silently corrupts a LATER, unrelated
-call's loop state. voxgig-boru/sort's `DX-REPORT.md` "workaround 1" holds
-the repro (`sd` / `first` / `second`): `print (cmp/v first)` then `print (3
-second)` prints `0` `4` interpreted and `0` `1` compiled; with `comp/v
-apply` both lanes print `0` `4`. In the suites, `Sort.heap` followed by
-`Sort.tim` returned its input unsorted. The forward spelling of the same
-recursive shape at the top level refuses instead (design/legacy/COMPILABLE-SUBSET.ignore
-§5, "recorded 2026-10-05", U8), so the library keeps `comp/v apply`.
+**Rule:** a name a scope form binds is in scope for the whole of its
+body, a literal the body leaves as its value included. A `fn` body keeps
+it: `def x 100  def f fn [[x:Integer] [Any] [[x]]]  f 5` is `[5]`.
 
-**Proposed verdict:** resolve by fix — find the read NUR123's guard does
-not reach inside a recursive helper (owed first: a minimal repro, from the
-sort DX-REPORT's three fns).
+**Divergence:** a `var` body and a `=>` body do not. The literal is still
+pending when the names are unbound, and its members are evaluated by
+whatever takes it next (a loop's region, the end-of-run sweep), where the
+name resolves to a same-named outer binding or to nothing:
 
----
+```
+def x 100  5 var [[x] [x]]                      [100]        (`[5]` is intended)
+5 var [[x] [x]]                                 [boru/undefined_word] undefined word: x
+def x 100  def l ([x:Integer] => [[x]])  l 5    [100]
+def l ([x:Integer] => [[x]])  l 5               [boru/undefined_word] undefined word: x
+def x 100  5 var [[x] x {n: (x add 1)}]         5 {n:101}    (the bare read sees the var; the literal does not)
+print "before" 5 var [[x] print "body-start" [(print "in-literal" 1)] print "body-end"]
+                                                prints before, body-start, body-end, in-literal
+```
 
-## NUR381 — a `var`-bound name in a map literal inside an `if` arm of a fold body resolves to a top-level def interpreted {#nur381}
-
-**Status:** Pending · **Recorded:** 2026-10-05 (found 2026-10-02 in the voxgig-boru/trie migration, U4) · measured at 64c5ab2 on both lanes, re-verified 2026-10-05 · **silent** · the INTERPRETER's side
+A literal a word takes inside the body is evaluated in scope (`def x 100
+5 var [[x] print [x]]` prints `[5]`, and `def y [x] y` answers `[5]`),
+which is why the usual callback shapes work. The program this record was
+found on:
 
 ```
 def acc {n: 100}
@@ -1416,108 +1051,67 @@ def count fn [ [xs:List] [Map] [
   {n: 0} xs [ var [[x acc] if true [ {n: ((acc "n" get) 1 add)} ] [acc] ] ] fold
 ] ]
 print (count [7 8 9])
-  interpreted   {"n": 101}
-  compiled      {"n": 3}
+  boru <file>     {"n": 101}       (`{"n": 3}` is intended)
+  without the top-level `def acc`:
+                  fold: step 0: [boru/undefined_word]: undefined word: acc
 ```
 
-The interpreter resolves the `acc` inside the arm's map literal to the
-same-named TOP-LEVEL def (and raises `undefined word: acc` without one);
-the compiled lane reads the `var` binding, which is the intended answer.
-Without the `if`, `boru check` refuses the program (`undefined word:
-acc`); with it, the check is clean, so the pass shares the interpreter's
-blind spot in one shape and not the other. Any path that runs such a fold
-on the interpreter at run time — a stale property stamp
-(design/legacy/COMPILABLE-SUBSET.ignore §5, U10) — turns this into a wrong value or a
-failure inside a program that compiled.
+`boru check` agrees with the run on the bare shapes — it refuses `5 var
+[[x] [x]]` with the same `undefined_word` and is silent when an outer `x`
+exists — but is clean on a literal inside an `if` arm, where the run
+raises: `5 var [[x] if (x gt 0) [ [x] ] [ [0] ] ]` is `undefined_word` on
+the run and 0 errors on the check, and so is the fold program without its
+top-level def.
 
-**Proposed verdict:** resolve by fix on the interpreter and the check pass
-— a `var` binding is in scope inside its body's literals, arm or not; the
-compiled lane already agrees with that rule.
+**Proposed verdict:** resolve by fix — the `var` body's cleanup and the
+`=>` frame's close collect a pending literal before the names go, as the
+`fn` frame's does (core/go/CLAUDE.md, "Container literals are sealed
+regions of the tape": a pending literal "evaluates where a word takes it,
+where a loop's region or a frame's cleanup collects it, or at the
+end-of-run sweep"); the check pass follows.
 
 ---
 
-## NUR382 — a file-module fn's `each` callback forward-applying its `Function` param to another param raises compiled {#nur382}
+## NUR384 — a name a fn-body `unpack` binds outlives the call when the body names no other binding word {#nur384}
 
-**Status:** Pending · **Recorded:** 2026-10-05 (found 2026-10-02 by the voxgig-boru interpreter-entry pass, U5) · measured at 64c5ab2 on both lanes, re-verified 2026-10-05 · loud
+**Status:** Pending · **Recorded:** 2026-10-08 · **Narrowed:** 2026-11-27 (the VM's `undefined_word` went with the compiled lane; the interpreter's side is re-measured, and it disagrees with itself and with the check pass) · measured at d1db0f8 · **silent**
 
-```
-# mod.boru (imported from a FILE)
-def h fn [[f:Function y:Any] [List] [ [5] each [ var [[e] (f y e) ] ] ]]
-export "M" { h: h/v }
+**Rule:** a binding made in a fn body is local to the call — `def g fn
+[[d:Map][Integer][def b 7 d.a add b]]  g {a:1 b:2}  b` raises
+`undefined_word` at the last `b`, and with an outer `def b 9` answers
+`8 9` (lang/spec/fn-locals-scope.tsv).
 
-# main.boru
-import "./mod.boru"
-print (M.h sub/v 3)
-  interpreted   [2]
-  compiled      each: element 0: [boru/signature_error]: cannot call `f` — no signature matches the arguments
-                (with a user fn in f's place: undefined word: y)
-```
-
-The same fn defined in the one file agrees on both lanes, and so does the
-trailing spelling `(e y f)`.
-
-**Proposed verdict:** resolve by fix.
-
----
-
-## NUR383 — a module-made closure bound by a program-level def and read by `/v` in a property body fails compiled {#nur383}
-
-**Status:** Pending · **Recorded:** 2026-10-05 (found 2026-10-02 in the voxgig-boru/sort migration, U6) · measured at 64c5ab2 on both lanes, re-verified 2026-10-05 · loud (the property reports a failure)
-
-```
-# mod.boru (imported from a FILE)
-def mk fn [[n:Integer] [Function] [ [a:Any] => [ a add n ] ]]
-def use fn [[q:Function x:Integer] [Integer] [ (x q) ]]
-export "M" { mk: mk/v, use: use/v }
-
-# main.boru
-import "boru:test"
-import "./mod.boru"
-def c (M.mk 10)
-print (Test.check-prop "p" [ 5 ] [ var [[x] ((M.use c/v x) eq 15) ] ] 2 1 0)
-  interpreted   {"name": "p", "ok": true, "runs": 2, … "error": null}
-  compiled      {"name": "p", "ok": false, "runs": 1, "failing-input": 5, … "error": error(undefined word: q)}
-```
-
-`def c (Sort.by-key k/v)` read as `c/v` in a `check-prop` body fails the
-same way (`undefined word: comp`). A 0-arg fn returning a MODULE member in
-place of the `/v` read agrees on both lanes, which is the libraries'
-workaround; a program-defined comparator still islands
-(design/legacy/COMPILABLE-SUBSET.ignore §5, U12).
-
-**Proposed verdict:** resolve by fix.
-
----
-
-## NUR384 — a name a fn-body `unpack` binds for the first time is bound past the call interpreted and undefined compiled {#nur384}
-
-**Status:** Pending · **Recorded:** 2026-10-08 · measured at ed8a805 on both lanes · the binding persists on the interpreter's side (silent), the VM raises (loud)
+**Divergence:**
 
 ```
 def g fn [[d:Map][Integer][unpack [a b] d  a add b]]  g {a:1 b:2}  b
-  interpreted   3 2
-  compiled      [boru/undefined_word]: undefined word: b
+  boru do          3 2      (`b` is still bound after the call)
+  boru check -e    1:68: [error] undefined_word: undefined word: b
+def b 9  def g fn [[d:Map][Integer][unpack [a b] d  a add b]]  g {a:1 b:2}  b
+  boru do          3 2      (the outer `b` stays rebound)              check: 0 errors
+
+def g fn [[d:Map][Integer][def z 0 unpack [a b] d  a add b]]  g {a:1 b:2}  b
+  boru do          [boru/undefined_word]: undefined word: b            check: the same
+def b 9  def g fn [[d:Map][Integer][def z 0 unpack [a b] d  a add b]]  g {a:1 b:2}  b
+  boru do          3 9      (the outer `b` is restored)                check: 0 errors
 ```
 
-The same with a def-bound lambda (`def g ([d:Map] => [unpack [a b] d  a add b])
-g {a:1 b:2}  b`) and with the fn value applied through `each` (`each g/v
-[{a:1 b:2}]  b`: interpreted `[[3] 2]`, compiled undefined). An OUTER name
-the body's unpack REBINDS agrees on both lanes — it is rebound past the
-call, the discipline `lang/go` `TestUnpackUnprovenSourceCompiles` pins —
-and a fn value applied through `apply` leaves a new name unbound on both
-lanes. Found while pooling the interpreter's module-fn call and giving the
-fn-value path the named path's leaf-frame rule (a frame whose body names
-no binding word takes no cleanup snapshot): `unpack` binds from Go, outside
-that rule's sight, so every interpreter path leaves its new names bound
-past the call — the named path since the speed plan's leaf fast path, the
-fn-value and CallBoru paths since 2026-10-08, with the four shapes above
-answering the same before and after. The VM's run-time-bound unpack
-(NoteRuntimeBind's stub installs) does not reach the caller's scope after
-the call.
+The same `unpack` is call-local or not by whether the body happens to
+name a binding word. A body naming none is a leaf frame and takes no
+cleanup snapshot, and `unpack` binds from Go, outside that rule's sight:
+`frameStateWords` (`core/go/fn_capture.go`) leaves it out on purpose, to
+agree with the VM that has since been removed. The def-bound lambda
+(`def g ([d:Map] => [unpack [a b] d  a add b])`), the fn value applied
+through `each` (`each g/v [{a:1 b:2}]  b` is `[3] 2`) and through `apply`
+(`{a:1 b:2} g/v apply  b` is `3 2`) leak alike. As a file the first
+program is refused by the pre-flight check and answers `3 2` under
+`-no-check`.
 
-**Proposed verdict:** the pinned discipline is the whole unpack set binding
-past the call, so resolve by fix on the VM's side — or narrow the discipline
-on both lanes together.
+**Proposed verdict:** resolve by fix — list `unpack` among the
+frame-state words, so a fn-body `unpack` is call-local on every frame as
+`def` is and as the check pass already reads it; or rule the leak the
+discipline, and make the frame with a binding word and the check pass
+agree with it.
 
 ---
 
