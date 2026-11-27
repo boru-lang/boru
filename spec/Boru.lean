@@ -12,3 +12,4 @@ import Boru.Core.Theorems.Lattice
 import Boru.Core.Theorems.ArgumentRule
 import Boru.Core.Theorems.UnifyOrder
 import Boru.Core.Theorems.Closure
+import Boru.Core.Theorems.Loop
