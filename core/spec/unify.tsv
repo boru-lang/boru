@@ -174,7 +174,26 @@ run unifyq d( { a: 1 } ) { a: String }	false
 run unifyq d( { a: 1 } ) { b: 2 }	false
 
 # --- a FUNCTION is equal only to itself ---------------------------------------
-# Functions are compared by identity, not by text: the same function written
-# twice is two values. (The rows that need a reference — one binding read
-# twice IS one function — are in divergent.tsv until core/ts reads /v.)
-run unifyq fn( n Integer Integer [ n ] ) fn( n Integer Integer [ n ] )	false
+# Functions are compared by IDENTITY, not by text. Two functions are the
+# same value exactly when they are the same function: the same text written
+# twice is two values, and one binding read twice — `name/v` — is one.
+# Identity survives being passed and returned.
+run unifyq fn( n Integer Integer [ n ] ) fn( n Integer Integer [ n ] )	false	the same text written twice is two functions
+run unifyq negq/v negq/v	true	one word read twice is one function
+run unifyq negq/v addq/v	false	two words are two
+run def f fn( n Integer Integer [ n ] ) ; unifyq f/v f/v	true	one def-bound function read twice is one
+run def f fn( n Integer Integer [ n ] ) ; def g fn( n Integer Integer [ n ] ) ; unifyq f/v g/v	false	two bindings of the same text are two
+run def f fn( n Integer Integer [ n ] ) ; unifyq f/v fn( n Integer Integer [ n ] )	false	a binding and the same text written beside it are two
+run unifyq [ negq/v ] [ negq/v ]	true	identity holds inside a list
+run unifyq [ negq/v ] [ addq/v ]	false	and tells two lists apart
+run unifyq ( bothq 1 negq/v ) negq/v	true	a function handed back by a word is still that function
+run unifyq ( bothq 1 negq/v ) addq/v	false	and still not another
+run unifyq negq/v Function	true	a function is a Function
+run unifyq negq/v Type	true	and a type
+run unifyq negq/v Any	true	and anything is Any
+run unifyq negq/v 5	false	but it is not an Integer
+
+# NUR391, pinned as the kernel has it: a name with TWO definitions has no
+# identity of its own — a reference to it is built from both, and is a new
+# function at every read, so it does not unify with itself.
+run def f fn( n Integer Integer [ n ] ) ; def f fn( n String String [ n ] ) ; unifyq f/v f/v	false	as the kernel has it: a twice-defined name is not equal to itself

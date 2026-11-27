@@ -10,7 +10,12 @@
 import { CheckState } from "./check-state.ts";
 import type { NativeFunc, NativeSig, Signature } from "./signature.ts";
 import { sortSignatures } from "./signature.ts";
-import type { Value } from "./value.ts";
+import {
+  type FnDefInfo,
+  type FnSig,
+  newFnDef,
+  type Value,
+} from "./value.ts";
 
 /** A registered word with its overloaded signatures + dispatch flags. */
 export interface FunctionEntry {
@@ -51,6 +56,9 @@ export class Registry {
    * Registry.sugarWords / BindSugarWord / SugarWord.
    */
   private sugarWords = new Map<string, string>();
+
+  /** Each registered word's function payload, by its entry (nativeFn). */
+  private nativeFns = new WeakMap<FunctionEntry, FnDefInfo>();
 
   /** Static type-checker state. Inactive until check.begin() is called. */
   readonly check = new CheckState();
@@ -154,6 +162,7 @@ export class Registry {
     }
     return {
       args: ns.args,
+      argNames: ns.argNames,
       handler: ns.handler,
       barrierPos,
       patterns: ns.patterns,
@@ -192,6 +201,80 @@ export class Registry {
     const stack = this.defStacks.get(name);
     if (!stack || stack.length === 0) return undefined;
     return stack[stack.length - 1];
+  }
+
+  /**
+   * What `name/v` denotes: the VALUE bound to the name, never a call.
+   * Mirrors Go's ResolveRef (core/go/core_ref.go).
+   *
+   * A value binding is itself. A function binding — a def-bound fn or a
+   * registered native word — comes back as a function VALUE carrying the
+   * name it was read through, so it dispatches as the word would wherever
+   * it is later stepped and reports under that name when a call to it
+   * matches nothing. `undefined` when nothing is bound: the keywords and
+   * the builtin type names are not bindings, so `true/v` and `Integer/v`
+   * decline exactly as an unknown name does.
+   *
+   * The reference is the SAME FUNCTION each time it is read: the value
+   * holds the binding's own payload, which is the function's identity
+   * (FnDefInfo), so one binding read twice is one function — and read
+   * through a parameter it was passed to, it is that function still.
+   *
+   * Go keeps natives in the def table and reads both kinds from it; here
+   * the def stack is consulted first, as the word step consults it.
+   */
+  resolveRef(name: string): Value | undefined {
+    const top = this.topOfDefStack(name);
+    if (top !== undefined) {
+      this.check.recordUse(name);
+      if (!top.isFnDef()) return top;
+      return newFnDef(this.fnBinding(name)!, name);
+    }
+    const fn = this.lookup(name);
+    if (fn === undefined) return undefined;
+    return newFnDef(this.nativeFn(fn), name);
+  }
+
+  /**
+   * The function a def-bound name DISPATCHES as: every function bound
+   * under the name, newest first — a name defined twice has the overloads
+   * of both definitions (Go's lookupUncached / aggregateDispatch).
+   * `undefined` when the name binds no function.
+   *
+   * With ONE definition that is the definition itself, identity and all.
+   * With several it is a COMPOSITE no single authored function
+   * identifies, built anew at each read and so equal to nothing, itself
+   * included — which is what core/go answers (NUR391 records it as a
+   * defect of the kernel's; it is ported as the kernel has it).
+   */
+  fnBinding(name: string): FnDefInfo | undefined {
+    const stack = this.defStacks.get(name) ?? [];
+    const entries: FnDefInfo[] = [];
+    for (let i = stack.length - 1; i >= 0; i--) {
+      if (stack[i]!.isFnDef()) entries.push(stack[i]!.asFnDef());
+    }
+    if (entries.length <= 1) return entries[0];
+    // A native word's function is its own dispatch table, not a list of
+    // bodies to pool: stacked under a boru-bodied definition it is simply
+    // shadowed.
+    if (entries.some((e) => e.native !== undefined)) return entries[0];
+    return { sigs: entries.flatMap((e) => e.sigs) };
+  }
+
+  /**
+   * A registered word's function payload: its signatures as authored and
+   * the dispatch table it calls through. ONE payload per word, so every
+   * reference to the word is the same function; it is rebuilt only when a
+   * later registration adds a signature to the word.
+   */
+  private nativeFn(fn: FunctionEntry): FnDefInfo {
+    const held = this.nativeFns.get(fn);
+    if (held !== undefined && held.sigs.length === fn.declOrder.length) {
+      return held;
+    }
+    const info: FnDefInfo = { sigs: fn.declOrder.map(authoredSig), native: fn };
+    this.nativeFns.set(fn, info);
+    return info;
   }
 
   hasDef(name: string): boolean {
@@ -250,6 +333,22 @@ export class Registry {
     this.argsStack = snapshot.argsStack.map((frame) => [...frame]);
     this.check.restoreFrom(snapshot.check);
   }
+}
+
+/**
+ * A native signature as its function value presents it: the parameters by
+ * name and type, the declared returns, and no body — the twin of the
+ * body-less own signature a Go native's FnDefInfo carries.
+ */
+function authoredSig(sig: Signature): FnSig {
+  return {
+    params: sig.args.map((type, i) => ({
+      name: sig.argNames?.[i] ?? "",
+      type,
+    })),
+    returns: sig.returns ?? [],
+    body: [],
+  };
 }
 
 function computeMaxForward(entry: FunctionEntry): number {

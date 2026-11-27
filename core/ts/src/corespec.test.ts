@@ -129,16 +129,16 @@ function token(tok: string): Value {
   // call-site modifiers, as the parser would hand it over. A slash whose
   // suffix is not a modifier (`Scalar/String`) leaves the token a plain
   // word. Written independently of the Go runner's copy.
-  // `name/v`: the bound VALUE, never a call.
-  if (tok.length > 2 && tok.endsWith("/v")) {
-    return new Value(TWord, { name: tok.slice(0, -2), forceVal: true } satisfies WordInfo);
-  }
-  const mod = /^(.+)\/(\d*)([sf]?)$/.exec(tok);
-  if (mod !== null && (mod[2] !== "" || mod[3] !== "")) {
+  // The modifiers come in ONE written order — a forced arity N, then at
+  // most one of `s` or `f`, then `v` (the bound VALUE, never a call) —
+  // each optional and at least one present.
+  const mod = /^(.+)\/(\d*)([sf]?)(v?)$/.exec(tok);
+  if (mod !== null && (mod[2] !== "" || mod[3] !== "" || mod[4] !== "")) {
     const info: WordInfo = { name: mod[1]! };
     if (mod[2] !== "") info.argCount = BigInt(mod[2]!);
     if (mod[3] === "s") info.forceStack = true;
     if (mod[3] === "f") info.forceForward = true;
+    if (mod[4] === "v") info.forceVal = true;
     return new Value(TWord, info);
   }
   return newWord(tok);
@@ -283,6 +283,7 @@ function fixtureRegistry(): Registry {
     signatures: [
       {
         args: [TInteger, TInteger],
+        argNames: ["a", "b"],
         returns: [TInteger],
         barrierPos: 2,
         handler: (args: Value[]): Value[] => [
@@ -304,6 +305,7 @@ function fixtureRegistry(): Registry {
     signatures: [
       {
         args: [TInteger],
+        argNames: ["a"],
         returns: [TInteger],
         barrierPos: 1,
         handler: (args: Value[]): Value[] => [
@@ -317,6 +319,7 @@ function fixtureRegistry(): Registry {
     signatures: [
       {
         args: [TInteger],
+        argNames: ["a"],
         returns: [TInteger, TInteger],
         barrierPos: 1,
         handler: (args: Value[]): Value[] => [
@@ -331,6 +334,7 @@ function fixtureRegistry(): Registry {
     signatures: [
       {
         args: [TInteger, TInteger],
+        argNames: ["a", "b"],
         returns: [TInteger],
         barrierPos: 0, // STACK form: both operands come off the stack
         handler: (args: Value[]): Value[] => [
@@ -344,6 +348,7 @@ function fixtureRegistry(): Registry {
     signatures: [
       {
         args: [TAny],
+        argNames: ["a"],
         returns: [TAny],
         barrierPos: 1,
         handler: (): Value[] => {
@@ -360,6 +365,7 @@ function fixtureRegistry(): Registry {
     signatures: [
       {
         args: [TInteger],
+        argNames: ["n"],
         returns: [TInteger],
         patterns: new Map([[0, newInteger(7n)]]),
         barrierPos: 1,
@@ -377,6 +383,7 @@ function fixtureRegistry(): Registry {
     signatures: [
       {
         args: [TAny],
+        argNames: ["a"],
         returns: [TAny, TAny],
         returnsFn: returnsIdentity(0, 0),
         barrierPos: 1,
@@ -420,6 +427,7 @@ function fixtureRegistry(): Registry {
     signatures: [
       {
         args: [TAtom],
+        argNames: ["n"],
         returns: [],
         quoteArgs: new Set([0]),
         barrierPos: 1,
@@ -446,6 +454,7 @@ function fixtureRegistry(): Registry {
     signatures: [
       {
         args: [TAny],
+        argNames: ["n"],
         returns: [TAny],
         quoteArgs: new Set([0]),
         barrierPos: 1,
@@ -462,6 +471,7 @@ function fixtureRegistry(): Registry {
     signatures: [
       {
         args: [TAny, TAny],
+        argNames: ["a", "b"],
         returns: [TAny],
         barrierPos: 2,
         handler: (a: Value[]): Value[] => [a[1]!],
@@ -477,6 +487,7 @@ function fixtureRegistry(): Registry {
     signatures: [
       {
         args: [TAny],
+        argNames: ["t"],
         returns: [TAny],
         typeArgs: new Set([0]),
         barrierPos: 1,
@@ -493,6 +504,7 @@ function fixtureRegistry(): Registry {
     signatures: [
       {
         args: [TAny],
+        argNames: ["v"],
         returns: [TInteger],
         patterns: new Map([[0, newTypeLiteral(TInteger)]]),
         barrierPos: 0,
@@ -514,6 +526,7 @@ function fixtureRegistry(): Registry {
     signatures: [
       {
         args: [TAny, TAny],
+        argNames: ["a", "b"],
         returns: [TBoolean],
         barrierPos: 2,
         handler: (a: Value[]): Value[] => [

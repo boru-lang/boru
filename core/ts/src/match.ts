@@ -186,6 +186,11 @@ function resolveForwardToken(
   registry: Registry | undefined,
 ): Value {
   if (!tok.isWord()) return tok;
+  // `name/v` is the bound VALUE, whatever the slot: the reference is read
+  // before any capture or cascade, as the word step reads it. An unbound
+  // name stays the word, so the dispatch defers and stepping it reports
+  // the name.
+  if (isRefWord(tok)) return registry?.resolveRef(tok.asWord().name) ?? tok;
   if (expected.equal(TWord)) return tok;
   const name = tok.asWord().name;
   if (registry) {
@@ -208,6 +213,11 @@ function resolveForwardToken(
   const t = typeNameTable().get(name);
   if (t !== undefined) return newTypeLiteral(t);
   return tok;
+}
+
+/** A word written `name/v`: a reference to the bound value, never a call. */
+export function isRefWord(v: Value): boolean {
+  return v.isWord() && true === v.asWord().forceVal;
 }
 
 function tryMatch(
@@ -251,7 +261,10 @@ function tryMatch(
     // signature_error. Coercing unconditionally — what this port did —
     // turned the `Any` case into an inert Atom and silently changed what
     // a /q handler receives.
-    if (sig.quoteArgs?.has(fwd) && rawTok.isWord()) {
+    //
+    // A `name/v` word is not a capture site at all: the reference is
+    // read first, so the slot is offered the bound value.
+    if (sig.quoteArgs?.has(fwd) && rawTok.isWord() && !isRefWord(rawTok)) {
       const expected = sig.args[fwd]!;
       if (!TAtom.matches(expected)) break;
       args[fwd] =

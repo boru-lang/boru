@@ -13,7 +13,7 @@ import type { RecorderOperand } from "./emit-recorder.ts";
 import { coerceBoolean } from "./coretype.ts";
 import { BoruError } from "./error.ts";
 import { valToString } from "./canon.ts";
-import { matchEntry, sigTypeMatches } from "./match.ts";
+import { isRefWord, matchEntry, sigTypeMatches } from "./match.ts";
 import type { Registry } from "./registry.ts";
 import { resolveWordsDeep } from "./resolve.ts";
 import { sugarExpansion } from "./sugar.ts";
@@ -124,6 +124,29 @@ interface FnMatch {
  */
 function callsAtPointer(v: Value): boolean {
   return v.vType.equal(TFunction) && v.isFnDef() && !v.quoted;
+}
+
+/**
+ * The order a function's overloads are tried in: the longer arity first,
+ * then — position by position — the more specific parameter type first.
+ * Stable, so overloads that compare equal keep the order they were bound
+ * in, newest definition first. Mirrors Go's SortSignatures
+ * (core/go/signature.go), which is what makes `def f fn [[n:Any] …]`
+ * stacked over `def f fn [[n:Integer] …]` still answer an Integer with
+ * the Integer overload.
+ */
+function moreSpecificFirst(
+  a: import("./value.ts").FnSig,
+  b: import("./value.ts").FnSig,
+): number {
+  if (a.params.length !== b.params.length) {
+    return b.params.length - a.params.length;
+  }
+  for (let i = 0; i < a.params.length; i++) {
+    const d = b.params[i]!.type.specificity() - a.params[i]!.type.specificity();
+    if (0 !== d) return d;
+  }
+  return 0;
 }
 
 const STEP_LIMIT = 22222;
@@ -242,6 +265,14 @@ export class Engine {
         continue;
       }
       if (val.isWord()) {
+        // `name/v` is read BEFORE any capture: the reference denotes the
+        // bound value whatever slot is waiting, so a `/q` name slot is
+        // handed that value and not the word — Go's stepWord takes its
+        // ForceVal arm ahead of hasPendingForwardQuoteArg.
+        if (isRefWord(val)) {
+          this.stepWordVal(val.asWord().name);
+          continue;
+        }
         // If a pending forward marker is waiting for a Word-typed
         // arg, capture this word as data instead of executing it.
         // Mirrors borueng/go/engine.go's hasPendingForwardExpectingWord
@@ -326,6 +357,39 @@ export class Engine {
   }
 
   /**
+   * Step a `name/v` word: the name resolves to the VALUE bound to it and
+   * is never called. For a function binding that suppresses the call —
+   * the function arrives as a value — and for any other binding it is the
+   * identity, so one spelling reads a name whose kind is not known. Only
+   * an unbound name declines. Mirrors Go's stepWordVal / deliverValRead
+   * and the `/v` arm of the Lean model's stepWord.
+   *
+   * The DELIVERY is what keeps the read inert. A reference is data: it
+   * arrives at a collection that is still waiting, like any literal, and
+   * otherwise it is placed and the pointer steps past it. In neither case
+   * is it stepped as a value at the pointer, where a function is a call.
+   */
+  private stepWordVal(name: string): void {
+    const v = this.registry.resolveRef(name);
+    if (v === undefined) {
+      if (this.registry.check.isActive()) {
+        // Lenient, as the bare-word path is: the diagnostic, then a
+        // placeholder the next step collects or passes.
+        this.undefinedWordPlaceholder(name);
+        return;
+      }
+      throw new BoruError("undefined_word", `undefined word: ${name}`, name);
+    }
+    this.stack[this.pointer] = v;
+    const fwdIdx = this.findPendingMarker();
+    if (fwdIdx >= 0) {
+      this.collectArrival(fwdIdx);
+      return;
+    }
+    this.pointer++;
+  }
+
+  /**
    * Check mode's stand-in for a name nothing binds: the diagnostic, and an
    * Any carrier in the word's cell so analysis continues past it. The
    * pointer is left on the placeholder — it must go through the literal
@@ -391,10 +455,18 @@ export class Engine {
       // Resolving a def is a "use" for check-mode unused-def tracking.
       this.registry.check.recordUse(name);
       if (top.isFnDef()) {
-        if (this.registry.check.isActive()) {
-          this.dispatchFnDefCheck(name, top.asFnDef());
+        // The function the NAME dispatches as: every function bound under
+        // it, so a name defined twice has the overloads of both.
+        const info = this.registry.fnBinding(name)!;
+        if (info.native !== undefined) {
+          // A name bound to a NATIVE word's function value — a parameter
+          // handed `negq/v` — calls that word: a bare name bound to a
+          // function CALLS, whichever kind of function it is.
+          this.dispatchEntry(name, info.native);
+        } else if (this.registry.check.isActive()) {
+          this.dispatchFnDefCheck(name, info);
         } else {
-          this.dispatchFnDef(name, top.asFnDef());
+          this.dispatchFnDef(name, info);
         }
         return;
       }
@@ -440,8 +512,21 @@ export class Engine {
    * Dispatch the word at the pointer through a registered word's
    * signature table: the statement boundary, the forward window's paren
    * groups, the match, and then a parked forward or an immediate run.
+   * `name` is what the word is CALLED here — the registered name, or the
+   * name a function value of it is bound under.
+   *
+   * `asValue` is the same dispatch for the word's function VALUE standing
+   * at the pointer, and it differs in the one place a value must: what a
+   * miss means. A word that matches nothing is a failed call. A value that
+   * matches nothing may simply be data (fnValueUnmatched), and it never
+   * takes a FALLBACK signature — the catch-all exists to turn a bare
+   * word's miss into a clean error, which is not what a value at rest is.
    */
-  private dispatchEntry(name: string, fn: FunctionEntry): void {
+  private dispatchEntry(
+    name: string,
+    fn: FunctionEntry,
+    asValue = false,
+  ): void {
     // STATEMENT BOUNDARY. Every bare function word beginning its own
     // dispatch is a forward-collection barrier — uniformly, regardless of
     // arity (REFERENCE.md:364, design/STRICT-FORWARD-BARRIER.0.md). A
@@ -461,8 +546,13 @@ export class Engine {
     // function's largest forward-eligible arg count across all sigs.
     this.preEvalParens(fn.maxForwardArgs, fn.signatures);
 
-    const result = matchEntry(fn, this.stack, this.pointer, this.registry);
+    const matched = matchEntry(fn, this.stack, this.pointer, this.registry);
+    const result = asValue && true === matched?.sig.fallback ? null : matched;
     if (!result) {
+      if (asValue) {
+        this.fnValueUnmatched(name);
+        return;
+      }
       // Check mode: a missing signature is a soft diagnostic, not a hard
       // error. Assume a best-fit candidate, synthesise its carrier
       // returns, and splice them over the word + adjacent operands.
@@ -690,6 +780,10 @@ export class Engine {
     for (let i = 0; i < forwardCount; i++) {
       const a = args[i]!;
       if (!a.isWord()) continue;
+      // A `name/v` word still standing here names NOTHING — a bound one
+      // was resolved to its value by the forward scan. It defers at every
+      // slot, a name-taking one included, so stepping it reports the name.
+      if (isRefWord(a)) return true;
       const expected = sig.args[i]!;
       // TWord/TAtom slots: the matcher kept the Word as data on
       // purpose; never defer here even if the name happens to match
@@ -990,7 +1084,11 @@ export class Engine {
             (s.quoteArgs?.has(resolved) ?? false) &&
             resolved < (s.barrierPos ?? 0),
         );
-      if (this.registry.lookup(name) && !capturedByViable) break;
+      //
+      // A `name/v` word is never the boundary: it is a reference to the
+      // function, an ordinary position, and the scan walks past it.
+      if (this.registry.lookup(name) && !capturedByViable && !isRefWord(tok))
+        break;
       resolved++;
       scanIdx++;
     }
@@ -1066,9 +1164,7 @@ export class Engine {
     info: FnDefInfo,
     reduce: boolean,
   ): FnMatch | null {
-    const ordered = [...info.sigs].sort(
-      (a, b) => b.params.length - a.params.length,
-    );
+    const ordered = [...info.sigs].sort(moreSpecificFirst);
     for (const fsig of ordered) {
       const total = fsig.params.length;
       const required = reduce
@@ -1128,7 +1224,7 @@ export class Engine {
     if (at < 0) return m;
     const word = result.args[at]!;
     const wname = word.asWord().name;
-    const kind = this.wordKind(wname);
+    const kind = isRefWord(word) ? "undefined" : this.wordKind(wname);
     if ("value" === kind) return m;
     if ("undefined" === kind) {
       throw new BoruError("undefined_word", `undefined word: ${wname}`, wname);
@@ -1534,6 +1630,10 @@ export class Engine {
     if (next !== undefined && next.vType.equal(TDispatchMod)) {
       this.stack.splice(this.pointer + 1, 1);
       this.pointer++;
+      return;
+    }
+    if (info.native !== undefined) {
+      this.dispatchEntry(val.fnName ?? info.native.name, info.native, true);
       return;
     }
     // A function reached through a NAME is the function its word calls,

@@ -138,6 +138,15 @@ export interface FnSig {
  */
 export interface FnDefInfo {
   sigs: FnSig[];
+  /**
+   * A reference to a registered NATIVE word: the dispatch table the value
+   * calls through, exactly as its word would. `sigs` then holds the
+   * word's signatures as authored — parameter names and types, returns,
+   * no body — which is what the value renders as. Go has one table for
+   * both kinds of function; core/ts keeps natives in their own, so the
+   * value carries the entry.
+   */
+  native?: import("./registry.ts").FunctionEntry;
 }
 
 export class Value {

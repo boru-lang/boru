@@ -18,6 +18,13 @@ export type Handler = (
 export interface Signature {
   /** Argument types in sig order (sig[0] is the first arg the handler sees). */
   args: BoruType[];
+  /**
+   * Parameter names, parallel to `args`. Dispatch never reads them: they
+   * are what the word's function VALUE (`name/v`) renders its parameters
+   * as, the twin of Go's FnParam.Name. A position with no name renders
+   * with the empty name, as an unnamed Go parameter does.
+   */
+  argNames?: string[];
   handler: Handler;
   /**
    * Position of the boundary marker `|` in the sig (post-§1.4).
@@ -132,6 +139,8 @@ export function returnsIdentity(...mapping: number[]): ReturnsFunc {
 
 export interface NativeSig {
   args: BoruType[];
+  /** See Signature.argNames. */
+  argNames?: string[];
   /** See Signature.fullStack. */
   fullStack?: boolean;
   handler: Handler;

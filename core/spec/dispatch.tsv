@@ -531,16 +531,106 @@ run negq -9223372036854775808	-9223372036854775808	and the minimum is its own ne
 
 # --- `name/v`: the bound VALUE, never a call --------------------------------
 # A bare function word calls; `/v` is how the function is named as a value
-# (ADR-011). The value is collected by a waiting word like any literal and
-# is otherwise PLACED — the pointer steps past it. What happens to a placed
-# function afterwards is the ordinary rule for a function value: it is
-# called where something re-steps it. Most of this surface is in
-# divergent.tsv, because core/ts does not read the modifier at all.
-run ( negq/v 5 )	-5	a group holding a function value and an operand is re-stepped when it collapses, and the value is called there
-run ( 5 negq/v )	-5	with the operand beneath it, likewise
+# (ADR-011). For a function binding it suppresses the call, and for any
+# other binding it is the identity, so one spelling reads a name whose kind
+# is not known. A word's function value is its signatures as authored —
+# parameter names and types, declared returns — and no body.
+run tyq/v	fn [[t:Any][Any][]]	a word's function, as a value
+run depthq/v	fn [[][][]]	a word of no parameters and no declared returns
+run def inc fn( n Any Any [ n ] ) ; inc/v	fn [[n:Any][Any][n]]	a boru-bodied function likewise, body and all
 run def x 7 ; x/v	7	/v on a plain binding is the bound value
+run def x 5 ; negq x/v	-5	which fills a slot exactly as the bare name would
 run nosuchword/v	ERROR:undefined_word	/v on an unbound name is an error, not an atom
 run dupq x/v	ERROR:undefined_word	and the same inside a forward window
+run true/v	ERROR:undefined_word	a keyword is not a binding
+run Integer/v	ERROR:undefined_word	nor is a builtin type name
+
+# The reference is PLACED: the pointer steps past it, so nothing around it
+# is its argument — not even an argument that would fit.
+run tyq/v 'x'	fn [[t:Any][Any][]] 'x'	the 'x' after it is not an argument
+run 'x' tyq/v	'x' fn [[t:Any][Any][]]	nor is the one beneath
+run tyq/v Integer	fn [[t:Any][Any][]] Integer	even a type, which `tyq` would have taken
+run Integer tyq/v	Integer fn [[t:Any][Any][]]	from either side
+run tyq/v tyq/v	fn [[t:Any][Any][]] fn [[t:Any][Any][]]	two references are two values
+run 1 2 depthq/v	1 2 fn [[][][]]	the stack a bare `depthq` would have counted is untouched
+run def inc fn( n Any Any [ n ] ) ; inc/v 5	fn [[n:Any][Any][n]] 5	a boru-bodied function is placed the same way
+run tyq/sv Integer	fn [[t:Any][Any][]] Integer	the arity and the s/f modifiers written beside `v` are not read: a reference is a reference
+run Integer tyq/fv	Integer fn [[t:Any][Any][]]	whichever is written
+run tyq/2v	fn [[t:Any][Any][]]	an arity the word does not have included
+run [ tyq/v ]	[fn [[t:Any][Any][]]]	in a list literal
+run [ tyq/v Integer ]	[fn [[t:Any][Any][]] Integer]	where it is placed too
+run { a: tyq/v }	{a:fn [[t:Any][Any][]]}	as a map member
+run { a: [ tyq/v Integer ] }	{a:[fn [[t:Any][Any][]] Integer]}	and in a member's list
+
+# It is COLLECTED by a waiting word like any literal, and it is read before
+# any capture: a `/q` name slot is handed the value, not the name.
+run bothq 7 tyq/v	fn [[t:Any][Any][]]	collected: bothq hands back its second operand
+run bothq tyq/v 7	7	in the first slot as well
+run 7 bothq tyq/v	7	and beside an operand from the stack
+run bothq tyq/v tyq/v	fn [[t:Any][Any][]]	twice over
+run boomq tyq/v	ERROR:fixture_boom	it reaches the handler like any argument
+run boomq negq/v	ERROR:fixture_boom	whatever the function
+run bothq negq/v 1	1	and the word goes on collecting after it
+run tyq tyq/v	fn [[t:Any][Any][]]	a function is a type, so it fills a type-arg slot
+run addq 1 negq/v	ERROR:signature_error	but not an Integer one
+run qanyq tyq/v	fn [[t:Any][Any][]]	a /q slot is handed the VALUE: the reference is read before the name is captured
+run def x 5 ; qanyq x/v	5	for a plain binding too
+run def x 5 ; undef x/v ; x	ERROR:signature_error	so `undef x/v` is not `undef x` — a 5 is no name, and x stays bound
+run bothq __pa tyq/v 7	7	arriving at a collection that is already parked, it is collected like any value
+run bothq __pa 7 tyq/v	fn [[t:Any][Any][]]	in whichever slot is next
+
+# What RE-STEPS a placed function calls it, by the ordinary rule for a
+# function value: a group with a second survivor, a word's result.
+run ( negq/v 5 )	-5	a group holding a function value and an operand is re-stepped when it collapses, and the value is called there
+run ( 5 negq/v )	-5	with the operand beneath it, likewise
+run ( tyq/v ) Integer	fn [[t:Any][Any][]] Integer	alone in its group it is placed again (the paren re-step rule)
+run ( ( tyq/v ) Integer )	Integer	and called one paren out
+run dupq tyq/v	fn [[t:Any][Any][]]	two copies handed back: the first is called on the second, which is a type
+run ( addq/v 1 2 )	3	a two-argument word's value, both arguments after it
+run ( 1 addq/v 2 )	3	split across it
+run ( 1 2 addq/v )	3	or both beneath
+run ( 1 negq/v ) 5	1 -5	LAST in its group, it is called on what follows the group, not on what it left behind it
+run ( 1 2 tyq/v ) Integer	1 2 Integer	whatever stands before it in the group
+run ( Integer tyq/v ) true	Integer true	though with nothing that fits after, it takes the value beneath
+run ( 1 2 sumq/v )	3	a stack-form word's value reads the stack
+run ( patq/v 7 )	1	and a pattern still narrows
+run dupq depthq/v	0 1	a full-stack word's value: each copy runs in turn over what is there
+run dupq __pa/v		and a word that leaves nothing leaves nothing
+run def inc fn( n Any Any [ n ] ) ; ( inc/v 5 )	5	a boru-bodied function's value, called in a group
+run def inc fn( n Any Any [ n ] ) ; ( inc/v 5 ) 6	5 6	and only on what is in the group
+
+# A value that is called and matches nothing is the failed call a function
+# value's always is: `uncalled_function`.
+run ( 'x' tyq/v )	ERROR:uncalled_function	a String is not a type
+run ( tyq/v 'x' )	ERROR:uncalled_function	from either side
+run bothq 7 tyq/v 2	ERROR:uncalled_function	handed back by a word and then met by an Integer
+run def x 5 ; ( tyq/v x )	ERROR:uncalled_function	a bound name is judged by its value
+run dupq negq/v	ERROR:uncalled_function	the second copy is no Integer
+run ( patq/v 8 )	ERROR:uncalled_function	the pattern refuses
+run ( sumq/v 1 2 )	ERROR:uncalled_function	a stack-form word's value does not read forward
+run ( 1 2 tyq/v ) true	ERROR:uncalled_function	a group's trailing function is called on what follows the group, and `true` is no type
+run ( 1 'a' negq/v ) true	ERROR:uncalled_function	nor an Integer — and the 'a' beneath is not one either
+run ( 1 2 tyq/v ) ; Integer	ERROR:uncalled_function	with `end` after the group there is nothing forward, and an Integer beneath is no type
+
+# A NAME bound to a function calls it — a parameter handed a reference is
+# a function binding like any other, whichever kind of function it holds.
+run def inc fn( n Any Any [ n 5 ] ) ; inc negq/v	-5	the body's `n` is negq, called on the 5
+run def inc fn( n Any Any [ 5 n ] ) ; inc negq/v	-5	from the stack as well
+run def inc fn( n Any Any [ n ] ) ; inc negq/v	ERROR:signature_error	and with nothing to call it on, the call fails as `negq` alone would
+run def inc fn( n Any Any [ n ] ) ; dupq inc/v	ERROR:signature_error	a boru-bodied one handed to itself: the inner `n` is called with nothing
+run fn( n Any Any [ n 5 ] ) negq/v	-5	the same through a function VALUE's call
+
+# A name defined TWICE dispatches through both definitions — by its word
+# and by its reference alike — the more specific overload first.
+run def f fn( n Integer Integer [ n ] ) ; def f fn( n String String [ n ] ) ; f 5	5	the older definition's overload is still the name's
+run def f fn( n Integer Integer [ n ] ) ; def f fn( n String String [ n ] ) ; f 'a'	'a'	beside the newer one's
+run def f fn( n Integer Integer [ n ] ) ; def f fn( n String String [ n ] ) ; f true	ERROR:signature_error	and what neither takes is a miss
+run def f fn( n Integer Integer [ n ] ) ; def f fn( n String String [ n ] ) ; ( f/v 5 )	5	the reference carries both
+run def f fn( n Integer Integer [ n ] ) ; def f fn( n String String [ n ] ) ; ( f/v 'a' )	'a'	in either order
+run def f fn( n Any Integer [ 1 ] ) ; def f fn( n Integer Integer [ 2 ] ) ; f 5	2	the more specific overload answers first
+run def f fn( n Integer Integer [ 1 ] ) ; def f fn( n Integer Integer [ 2 ] ) ; f 5	2	and of two alike, the newer
+run def f fn( n Integer Integer [ n ] ) ; def f 7 ; f	7	a VALUE bound over a function simply shadows it
+run def f fn( n Integer Integer [ n ] ) ; def f 7 ; f/v	7	for the reference too
 
 # --- a refused collection never re-plans itself (NUR388) --------------------
 # A function VALUE whose first forward argument is refused at arrival is
