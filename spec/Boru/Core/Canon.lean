@@ -80,7 +80,7 @@ def canon : Value → String
   | .parenExpr items => "(" ++ " ".intercalate (canonGroup items) ++ ")"
   | .disjunct alts => " tor ".intercalate (canonAlts alts)
   | .fn _ sigs => "fn [" ++ " ".intercalate (canonSigs sigs) ++ "]"
-  | .forward info => "__FW(" ++ info.funcName ++ ")"
+  | .forward info _ => "__FW(" ++ info.funcName ++ ")"
   | .defCleanup _ => "__DC"
   | .returnCheck _ => "__RC"
   -- a quoted LIST reads back through `quote`; on anything else the

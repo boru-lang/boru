@@ -120,7 +120,6 @@ list only by becoming **Resolved** (the record is then deleted) or
 | [NUR385](#nur385) | A disjunct is reduced to its canonical alternatives only when resolution rebuilt one of them: `d( 5 5 Integer )` stays as written, `d( [q 1 ] 5 5 Integer )` is deduplicated and ordered | the Lean core specification's differential search (2026-11-27) |
 | [NUR386](#nur386) | The kernel's `Unify` of two disjuncts answers their first matching alternative, not their meet (`tand` answers the disjunct); the empty disjunct unifies with neither itself nor `Never` | the Lean core specification, `Theorems/UnifyOrder.lean` (2026-11-27) |
 | [NUR387](#nur387) | An unmatched `(` inside a container literal takes the literal's sealing paren for its close: `[ negq ( ]` raises no_value_error and `[ negq ( 5 ]` syntax_error where `negq (` and `negq ( 5` raise signature_error | the Lean core specification's differential search (2026-11-27) |
-| [NUR388](#nur388) | A function VALUE whose parked collection is refused at arrival is re-planned in full and loops to the step limit — `( tyq/v 'x' )` is evaluation_limit — where the same function called as a word is a signature_error | the Lean core specification's differential search (2026-11-27) |
 
 Pending records normally use a compact form (rule / divergence /
 evidence / documentation status, plus a proposed verdict where one is
@@ -1625,41 +1624,5 @@ reproduces all four (`spec/Boru/Core/Engine.lean` `runSealed`).
 with the region's open (a `LoopOpenInfo` close matched by identity, not by
 nearest open paren), so an unmatched `(` in a literal is the scan boundary
 it is at the top level.
-
----
-
-## NUR388 — a function value refused at arrival is re-planned forever {#nur388}
-
-**Status:** Pending · **Recorded:** 2026-11-27 · measured on core/go through `scripts/core-probe.sh` · loud, but as the wrong error and only at the step limit
-
-**Rule:** arity and origin never change function behaviour (ADR-016): a
-function called through its word and the same function called as a value
-answer the same. And a plan never claims what the arrival will decline
-(core/go/collect_kernel.go, the type-literal guard's own comment).
-
-**Divergence:** two things meet. The per-candidate scan admits a forward
-literal when `SigArgMatches(...) || expectedType.Equal(TAny)`, so a
-TYPE-ARG slot declared `Any` is planned over a concrete value that the
-arrival decision (`CollectArrival`, `SigArgMatches` alone) then declines.
-For a WORD that refusal ends in a stack-only re-dispatch and a
-signature_error. For a function VALUE `curryOrStack` only moves the pointer
-back onto the value — "a value callee re-steps and re-plans in full" — so
-it plans the same forward, is refused the same way, and never leaves:
-
-```
-run tyq 'x'                 ERROR:signature_error      the word
-run tyq/v 'x'               fn [[t:Any][Any][]] 'x'    the value, placed
-run ( tyq/v 'x' )           ERROR:evaluation_limit     the value, re-stepped by the collapsing group
-run bothq 7 tyq/v 2         ERROR:evaluation_limit     the value, re-stepped as bothq's result
-```
-
-The Lean specification reproduces the loop — it has the same two rules —
-and runs out of fuel on the same programs (`spec/Boru/Core/Match.lean`
-`scanAdmits`, `spec/Boru/Core/Engine.lean` `curryOrStack`).
-
-**Proposed verdict:** resolve by fix, on both halves — the scan's `Any`
-escape should not apply to a type-arg slot, and a value callee whose
-collection was refused should be sealed to the stack for its re-step, as a
-completed one already is.
 
 ---

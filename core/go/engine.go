@@ -3903,6 +3903,7 @@ func (e *Engine) stepLiteral() error {
 		}
 		return e.implicitEnd(fwdIdx)
 	case ArrivalImplicitEnd:
+		e.sealRefusedValueCallee(fwd)
 		return e.implicitEnd(fwdIdx)
 	}
 	// Remove the value from its current position.
@@ -6827,6 +6828,24 @@ func FnValueOnlyZeroArgSigs(fd *FnDefInfo) bool {
 }
 
 // implicitEnd resolves a forward early when a type mismatch occurs.
+// sealRefusedValueCallee arms the one-shot stack seal for a VALUE callee
+// whose FIRST forward argument was refused at arrival. curryOrStack
+// re-dispatches a refused WORD stack-only, but only moves the pointer back
+// onto a value callee, which "re-steps and re-plans in full" so a wider or
+// narrower overload can still take the window. With nothing collected the
+// tape is exactly as it was when the refused plan was made, so the full
+// re-plan is the same plan, refused the same way, forever — `( tyq/v x )`
+// with x bound to a non-type ran to the step limit (NUR388). Sealed, the
+// re-step reads the stack only, as the word twin's does: an overload fires
+// over the stack or the call is refused. A callee that HAS collected
+// something sees a different tape on its re-plan and is left to it.
+func (e *Engine) sealRefusedValueCallee(fwd ForwardInfo) {
+	funcIdx := fwd.FuncIndex
+	if fwd.CollectedArgs == 0 && funcIdx < e.Tape.Len() && !IsWord(e.Tape.Ref(funcIdx)) {
+		e.sealFnValue, e.sealFnValueIdx = true, funcIdx
+	}
+}
+
 func (e *Engine) implicitEnd(fwdIdx int) error {
 	fwd, _ := AsForward(e.Tape.Ref(fwdIdx))
 	funcIdx := fwd.FuncIndex
