@@ -430,3 +430,11 @@ run addq/0 1 2	ERROR:signature_error	including zero
 run dupq/1 5	5 5	/N on a multi-return word counts ARGUMENTS, not results
 run 1 2 addq/2s	3	arity and stack form together
 run addq/2f 1 2	3	arity and forward form together
+
+# --- a function VALUE in the program ---------------------------------------
+# One Function type (ADR-011): a function value standing where the pointer
+# reaches it is a CALL, planned exactly as its word would be. Most of this
+# surface is in divergent.tsv — core/ts leaves the value as data — and
+# these are the rows the two engines share: the value collected as an
+# argument, and the notation's own limit.
+run boomq fn( n Integer Any [ n ] )	ERROR:fixture_boom	a function value fills an Any slot like any other value

@@ -98,6 +98,11 @@ def gen_program(rng, max_len):
         if rng.random() < 0.8:
             toks += ["inc"]
     items = [gen_item(rng, 2) for _ in range(rng.randint(1, max_len))]
+    # a function VALUE standing in the program: it dispatches where it stands
+    if rng.random() < 0.08:
+        body = rng.choice(["[ addq n 1 ]", "[ n ]", "[ negq n ]", "[ n n ]", "[ ]", "[ dupq n ]"])
+        fnv = ["fn(", "n", rng.choice(["Integer", "Any"]), rng.choice(["Integer", "Any"])] + body.split() + [")"]
+        items.insert(rng.randint(0, len(items)), fnv)
     # mostly keep the top-level paren MARKERS balanced: they are the
     # interesting shape. A `)` inside a bracket form is that form's own
     # closer and is never touched.

@@ -56,6 +56,10 @@ structure Engine where
   /-- This tape is a SEALED REGION: cell 0 is the region's own open
       paren, and its matching close ends the run. -/
   sealed : Bool := false
+  /-- A one-shot seal: the function VALUE at this index has just had its
+      forward arguments collected, so its re-step reads the stack only —
+      the value twin of rewriting a word to `/s`. -/
+  sealAt : Option Nat := none
 
 /-! ## Tape edits -/
 
@@ -115,13 +119,20 @@ def openBefore (tape : List Value) : Nat → Option Nat
     | some .openParen => some i
     | _ => openBefore tape i
 
+/-- The overloads a parked forward is collecting for: those of the
+    function VALUE standing at its index, or of the word there. -/
+def forwardSigs? (tape : List Value) (defs : Defs) (f : ForwardInfo) : Option (List Sig) :=
+  match tape[f.funcIndex]? with
+  | some (.fn _ sigs) => some sigs
+  | _ => defs.lookup? f.funcName
+
 /-- Is a parked forward's NEXT slot a name-capturing (`/q`) one. -/
 def pendingQuoteSlot (tape : List Value) (defs : Defs) (ptr : Nat) : Bool :=
   match pendingForwardIdx tape ptr with
   | some i =>
     match tape[i]? with
     | some (.forward f) =>
-      ((defs.lookup? f.funcName).bind (·[f.sigIdx]?)).any fun s =>
+      ((forwardSigs? tape defs f).bind (·[f.sigIdx]?)).any fun s =>
         f.collected < s.arity && s.isQuote f.collected
     | _ => false
   | none => false
@@ -396,9 +407,9 @@ def groupLoop (nat : Natives) : Nat → Engine → Nat → Except BoruError Engi
 /-- Step a value that is not a word: it is collected by the nearest
     parked forward if it fits that forward's next slot, and closes the
     collection if it does not; with nothing parked it is simply resolved. -/
-def stepLiteral (_nat : Natives) : Nat → Engine → Except BoruError Engine
+def stepLiteral (nat : Natives) : Nat → Engine → Except BoruError Engine
   | 0, _ => Engine.outOfFuel
-  | _ + 1, e =>
+  | fuel + 1, e =>
     let valIdx := e.ptr
     match e.tok? valIdx with
     | none => pure e
@@ -410,12 +421,18 @@ def stepLiteral (_nat : Natives) : Nat → Engine → Except BoruError Engine
       | none =>
         match val with
         | .dispatchMod _ => pure { e with tape := removeAt e.tape valIdx }
-        | .fn _ _ => Engine.err "unmodelled" "a function value stepped as a literal"
+        | .fn name sigs =>
+          -- a function value at the pointer is a CALL, unless a `/v` or
+          -- `/q` marker right after it says it is data
+          match e.tok? (valIdx + 1) with
+          | some (.dispatchMod _) =>
+            pure { e with tape := removeAt e.tape (valIdx + 1), ptr := valIdx + 1, sealAt := none }
+          | _ => dispatchFnValue nat fuel e name sigs
         | _ => pure { e with ptr := e.ptr + 1 }
       | some fwdIdx =>
         match e.tok? fwdIdx with
         | some (.forward f) =>
-          match (e.defs.lookup? f.funcName).bind (·[f.sigIdx]?) with
+          match (forwardSigs? e.tape e.defs f).bind (·[f.sigIdx]?) with
           | none => Engine.err "internal_error" "a parked forward names no signature"
           | some s =>
             let next := f.collected
@@ -445,12 +462,59 @@ def stepLiteral (_nat : Natives) : Nat → Engine → Except BoruError Engine
                 -- complete: drop the marker and re-dispatch stack-only
                 let tape := removeAt tape fwdIdx
                 let funcIdx := if fwdIdx < funcIdx then funcIdx - 1 else funcIdx
+                -- a word is rewritten to `/s`; a function value is sealed
+                let sealAt := match tape[funcIdx]? with
+                  | some (.fn _ _) => some funcIdx
+                  | _ => none
                 let tape := forceStackWord tape funcIdx
-                pure { e with tape := rearrangeForForward tape funcIdx f.stackArgs collected, ptr := funcIdx }
+                pure { e with tape := rearrangeForForward tape funcIdx f.stackArgs collected,
+                              ptr := funcIdx, sealAt := sealAt }
               else
                 let f' := { f with collected := collected, funcIndex := funcIdx }
                 pure { e with tape := setAt tape fwdIdx (.forward f'), ptr := fwdIdx + 1 }
         | _ => Engine.err "internal_error" "pending forward index is not a forward"
+
+/-- A function VALUE at the pointer dispatches as its word would: the
+    plan walk, the plan, then a parked forward or an immediate run. With no
+    match, a named function that has anything to be called on is an
+    `uncalled_function` error; with nothing at all around it, it is data. -/
+def dispatchFnValue (nat : Natives) : Nat → Engine → String → List Sig → Except BoruError Engine
+  | 0, _, _, _ => Engine.outOfFuel
+  | fuel + 1, e, name, sigs => do
+    let sealed := e.sealAt == some e.ptr
+    let e := { e with sealAt := none }
+    let w : WordInfo := { name := name, forceStack := sealed }
+    let e ←
+      if hasForwardSigs sigs && !w.forceStack then collectForward nat fuel e sigs w else pure e
+    let resolved := effectiveResolved e.tape e.ptr
+    let inside := (pendingForwardIdx e.tape e.ptr).isSome
+    let plan :=
+      match planMatch e.tape e.defs sigs w resolved e.ptr inside with
+      | some p => some p
+      | none =>
+        if hasForwardSigs sigs && !w.forceStack then
+          planMatch e.tape e.defs sigs { w with forceStack := true } resolved e.ptr inside
+        else none
+    match plan with
+    | none =>
+      -- what follows, up to a boundary, could have been its arguments
+      let upcoming := ((e.tape.drop (e.ptr + 1)).filter (!·.isForward)).takeWhile
+        (fun v => !(v.isCloseParen || v.isEnd))
+      if !resolved.isEmpty || !upcoming.isEmpty then
+        Engine.err "uncalled_function" ("call to '" ++ name ++ "' matched no signature")
+      else pure { e with ptr := e.ptr + 1 }
+    | some p =>
+      let fwdCount := (p.positions.filter (· > e.ptr)).length
+      let stkCount := p.positions.length - fwdCount
+      if fwdCount > 0 then
+        let fwd : ForwardInfo :=
+          { funcName := name, sigIdx := p.sigIdx, expected := fwdCount,
+            stackArgs := stkCount, funcIndex := e.ptr }
+        pure { e with tape := insertAt e.tape (e.ptr + 1) (.forward fwd), ptr := e.ptr + 2 }
+      else
+        match sigs[p.sigIdx]? with
+        | some s => execMatch nat fuel e name s p.positions
+        | none => Engine.err "internal_error" "plan names no signature"
 
 /-- `end` closes the nearest parked collection in its paren scope; with
     none parked it is simply dropped. -/
@@ -509,7 +573,15 @@ def stepCloseParen (nat : Natives) : Nat → Engine → Except BoruError Engine
         match findCloseAfter e.tape openIdx with
         | none => Engine.err "syntax_error" "unmatched closing parenthesis"
         | some closeIdx =>
-          pure { e with tape := removeAt (removeAt e.tape closeIdx) openIdx, ptr := openIdx }
+          let tape := removeAt (removeAt e.tape closeIdx) openIdx
+          -- THE PAREN RE-STEP RULE: a group that collapses to ONE value,
+          -- a function, PLACES it — the pointer steps past, and it is
+          -- not called on what stands outside the group
+          let park :=
+            if closeIdx == openIdx + 2 then
+              (match tape[openIdx]? with | some (.fn _ _) => 1 | _ => 0)
+            else 0
+          pure { e with tape := tape, ptr := openIdx + park }
 
 /-- Resolve every collection still parked inside the group at `openIdx`,
     stepping what each resolution leaves before the close. -/

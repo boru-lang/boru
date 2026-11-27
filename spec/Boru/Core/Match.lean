@@ -81,12 +81,13 @@ def hasForwardSigs (sigs : List Sig) : Bool := sigs.any (·.barrier > 0)
 
 /-! ## Slot admission -/
 
-/-- A TYPE-ARG slot admits a type — a bare node or a structural type body
-    — and declines every concrete value. -/
+/-- A TYPE-ARG slot admits a type — a bare node or a structural type body,
+    a function value among them (a function is its own shape) — and
+    declines every concrete value. -/
 def sigTypeMatchesAsType (v : Value) (t : TypeId) : Bool :=
   match v.unquote with
   | .typeLit n => conforms n t
-  | .typedList _ _ | .typedMap _ _ | .disjunct _ => conforms v.typeOf t
+  | .typedList _ _ | .typedMap _ _ | .disjunct _ | .fn _ _ => conforms v.typeOf t
   | _ => false
 
 /-- Does `v` fit slot `i` of `s` by type. -/
