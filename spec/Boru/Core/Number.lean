@@ -24,6 +24,14 @@ def zeros (n : Nat) : String := String.ofList (List.replicate n '0')
 
 /-! ## BigDecimal -/
 
+/-- An Integer is a signed 64-bit integer: arithmetic that leaves the
+    range WRAPS. (core/go holds one in an `int64`; the words that add
+    Integers check the range themselves, and what does not — a counted
+    loop's own index — wraps.) -/
+def wrapInt64 (n : Int) : Int :=
+  let m := n % (2 ^ 64 : Int)
+  if m ≥ (2 ^ 63 : Int) then m - (2 ^ 64 : Int) else m
+
 /-- An arbitrary-precision decimal: `(-1)^neg · coeff · 10^exp`. The
     exponent and the sign of zero are part of the IDENTITY, not noise:
     `0.00`, `0` and `-0.0` are three different values. -/

@@ -22,8 +22,11 @@ src_file="${1:?usage: core-probe.sh <file-of-expressions>}"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
+# A line the notation cannot read fails the probe's run but not its output:
+# that line answers NOTATION and the rest are evaluated. Only a run that
+# wrote nothing is a failure of the probe itself.
 ( cd "$repo/core/go" && CORE_PROBE_IN="$src_file" CORE_PROBE_OUT="$tmp/go.txt" \
-    go test -run TestCoreProbe -count=1 >/dev/null 2>&1 ) || {
+    go test -run TestCoreProbe -count=1 >/dev/null 2>&1 ) || [ -s "$tmp/go.txt" ] || {
   echo "go probe failed (is TestCoreProbe present?)" >&2; exit 1; }
 
 ( cd "$repo/core/ts" && node --experimental-strip-types --no-warnings \

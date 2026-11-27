@@ -7518,11 +7518,13 @@ func (e *Engine) stepMoveWhile(markIdx, moveIdx int, info MoveInfo) error {
 		return nil
 	}
 
-	var condResult Value
-	for j := markIdx + 1; j < moveIdx; j++ {
-		condResult = e.Tape.At(j)
-	}
-	if condResult.Parent() == nil {
+	// The condition region's LAST value decides; a region that left none
+	// is the error. "None" is read off the region, not off the value: a
+	// root type literal — `Any`, `None`, `Never` — has no lattice parent,
+	// and testing the value's Parent for nil took it for no value at all
+	// (NUR399).
+	condResult, produced := regionLast(e.Tape, markIdx, moveIdx)
+	if !produced {
 		delete(e.marks, info.To)
 		e.Tape.Splice(markIdx, moveIdx-markIdx+1)
 		e.Pointer = markIdx
@@ -7553,6 +7555,15 @@ func (e *Engine) stepMoveWhile(markIdx, moveIdx int, info MoveInfo) error {
 	return nil
 }
 
+// regionLast is the last value a condition region left between its mark
+// and its move, and whether it left any.
+func regionLast(t *Tape, markIdx, moveIdx int) (Value, bool) {
+	if moveIdx <= markIdx+1 {
+		return Value{}, false
+	}
+	return t.At(moveIdx - 1), true
+}
+
 // spliceWhileRegion replaces the current mark..move span with a fresh
 // mark + region + move triple (stepMoveCont's re-mark, the region copied
 // once, straight onto the tape) and points the engine at the new mark.
@@ -7578,11 +7589,9 @@ func (e *Engine) spliceWhileRegion(markIdx, moveIdx int, info MoveInfo, region [
 func (e *Engine) stepMoveIf(markIdx, moveIdx int, info MoveInfo) error {
 	ifCont := info.IfCont
 
-	// Collect condition results between mark and move.
-	var condResult Value
-	for j := markIdx + 1; j < moveIdx; j++ {
-		condResult = e.Tape.At(j)
-	}
+	// The condition region's last value, and whether it left one at all
+	// (regionLast: read off the region, never off the value's Parent).
+	condResult, produced := regionLast(e.Tape, markIdx, moveIdx)
 
 	// Remove mark from hash table.
 	delete(e.marks, info.To)
@@ -7590,7 +7599,7 @@ func (e *Engine) stepMoveIf(markIdx, moveIdx int, info MoveInfo) error {
 	// Check if condition produced a value. The error is the `if`'s, at the
 	// position its move carries — read before the splice removes it, which
 	// otherwise left whatever token followed the if (or none) at the pointer.
-	if condResult.Parent() == nil {
+	if !produced {
 		movePos := e.Tape.Ref(moveIdx).Pos()
 		e.Tape.Splice(markIdx, moveIdx-markIdx+1)
 		e.Pointer = markIdx

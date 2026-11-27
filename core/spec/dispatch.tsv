@@ -1092,3 +1092,12 @@ run def ov fn( a Any b Scalar Any [ 1 ] ) ; null [q ] ov/s 5	1 5
 run def ov fn( a Any b Scalar Any [ 1 ] ) ; null 4 ov 5	null/q 1
 run def ov fn( a Any b Scalar Any [ 1 ] ) ; null [q ] ov/u 5	null/q 1
 run def w fn( f Any Any [ null [q ] f 5 ] ) ; w fn( a Any b Scalar Any [ 1 ] )	ERROR:signature_error
+
+# --- a word is not planned again once its collection completes ------------------
+# `ov` has collected the one argument its narrower definition takes. A WORD is
+# then rewritten to `/s` and fires over what it holds, whatever follows it. (A
+# function standing as a VALUE may be planned again when a wider overload
+# could take what follows — arity widening, which core/ts does not have; the
+# rows are in `divergent.tsv`, with the case where it misfires, NUR401.)
+run def ov fn( a Integer b String Any [ 2 ] ) ; def ov fn( a Integer Any [ 1 ] ) ; ov 5 6	1 6	the word takes the 5 and leaves the 6
+run def ov fn( a Integer b String Any [ 2 ] ) ; def ov fn( a Integer Any [ 1 ] ) ; ov 5 'x'	2	and takes both when the wider definition fills at once

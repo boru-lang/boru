@@ -62,6 +62,25 @@ name on purpose: `afn n [q body… ]` builds an anonymous one-parameter
 function at run time, which is where closure capture happens, and the
 kernel's frame analysis recognises a function-building body by that name.)
 
+### The looping words
+
+Three kinds of loop reach the tape, and each has a fixture word over the
+kernel's own mechanism — the words that build a loop's tokens are basic's,
+the continuation and its stepping are core's:
+
+| word | the loop |
+|---|---|
+| `eachq xs [q body ]` | DRIVEN: a sealed region per element, the element its one inert input; everything a region leaves goes into the one list the loop answers |
+| `forq n [q body ]` | COUNTED: the body for `i` = 0 … n-1, the index bound as `i` |
+| `rangeq start end step [q body ]` | COUNTED over any range: the bound is exclusive; a zero step is `ERROR:fixture_zero_step` |
+| `whileq [q cond ] [q body ]` | CONDITIONAL: a condition region and a body region in turn; the condition's last value decides |
+
+A counted or conditional round is `mark body… move` with no paren around
+it: the body runs on the stack the loop's word stood on, and the loop's
+values are stepped where it stood. A row that needs a condition to CHANGE
+binds one name several times — `def c false ; def c true ;` — and has the
+body pop it with `undef c`.
+
 ### The unifier's two words
 
 Unification has no client in a bare core registry (`is`, `case` and typed
@@ -142,11 +161,16 @@ than silently re-baselined. Each runner also **fails a row whose `go` and
 belongs in, or this stops being an honest debt list. Shrink-only, exactly as
 `parser/spec/divergent.tsv` is.
 
-It holds **84 rows**. 61 are a mechanism `core/ts` does not have at all:
-closures (26 rows, the `afn` fixture) and driven loops (35 rows, the
+It holds **161 rows**. 138 are a mechanism `core/ts` does not have at
+all: closures (26 rows, the `afn` fixture); driven loops (35 rows, the
 `eachq` fixture — eight of them the same loop out of a group and inside one
 a waiting word evaluates, where the kernel once stepped the loop's inert
-inputs). One is a recorded kernel defect pinned as the kernel has
+inputs); counted and conditional loops (73 rows, the `forq`, `rangeq` and
+`whileq` fixtures — six of them NUR400, a full-stack word ending a counted
+loop, and five the index at the edge of the Integer range, two of those
+NUR402, all pinned as the kernel has it); and the arity widening of a value call
+(4 rows, two of them NUR401, pinned as the kernel has it). One is a
+recorded kernel defect pinned as the kernel has
 it — NUR392, an unmatched `(` in a function's body — where `core/ts`
 refuses what Go lets through. The other 22 are what a Go-against-TS search
 of the fixture words, and the review of the port, found once the engine

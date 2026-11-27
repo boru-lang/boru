@@ -31,6 +31,9 @@ theorem, or by the differential search.
 | Closures: a function built at run time captures what the enclosing call frame bound — the frame baseline (none in a leaf frame), the capture rule (bound, deeper than the baseline, not a parameter or a body-local), captures installed beneath the parameters and removed with them, capture through nested closures | `fn_capture.go` `ComputeCaptures`, `bodyNeedsFrameState`, `registry.go` `PushFnBaseline`, `engine.go` `execFnDefSig` | `Engine.lean` `computeCaptures`, `bodyNeedsFrameState`, `execMatch`; `Match.lean` `Defs.pushBaseline` | `Theorems/Closure.lean`; `divergent.tsv` (Go column); search |
 | An ANONYMOUS function at the pointer: called when something it can take stands beside it, otherwise a value — never `uncalled_function` | `engine.go` `execFnDefLiteral` | `Engine.lean` `dispatchFnValue` | `divergent.tsv` (Go column); search |
 | Driven loops: a looping word hands the engine a driver; each iteration is a sealed region of its own — the driver's inputs, inert, then the body — whose residual goes to the driver and is never stepped again; the driver's results stand in the loop's place | `loop.go` `LoopDriver`, `StartLoop`, `stepMoveDriven`, `spliceDrivenIteration` | `Engine.lean` `Driver`, `driveLoop`, `runRegion` | `Theorems/Loop.lean`; `divergent.tsv` (Go column); search |
+| Counted and conditional loops: a round is `mark body… move` with no paren, so the body runs on the caller's stack; the move keeps what the round left (a pending container evaluated there, the round's bindings live), rebinds the index and replays the body under a new mark, or puts every round's values where the loop stood — stepped from there; the index's scope (the levels a round bound above it end with the round, the index with the loop); a condition region's LAST value decides, and none is an error; a move whose mark is gone is dropped | `engine.go` `stepMark`, `stepMove`, `stepMoveCont`, `stepMoveWhile`, `collectLoopRegion`, `popIterLevels`; `value.go` `Loop` | `Value.lean` `mark`, `move`, `Loop`; `Engine.lean` `stepMove`, `collectRegion`; `Match.lean` `Defs.popTo`, `Defs.freshMark` | `Theorems/Counted.lean`; `divergent.tsv` (Go column); search |
+| The one truthiness rule: presence, not content | `core_helpers.go` `CoerceBoolean` | `Truth.lean` `coerceBoolean` | `Theorems/Counted.lean` (`truth_is_presence`, `runs_while_true`); `divergent.tsv` (Go column); search |
+| Arity widening of a value call: a function value whose collection has completed is sealed to the stack unless a wider overload could take the next token in a position it collects forward — then it is planned again in full (and NUR401, as the kernel has it: planned again though the wider overload does not fill) | `engine.go` `fnValueWouldWiden`, `forwardClaimProbe` | `Engine.lean` `wouldWiden`, `stepLiteral` | `divergent.tsv` (Go column); `dispatch.tsv` (the word beside it); search |
 | Function identity: a function is equal only to itself — in unification and in a disjunct's reduction — a reference carries the identity of the one function bound to its name, and a wrapper is a new function | `compare.go` `sameFnIdentity`, `registry.go` `aggregateIdent`, `value.go` `NewFunction` | `Value.lean` (`fn … ident`), `Compare.lean` `sameValue`, `Match.lean` `Defs.refIdent` | `Theorems/UnifyOrder.lean` (`function_identity`); `unify.tsv`; `dispatch.tsv`; search |
 | The dispatch order: which of a name's several definitions a call takes — more arguments first, then the greater expectation at the first position that differs (a pattern before its family's bare type, a type before every type above it, a branch root before `Any`), then a piped barrier, then the newest definition; one order however the definitions were made, and the order a reference lists them in | `signature.go` `CompareSignatures`, `SortSignatures`, `registry.go` `aggregateDispatch` | `Match.lean` `Sig.order`, `Defs.insertSig`, `Defs.lookup?` | `Theorems/Overload.lean`; `dispatch.tsv`; search |
 | A failed plan: retried with every argument from the stack — for a native word, a function literal and a forced arity, and NOT for a word defined in boru, whose synthetic fallback answers it (NUR398, as the kernel has it) | `engine.go` `matchForDispatch`, `registry.go` `fnFallbackSig` | `Engine.lean` `answersItself`, `dispatchWord` | `dispatch.tsv`; `divergent.tsv` (Go column); search |
@@ -57,18 +60,19 @@ no expression in the `core/spec` notation, so specifying them means
 extending the notation and its fixture in all three runners first.
 
 **The step loop**
-- an applied mark, a function from another registry, arity widening of a
-  value call, unnamed parameters and the frame argument span, the args
-  stack, the truncation of a frame's body-local definitions, tail-call
-  frame elision, return patterns;
+- an applied mark, a function from another registry, unnamed parameters
+  and the frame argument span, the args stack, the truncation of a
+  frame's body-local definitions, tail-call frame elision, return
+  patterns;
 - the dispatch order's two inputs the fixture cannot reach: a pattern
   against a bare type across two overloads of one word, and `CoreDefault`
   (every fixture word has one signature, and `fn(` declares types only);
   and `Extends`;
-- the counted and conditional loops (`for`, `while`: a mark, a body, a
-  move, with no sealing paren), call regions, and flow control — break
-  and continue, which a driven loop lets through; a loop's own step
-  budget, its context layer, and the attribution of a body's fault;
+- flow control — break and continue, which a counted or conditional
+  loop takes and a driven loop, a group, a literal and a call frame let
+  through; the `if` continuation and the plain mark-and-move replay; call
+  regions; a loop's own step budget, its context layer, and the
+  attribution of a body's fault;
 - splice markers, sugar markers, reaches, interpolated strings, XML;
 - macros and the raw-capture slots (`FormArgs`, `RawParens`,
   `NoEvalArgs`);
