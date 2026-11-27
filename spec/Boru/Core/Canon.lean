@@ -143,6 +143,7 @@ def canonParams : List Param → List String
 
 def canonImpl : Impl → List String
   | .native _ => []
+  | .usurp _ _ => []
   | .boru body => canonSeq body
 
 end

@@ -119,46 +119,49 @@ func coreSpecToken(tok string) Value {
 		// still name a WORD called end.
 		return NewEnd()
 	}
-	// `name/N`, `name/s`, `name/f` and `name/Ns`, `name/Nf`: a word with
-	// call-site modifiers, as the parser would hand it over. A slash whose
-	// suffix is not a modifier (`Scalar/String`) leaves the token a plain
-	// word.
+	// A word with call-site modifiers, as the parser would hand it over, in
+	// their one written order: `name/` then an optional forced arity N, at
+	// most one of `s` (stack only) or `f` (forward only), `u` (the bound
+	// function with its argument order reversed) and `v` (the bound VALUE,
+	// never a call). A slash whose suffix is not a modifier
+	// (`Scalar/String`) leaves the token a plain word.
 	if i := strings.LastIndexByte(tok, '/'); i > 0 && i < len(tok)-1 {
-		// `name/v`: the bound VALUE, never a call.
-		if tok[i+1:] == "v" {
-			return NewWordRef(tok[:i])
-		}
-		if n, forceStack, forceForward, ok := coreSpecModifiers(tok[i+1:]); ok {
-			return NewWordModified(tok[:i], n, forceStack, forceForward)
+		if w, ok := coreSpecModifiers(tok[:i], tok[i+1:]); ok {
+			return NewValueRaw(TWord, w)
 		}
 	}
 	return NewWord(tok)
 }
 
-// coreSpecModifiers reads a modifier suffix: optional decimal digits (the
-// forced arity, -1 when absent) and then at most one of `s` (stack only)
-// or `f` (forward only).
-func coreSpecModifiers(mods string) (argCount int, forceStack, forceForward, ok bool) {
-	digits := strings.TrimRight(mods, "sf")
-	rest := mods[len(digits):]
-	argCount = -1
-	if digits != "" {
-		n, err := strconv.Atoi(digits)
-		if err != nil || n < 0 {
-			return 0, false, false, false
+// coreSpecModifiers reads a modifier suffix — digits, then `s` or `f`,
+// then `u`, then `v`, each optional but at least one present — into the
+// word it modifies.
+func coreSpecModifiers(name, mods string) (WordInfo, bool) {
+	w := WordInfo{Name: name, ArgCount: -1}
+	digits := 0
+	for digits < len(mods) && mods[digits] >= '0' && mods[digits] <= '9' {
+		digits++
+	}
+	if digits > 0 {
+		n, err := strconv.Atoi(mods[:digits])
+		if err != nil {
+			return WordInfo{}, false
 		}
-		argCount = n
+		w.ArgCount = n
 	}
-	switch rest {
-	case "":
-	case "s":
-		forceStack = true
-	case "f":
-		forceForward = true
-	default:
-		return 0, false, false, false
+	rest := mods[digits:]
+	if strings.HasPrefix(rest, "s") {
+		w.ForceStack, rest = true, rest[1:]
+	} else if strings.HasPrefix(rest, "f") {
+		w.ForceForward, rest = true, rest[1:]
 	}
-	return argCount, forceStack, forceForward, true
+	if strings.HasPrefix(rest, "u") {
+		w.ForceUsurp, rest = true, rest[1:]
+	}
+	if strings.HasPrefix(rest, "v") {
+		w.ForceVal, rest = true, rest[1:]
+	}
+	return w, rest == ""
 }
 
 func coreSpecFields(s string) []string {

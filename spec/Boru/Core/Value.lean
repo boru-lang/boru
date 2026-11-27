@@ -136,6 +136,10 @@ inductive Impl where
   | native (key : String)
   /-- A boru body: tokens spliced onto the tape in a call frame. -/
   | boru (body : List Value)
+  /-- A usurp wrapper (`/u`): re-dispatch `orig` — the function as it was
+      bound — with the collected arguments in reverse; `barrier` is the
+      barrier of the signature this one wraps. -/
+  | usurp (orig : Value) (barrier : Nat)
 
 /-- One overload: parameters in signature order, declared returns, the
     forward barrier, and the implementation. -/
