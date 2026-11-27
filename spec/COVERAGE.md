@@ -67,10 +67,15 @@ no expression in the `core/spec` notation, so specifying them means
 extending the notation and its fixture in all three runners first.
 
 **The step loop**
-- an applied mark, a function from another registry, return patterns, a
-  function of several declared returns (the `fn(` form declares one), an
-  OPTIONAL parameter and its default (expanded into overloads when the
-  function is made);
+- an applied mark, a function from another registry;
+- THE FUNCTION-SPEC READER — how a written specification becomes
+  signatures (`fn_params.go` `ParseFnParams`, `ParseFnReturns`,
+  `ResolveSigType`; `fn_def.go`): a declared type that is a PATTERN and
+  the type it is given, return patterns and their check, several declared
+  returns, the `|` barrier, `/q` and keyword parameters, and an OPTIONAL
+  parameter with its default (expanded into overloads when the function
+  is made, `ExpandOptionalSigs`). The `fn(` notation builds a signature
+  directly — names, bare types, one return — and reaches none of it;
 - the frame-state analysis beyond the names a body WRITES: a name bound to
   a binding word's value, a splice macro whose payload names one, a sugar
   marker that lowers to one (the notation builds a function before any
