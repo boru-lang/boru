@@ -9,6 +9,7 @@ import Boru.Core.Unify
 import Boru.Core.Match
 import Boru.Core.Truth
 import Boru.Core.Engine
+import Boru.Core.FnSpec
 import Boru.Core.Theorems.Lattice
 import Boru.Core.Theorems.ArgumentRule
 import Boru.Core.Theorems.UnifyOrder
@@ -21,3 +22,4 @@ import Boru.Core.Theorems.Branch
 import Boru.Core.Theorems.Frame
 import Boru.Core.Theorems.Locals
 import Boru.Core.Theorems.Tail
+import Boru.Core.Theorems.FnSpec

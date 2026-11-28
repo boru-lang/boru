@@ -43,6 +43,9 @@ theorem, or by the differential search.
 | The frame's close: the ENTRY SNAPSHOT — how many bindings every name holds once the frame has bound its captures and parameters — and the truncation to it, so what a body binds ends with the call and a binding it shadowed is read again; the close only unbinds (a name the body unbound stays unbound); then the args list, the baseline and ONE binding of each of the frame's names (NUR406, as the kernel has it: by count, so a body that unbound its parameter costs the caller a binding); a LEAF frame — one whose body names no binding word, nor a name bound to a binding word's function — records nothing and undoes nothing (NUR384, as the kernel has it); the question is asked when an INSTALLED function is made and at every call of a function VALUE; a signal that leaves the frame closes it the same way | `engine.go` `stepDefCleanup`, `truncateFrameDefs`; `fn_frame.go` `FrameTailSpec.Snapshot`, `unwindFrameTail`; `fn_capture.go` `frameStateWords`, `bodyNeedsFrameState`, `fnValueIsBindingWord`; `core_helpers.go` `buildFnBodyHandler` and `engine.go` `execFnDefSig` (when it is asked) | `Value.lean` `defCleanup`, `Impl.boru` (`frameState`); `Match.lean` `Defs.depths`, `truncateTo`; `Engine.lean` `popNames`, `execMatch`, `bodyNeedsFrameState`, `standsForBindingWord`; `Corespec/Notation.lean` `install` | `Theorems/Locals.lean`; `dispatch.tsv`; `divergent.tsv` (Go column); search |
 | The residual rule: the pending containers a body leaves are evaluated in its frame, before anything is unbound — unless the function is anonymous and its body is one bare token, whose container leaves the frame as written and is evaluated by what consumes it | `fn_frame.go` `ResidualEvalsInFrame`, `BodyEvalsResidual`; `engine.go` `stepDefCleanup` | `Value.lean` `Impl.boru` (`anonymous`), `defCleanup` (`evalResidual`); `Engine.lean` `bodyEvalsResidual`, `evalFrameResidual` | `Theorems/Locals.lean` (`the_residual_is_evaluated_first`, `an_anonymous_bare_container_is_deferred`); `dispatch.tsv`; `divergent.tsv` (Go column); search |
 | Tail calls: the specification NESTS every call, and a call that is the last thing a body does has no rule of its own. The kernel's elision — the caller's frame closed first, the callee's frame in its place — is an economy that must not change an answer; where it does is NUR407, and there the specification's answer is the nested one | `engine.go` `probeTailCall`, `tcoEligible`, `elideTailFrame`, `teardownFrameState`; `fn_frame_probe.go` | `Engine.lean` `execMatch` (no elision: the frame is always spliced inside the caller's) | `Theorems/Tail.lean`; core/go `TestCoreSpecTailCallsUnobservable` (every corpus row with elision off); `dispatch.tsv`; `divergent.tsv`; search |
+| The function-spec reader: a written list of triples — parameters, returns, a body — read into signatures. A parameter list element by element: `name:Type`, `name?:Type`, `name:Type/q`, the keyword `name:kw/q`, a bare type name or type, an Integer, Boolean or String the slot admits exactly, a map as an unnamed Map pattern, `|` the barrier, `?` the optional mark; a parameter name is a word's name. A declaration resolved to a type and, where it says more, a pattern (a scalar its family, a union `Any`, a list or map its family; a string that could never name a type the string, one shaped like a type name an error; a name bound to a bare type that type, and bound to any other type body `Any` with no pattern — NUR411, as the kernel has it; `none` nothing — NUR408, as the kernel has it). Returns: several by position, a named return its type, a part that is not a list the list of itself, and a typed list the list of its retained elements. The unnamed path takes fewer declarations than the named (NUR409, as the kernel has it) | `fn_def.go` `ParseFnDef`; `fn_params.go` `ParseFnParams`, `ParseFnReturns`, `ResolveSigType`, `unwrapNamedReturn`, `keywordParam`, `looksLikeTypeName`; `word_name.go` `ValidateWordName` | `FnSpec.lean` `parseTriples`, `parseParams`, `parseReturns`, `resolveSigType`, `boundType`, `validName` | `Theorems/FnSpec.lean`; `divergent.tsv` (Go column); search |
+| The return check's patterns: a returned value must be of the declared type and unify with the declared pattern | `engine.go` `validateReturnTypesIn`; `value.go` `ReturnCheckInfo.ReturnPatterns` | `Value.lean` `Impl.boru` (`returnPatterns`), `returnCheck`; `Engine.lean` `closeFrame` | `Theorems/FnSpec.lean` (`a_return_pattern_is_checked`); `divergent.tsv` (Go column); search |
+| The definition install: a plain value is bound; a function is compiled under the name — an older definition of the name whose parameter types it repeats is taken off (a redefinition replaces, other types stack) unless it is a host word's, whose signatures are locked, every optional parameter is expanded into signatures whose bodies call the function by name with the type's base value (none where the type has no base value or the parameter's pattern refuses it — NUR410, as the kernel has it), and each body is asked then whether its frames record | `core_helpers.go` `InstallDef`, `installFnDef`, `compileFnSigs`, `ExpandOptionalSigs`, `omittedDefaultValue`, `BaseValue`, `FnDefsOverlap`, `hasLockedSig` | `FnSpec.lean` `install`, `expandOptional`, `baseValue`, `overlap` | `Theorems/FnSpec.lean`; `dispatch.tsv`; `divergent.tsv` (Go column); search |
 | A failed plan: retried with every argument from the stack — for a native word, a function literal and a forced arity, and NOT for a word defined in boru, whose synthetic fallback answers it (NUR398, as the kernel has it) | `engine.go` `matchForDispatch`, `registry.go` `fnFallbackSig` | `Engine.lean` `answersItself`, `dispatchWord` | `dispatch.tsv`; `divergent.tsv` (Go column); search |
 | The stack-form probe | `signature.go` `MatchSignature` | `Match.lean` | search |
 | The step loop: literals and arrival, word resolution, word literals, undefined words | `engine.go` | `Engine.lean` | corpus; search |
@@ -68,14 +71,24 @@ extending the notation and its fixture in all three runners first.
 
 **The step loop**
 - an applied mark, a function from another registry;
-- THE FUNCTION-SPEC READER — how a written specification becomes
-  signatures (`fn_params.go` `ParseFnParams`, `ParseFnReturns`,
-  `ResolveSigType`; `fn_def.go`): a declared type that is a PATTERN and
-  the type it is given, return patterns and their check, several declared
-  returns, the `|` barrier, `/q` and keyword parameters, and an OPTIONAL
-  parameter with its default (expanded into overloads when the function
-  is made, `ExpandOptionalSigs`). The `fn(` notation builds a signature
-  directly — names, bare types, one return — and reaches none of it;
+- the function-spec reader's arms the notation cannot write: the
+  parser's own `{name: Type}` pair (and so a NAMED parameter with a
+  pattern), a parenthesised annotation, which is RUN to give its type, a
+  bare `Type/q` atom, a dotted annotation, a type a program defined,
+  generics; an optional parameter that is unnamed (its added signature
+  reads the args list through words the fixture does not have);
+- the kernel's own path for applying a function value that was never
+  installed (`execFnDefSig`'s splice, `ExecFnDefSigStackMatch`): the model
+  applies such a value by the one argument rule and the dispatch order,
+  as it applies an installed one, and the kernel does not for unnamed
+  parameters and for several signatures (NUR412); and it reads a list
+  bound to a named parameter back UNQUOTED there, where an installed
+  function's frame and a closure's read it quoted;
+- of the install: a function that came from another registry and is
+  rebound as a wrapper, an un-definition (`FnUndef`), a class type, the
+  `/s` definition; and the compile cache — a second install of one
+  function under one name reuses the first's answers, where the model
+  asks again;
 - the frame-state analysis beyond a name and its alias: a wrapper whose
   one body word is a binding word (the trivial delegation `import` and
   `unpack` make), a word-extension clone, a splice macro whose payload

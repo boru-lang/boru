@@ -20,7 +20,7 @@ open Boru.Core
 /-- A probe word: `n` gradual parameters, forward-eligible up to
     `barrier`; it returns its argument vector as a list. -/
 def probe (name : String) (n barrier : Nat) : String × List Value :=
-  (name, [.fn name [.mk ((List.range n).map fun i => .mk s!"a{i}" TAny none false false)
+  (name, [.fn name [.mk ((List.range n).map fun i => .mk s!"a{i}" TAny none false false false)
     [TAny] barrier (.native "vec") false] 0])
 
 def defs : Defs :=

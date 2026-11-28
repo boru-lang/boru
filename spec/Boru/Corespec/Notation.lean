@@ -140,7 +140,7 @@ partial def item : List String → Except String (Value × List String)
       | name :: ty :: more@(_ :: _) =>
         match fnType? ty with
         -- `_` declares an UNNAMED parameter
-        | some t => do pure (.mk (if name == "_" then "" else name) t none false false :: (← params more))
+        | some t => do pure (.mk (if name == "_" then "" else name) t none false false false :: (← params more))
         | none => throw "fn( types must be corpus-known type names"
       | _ => pure []
     let ps ← params spec
@@ -153,7 +153,7 @@ partial def item : List String → Except String (Value × List String)
         -- place it was written
         -- its frame-state question is answered when the row is read
         -- (`install`, below): the item itself does not know the bindings
-        pure (.fn "__corespec_fn" [.mk ps [rt] ps.length (.boru elems [] false none) false]
+        pure (.fn "__corespec_fn" [.mk ps [rt] ps.length (.boru elems [] false none []) false]
                 (1000 + rest.length), rest)
       | _, _ => throw "fn( body must be a list closed by )"
     | none => throw "fn( types must be corpus-known type names"
@@ -207,9 +207,9 @@ partial def install (defs : Defs) : Value → Value
   | .typedMap child entries => .typedMap (install defs child) (entries.map fun (k, v) => (k, install defs v))
   | v => v
 partial def installSig (defs : Defs) : Sig → Sig
-  | .mk ps rs b (.boru body captured anonymous none) full =>
+  | .mk ps rs b (.boru body captured anonymous none rpats) full =>
     let body := body.map (install defs)
-    .mk ps rs b (.boru body captured anonymous (some (bodyNeedsFrameState defs body))) full
+    .mk ps rs b (.boru body captured anonymous (some (bodyNeedsFrameState defs body)) rpats) full
   | s => s
 end
 
@@ -228,7 +228,7 @@ def renderResult : Except BoruError (List Value) → String
 
 /-- Evaluate one row's expression to the string its `expected` column
     is compared with. -/
-def eval (expr : String) : Except String String :=
+def eval (expr : String) (fuel : Nat := defaultFuel) : Except String String :=
   let (kind, arg) := match expr.splitOn " " with
     | [] => ("", "")
     | k :: rest => (k, " ".intercalate rest)
@@ -270,7 +270,7 @@ def eval (expr : String) : Except String String :=
     let (defs, toks) ← defClauses fixtureDefs (fields arg)
     let program ← assemble toks
     -- the program's own `fn(` functions are made before it runs too
-    pure (renderResult (run fixtureNatives defs (program.map (install defs))))
+    pure (renderResult (run fixtureNatives defs (program.map (install defs)) fuel))
   | k => throw s!"unknown expression kind {k}"
 
 end Boru.Corespec

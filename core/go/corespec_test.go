@@ -597,7 +597,8 @@ func coreSpecRegistry(t *testing.T) *Registry {
 	// function's body needs to make a definition of its OWN: the leading
 	// `def NAME item ;` clauses of a row bind before the program starts, so
 	// they can never be inside a frame. The mechanism is core's
-	// (DefTable.Push, and the frame's truncation of what its body pushed);
+	// (InstallDef — the kernel's definition install — and the frame's
+	// truncation of what its body bound);
 	// the word is basic's, and it carries basic's NAME on purpose, as afn
 	// and undef do: the kernel's frame analysis decides by name whether a
 	// body can bind (frameStateWords), and a body that cannot gets a frame
@@ -610,10 +611,43 @@ func coreSpecRegistry(t *testing.T) *Registry {
 			if err != nil {
 				return nil, err
 			}
-			reg.Defs.Push(n, a[1])
+			// The kernel's own definition install: a plain value is
+			// pushed; a function is compiled under the name — its optional
+			// parameters expanded, its body given the frame runner — and
+			// an older definition of the name whose parameter types it
+			// repeats is taken off first.
+			InstallDef(reg, n, a[1])
 			return nil, nil
 		}),
 		BarrierPos: 2,
+	})
+	// fn is the door onto THE FUNCTION-SPEC READER (ParseFnDef and the
+	// readers beneath it): `fn [q [q params ] [q returns ] [q body ] … ]`
+	// answers the function the specification describes — triples, one per
+	// overload. The value is as the reader leaves it: a function VALUE,
+	// applied where it stands, and compiled when `def` binds it. Named as
+	// the shipped word is, for the frame analysis (a body that builds a
+	// function needs the baseline). The Go runner's and the Lean runner's
+	// only: core/ts has no reader, and its rows are in the ledger.
+	r.Register("fn", Signature{
+		Params:  []FnParam{{Name: "spec", Type: TList}},
+		Returns: []*Type{TFunction},
+		Impl: Go(func(a []Value, _ map[string]Value, _ []Value, reg *Registry) ([]Value, error) {
+			l, err := AsList(a[0])
+			if err != nil {
+				return nil, coreSpecNotAList("fn", a[0])
+			}
+			elems := l.Slice()
+			if len(elems) == 0 || len(elems)%3 != 0 {
+				return nil, &BoruError{Code: "fn_invalid_spec", Detail: "fn: list length must be a non-zero multiple of 3"}
+			}
+			info, err := ParseFnDef(reg, elems)
+			if err != nil {
+				return nil, &BoruError{Code: "fn_invalid_spec", Detail: err.Error()}
+			}
+			return []Value{NewFunction(info)}, nil
+		}),
+		BarrierPos: 1,
 	})
 	// bindq is def under a name the frame analysis does NOT know. A body
 	// that names no binding word is a LEAF — its frame takes no snapshot —

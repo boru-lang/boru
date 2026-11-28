@@ -1647,7 +1647,11 @@ func (e *Engine) resolveOrphanedForwards() error {
 			case IsForward(&val):
 				e.Pointer++
 			case IsOpenParen(&val):
-				e.Pointer++
+				// Past the paren AND the inert arguments a frame's open
+				// carries, as the main loop goes (stepPastOpenParen): the
+				// frame a late-resolved forward splices is stepped here, and
+				// a Function among its unnamed arguments is data, not a call.
+				e.stepPastOpenParen(val)
 			default:
 				if err := e.stepLiteral(); err != nil { //covergate:allow interpreter step/dispatch defensive index+error arm; unreachable via eng harness (design/COVERAGE-ALLOWLIST.10.md §engine)
 					return err
@@ -7932,12 +7936,15 @@ func (e *Engine) stepCloseParen(reStepped, feedsForward bool) error {
 						if closeIdx < 0 { //covergate:allow interpreter step/dispatch defensive index+error arm; unreachable via eng harness (design/COVERAGE-ALLOWLIST.10.md §engine)
 							return e.syntaxError("unmatched closing parenthesis", ")")
 						}
-					case IsCloseParen(&val): //covergate:allow interpreter step/dispatch defensive index+error arm; unreachable via eng harness (design/COVERAGE-ALLOWLIST.10.md §engine)
+					case IsCloseParen(&val):
+						// Reached: the close of a FRAME spliced inside the group
+						// while its tokens are re-run (a usurped call completing
+						// at the group's end — orphan_forward_inert_args_test.go).
 						if err := e.stepCloseParen(false, false); err != nil { //covergate:allow interpreter step/dispatch defensive index+error arm; unreachable via eng harness (design/COVERAGE-ALLOWLIST.10.md §engine)
 							return err
 						}
-						closeIdx = e.findCloseParenAfter(openIdx) //covergate:allow interpreter step/dispatch defensive index+error arm; unreachable via eng harness (design/COVERAGE-ALLOWLIST.10.md §engine)
-						if closeIdx < 0 {                         //covergate:allow interpreter step/dispatch defensive index+error arm; unreachable via eng harness (design/COVERAGE-ALLOWLIST.10.md §engine)
+						closeIdx = e.findCloseParenAfter(openIdx)
+						if closeIdx < 0 { //covergate:allow interpreter step/dispatch defensive index+error arm; unreachable via eng harness (design/COVERAGE-ALLOWLIST.10.md §engine)
 							return e.syntaxError("unmatched closing parenthesis", ")")
 						}
 					case IsEnd(&val):
@@ -7951,7 +7958,8 @@ func (e *Engine) stepCloseParen(reStepped, feedsForward bool) error {
 					case IsForward(&val):
 						e.Pointer++
 					case IsOpenParen(&val):
-						e.Pointer++
+						// the inert span too, as the main loop goes
+						e.stepPastOpenParen(val)
 					case IsReturnCheck(&val):
 						e.Pointer++
 					case IsDefCleanup(&val):

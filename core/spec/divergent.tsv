@@ -697,3 +697,165 @@ run def y 1 ; 0 def myun undef/v ; afn n [q bindq y 3 ; myun z n ] 5 y	0 5 1	ERR
 run def y 1 ; 0 def n def/v ; afn n [q bindq y 3 ; n ] 5 y	0 5 1	ERROR:undefined_word	asked BEFORE the frame binds its parameter: the parameter's name still means the alias
 run def y 1 ; 0 def mybind bindq/v ; afn n [q mybind y 3 ; n ] 5 y	0 5 3	ERROR:undefined_word	an alias of a word that is NOT a binding word is not one
 run 0 def mk afn/v ; bothq 0 ( afn x [q mk n [q addq n x ] ] 10 ) 5	0 15	ERROR:undefined_word	an alias of `afn` in a function value's body: the frame keeps a baseline, and the function it builds captures
+run def y 1 ; 0 def mydef def/v ; def f fn( n Any Any [ mydef y 3 ; y ] ) ; f 5 y	0 3 1	0 3 3	the same function bound by the program's own `def`, after the alias: it is INSTALLED at the def and asked then, so its frame records (core/ts has no install: a binding is a binding)
+
+# --- THE FUNCTION-SPEC READER: a function written as parameters, returns and a body ---
+# `fn [q [q params ] [q returns ] [q body ] … ]` is the kernel's own reader
+# (ParseFnDef and the readers beneath it) over a written specification, and
+# `def name ( … )` its definition install. core/ts has no reader: every row
+# from here to the end of the redefinitions is its `undefined_word`.
+run ; def f ( fn [q [q n:Integer ] [q Integer ] [q addq n 1 ] ] ) ; f 5	6	ERROR:undefined_word	A WRITTEN SPECIFICATION: parameters, returns, a body — `name:Type` is a named parameter
+run ; def f ( fn [q [q n:Integer ] [q Integer ] [q addq n 1 ] ] ) ; f/v	fn [[n:Integer][Integer][addq n 1]]	ERROR:undefined_word	it renders as it was written
+run ; def f ( fn [q [q n:Integer ] [q Integer ] [q addq n 1 ] ] ) ; f 'a'	ERROR:signature_error	ERROR:undefined_word	the parameter's type is the signature's
+run ; def f ( fn [q [q n:Integer m:String ] [q Any ] [q [ n m ] ] ] ) ; f 5 'a'	[5 'a']	ERROR:undefined_word	two parameters, in the order written
+run ; def f ( fn [q [q Integer ] [q Integer ] [q negq/s ] ] ) ; f 5	-5	ERROR:undefined_word	a bare type is an UNNAMED parameter
+run ; def f ( fn [q [q Integer n:Integer ] [q Integer ] [q addq n ] ] ) ; f 5 6	11	ERROR:undefined_word	unnamed and named together
+run ; def f ( fn [q [q Number ] [q Any ] [q ] ] ) ; f 5 f/v	5 fn [[:Number][Any][]]	ERROR:undefined_word	a type the notation has no literal for is read by its name
+run ; def f ( fn [q [q ] [q Integer ] [q 7 ] ] ) ; f	7	ERROR:undefined_word	no parameters
+run ; def f ( fn [q [q n:Integer ] [q ] [q ] ] ) ; f 5		ERROR:undefined_word	no returns: nothing is checked, and nothing need be left
+run ; def f ( fn [q [q n:Integer ] [q ] [q n n ] ] ) ; f 5	5 5	ERROR:undefined_word	nor is anything refused
+run ; def f ( fn [q n:Integer Integer [q n ] ] ) ; f 5	5	ERROR:undefined_word	a part that is not a list stands for the list of itself
+run ; def f ( fn [q [q n:Integer ] [q Integer ] n ] ) ; f 5	5	ERROR:undefined_word	the body too
+run ; fn [q [q n:Integer ] [q Integer ] [q addq n 1 ] ] 5	6	ERROR:undefined_word	the function as the reader leaves it is a VALUE: it takes what stands after it
+run ; fn [q [q n:Integer ] [q Integer ] [q addq n 1 ] ]	fn [[n:Integer][Integer][addq n 1]]	ERROR:undefined_word	and is a value where there is nothing to take
+
+# --- a VALUE written as a parameter: the slot admits exactly it ------------------------
+run ; def f ( fn [q [q 7 ] [q Integer ] [q ] ] ) ; f 7	7	ERROR:undefined_word	AN INTEGER WRITTEN AS A PARAMETER admits exactly that integer
+run ; def f ( fn [q [q 7 ] [q Integer ] [q ] ] ) ; f 8	ERROR:signature_error	ERROR:undefined_word	and no other
+run ; def f ( fn [q [q 7 ] [q Integer ] [q ] ] ) ; f/v	fn [[:Integer][Integer][]]	ERROR:undefined_word	its type is Integer; the value is the slot's pattern
+run ; def f ( fn [q [q 'a' ] [q String ] [q ] ] ) ; f 'a'	'a'	ERROR:undefined_word	a string, the same
+run ; def f ( fn [q [q 'a' ] [q String ] [q ] ] ) ; f 'b'	ERROR:signature_error	ERROR:undefined_word	and no other
+run ; def f ( fn [q [q 0 ] [q Any ] [q 'zero' ] [q Integer ] [q Any ] [q 'other' ] ] ) ; f 0 f 5	'zero' 'other'	ERROR:undefined_word	a literal beside its type: the literal is the greater expectation, and is tried first
+run ; def f ( fn [q [q {q x: Integer } ] [q Any ] [q ] ] ) ; f/v	fn [[:Map][Any][]]	ERROR:undefined_word	a map written there is an unnamed Map parameter
+
+# --- `|`, the forward barrier -------------------------------------------------------------
+run ; def f ( fn [q [q n:Integer | m:Integer ] [q Integer ] [q addq n m ] ] ) ; 6 f 5	11	ERROR:undefined_word	`|` IS THE BARRIER: what stands after it comes from the stack
+run ; def f ( fn [q [q n:Integer | m:Integer ] [q Integer ] [q addq n m ] ] ) ; f 5 6	ERROR:signature_error	ERROR:undefined_word	and is not collected forward
+run ; def f ( fn [q [q | n:Integer ] [q Integer ] [q n ] ] ) ; 5 f	5	ERROR:undefined_word	a leading barrier: every argument from the stack
+run ; def f ( fn [q [q | n:Integer ] [q Integer ] [q n ] ] ) ; f 5	ERROR:signature_error	ERROR:undefined_word	and none forward
+run ; def f ( fn [q [q n:Integer | ] [q Integer ] [q n ] ] ) ; f 5	5	ERROR:undefined_word	a trailing one is every argument forward, as with none
+run ; def f ( fn [q [q n:Integer | m:Integer ] [q Integer ] [q addq n m ] ] ) ; f/v	fn [[n:Integer m:Integer][Integer][addq n m]]	ERROR:undefined_word	the barrier is not in what the function renders as
+
+# --- `/q`: a captured name, and a keyword ---------------------------------------------------
+run ; def f ( fn [q [q n:Atom/q ] [q Atom ] [q n ] ] ) ; f hello	hello/q	ERROR:undefined_word	`/q` AFTER THE TYPE: the word written there is captured as a name
+run ; def f ( fn [q [q n:Atom/q ] [q Atom ] [q n ] ] ) ; f 5	ERROR:signature_error	ERROR:undefined_word	a value is not a name
+run ; def f ( fn [q [q kw:on/q n:Integer ] [q Integer ] [q n ] ] ) ; f on 5	5	ERROR:undefined_word	A KEYWORD: `/q` after a name that is no type admits exactly that word
+run ; def f ( fn [q [q kw:on/q n:Integer ] [q Integer ] [q n ] ] ) ; f off 5	ERROR:signature_error	ERROR:undefined_word	and no other
+run ; def f ( fn [q [q kw:on/q n:Integer ] [q Integer ] [q 1 ] [q kw:off/q n:Integer ] [q Integer ] [q 2 ] ] ) ; f on 5 f off 5	1 2	ERROR:undefined_word	two definitions told apart by their keyword
+
+# --- the returns: types, several of them, and what is MORE than a type ----------------------
+# A declared return is a type, or a pattern — a union, a literal, a typed
+# container — whose type is only what the lattice can say of it. The value a
+# body leaves must be of the type AND unify with the pattern.
+run ; def f ( fn [q [q n:Any ] [q Integer ] [q n ] ] ) ; f 5 f 'a'	ERROR:type_error	ERROR:undefined_word	the declared return is checked
+run ; def f ( fn [q [q n:Integer ] [q Integer String ] [q n 'a' ] ] ) ; f 5	5 'a'	ERROR:undefined_word	SEVERAL returns, by position
+run ; def f ( fn [q [q n:Integer ] [q Integer String ] [q n n ] ] ) ; f 5	ERROR:type_error	ERROR:undefined_word	each against its own type
+run ; def f ( fn [q [q n:Integer ] [q Integer String ] [q n ] ] ) ; f 5	ERROR:type_error	ERROR:undefined_word	and all of them wanted
+run ; def f ( fn [q [q n:Any ] [q d( Integer String ) ] [q n ] ] ) ; f 5 f 'a'	5 'a'	ERROR:undefined_word	A RETURN THAT IS MORE THAN A TYPE — a union: the returned value must unify with it
+run ; def f ( fn [q [q n:Any ] [q d( Integer String ) ] [q n ] ] ) ; f true	ERROR:type_error	ERROR:undefined_word	a value outside the union is refused, though the return's TYPE is Any
+run ; def f ( fn [q [q n:Any ] [q d( Integer String ) ] [q n ] ] ) ; f/v	fn [[n:Any][Any][n]]	ERROR:undefined_word	its type is Any — the lattice has no node for the union — and the union is the check
+run ; def f ( fn [q [q n:Any ] [q 7 ] [q n ] ] ) ; f 7	7	ERROR:undefined_word	a literal return: exactly that value
+run ; def f ( fn [q [q n:Any ] [q 7 ] [q n ] ] ) ; f 8	ERROR:type_error	ERROR:undefined_word	and no other
+run ; def f ( fn [q [q n:Any ] [q 'ok' ] [q n ] ] ) ; f 'ok' f 'no'	ERROR:type_error	ERROR:undefined_word	a string that could never name a type is the string itself
+run ; def f ( fn [q [q n:Any ] [q 'Integer' ] [q n ] ] ) ; f 5 f 'Integer'	ERROR:type_error	ERROR:undefined_word	a string that NAMES a type is the type
+run ; def f ( fn [q [q n:Any ] [q r:Integer ] [q n ] ] ) ; f 5 f 'a'	ERROR:type_error	ERROR:undefined_word	a NAMED return is its type
+run ; def f ( fn [q [q n:Any ] [q [: Integer ] ] [q n ] ] ) ; f [q 1 2 ]	(quote [1 2])	ERROR:undefined_word	a typed list: a List whose elements are checked
+run ; def f ( fn [q [q n:Any ] [q [: Integer ] ] [q n ] ] ) ; f [q 'a' ]	ERROR:type_error	ERROR:undefined_word	a list of something else
+run def t Integer ; 0 def f ( fn [q [q n:Any ] [q t ] [q n ] ] ) ; f 5	0 5	ERROR:undefined_word	a name bound to a type is that type
+run def t Integer ; 0 def f ( fn [q [q n:Any ] [q t ] [q n ] ] ) ; f 'a'	ERROR:type_error	ERROR:undefined_word	and checked as it
+
+# --- several triples: several definitions of one function ------------------------------------
+run ; def f ( fn [q [q n:Integer ] [q Any ] [q 1 ] [q n:String ] [q Any ] [q 2 ] ] ) ; f 5 f 'a'	1 2	ERROR:undefined_word	SEVERAL TRIPLES are several definitions of one function
+run ; def f ( fn [q [q n:Any ] [q Any ] [q 1 ] [q n:Integer ] [q Any ] [q 2 ] ] ) ; f 5 f 'a'	2 'a'	ERROR:undefined_word	tried in the dispatch order, not the written one
+run ; def f ( fn [q [q n:Any ] [q Any ] [q 1 ] [q n:Integer ] [q Any ] [q 2 ] ] ) ; f/v	fn [[n:Integer][Any][2] [n:Any][Any][1]]	ERROR:undefined_word	and rendered in it
+run ; def f ( fn [q [q n:Integer ] [q Any ] [q 1 ] [q n:Integer m:Integer ] [q Any ] [q 2 ] ] ) ; f 5 6 ; f 5 ;	2	ERROR:undefined_word	by arity
+
+# --- what the reader refuses (the fixture answers every refusal `fn_invalid_spec`) ------------
+# Two of them are NUR409, as the kernel has it: a union and `none` are
+# refused where no NAME is written before them.
+run ; fn [q ]	ERROR:fn_invalid_spec	ERROR:undefined_word	no triple
+run ; fn [q [q n:Integer ] [q Integer ] ]	ERROR:fn_invalid_spec	ERROR:undefined_word	a part missing
+run ; fn [q [q n:Nosuch ] [q Integer ] [q n ] ]	ERROR:fn_invalid_spec	ERROR:undefined_word	a type that is not one
+run ; fn [q [q nosuch ] [q Integer ] [q n ] ]	ERROR:fn_invalid_spec	ERROR:undefined_word	a bare word that names no type
+run ; fn [q [q n:Integer ] [q Nosuch ] [q n ] ]	ERROR:fn_invalid_spec	ERROR:undefined_word	in the returns
+run ; fn [q [q n:Integer ] [q 'Nosuch' ] [q n ] ]	ERROR:fn_invalid_spec	ERROR:undefined_word	a string shaped like a type name is taken for one, and is none
+run ; fn [q [q Bad:Integer ] [q Integer ] [q 1 ] ]	ERROR:fn_invalid_spec	ERROR:undefined_word	a parameter's name is a word's name
+run ; fn [q [q [q 1 ] ] [q Integer ] [q 1 ] ]	ERROR:fn_invalid_spec	ERROR:undefined_word	a list is no parameter
+run ; fn [q [q d( Integer String ) ] [q Integer ] [q 1 ] ]	ERROR:fn_invalid_spec	ERROR:undefined_word	NUR409: nor is a union, written without a name
+run ; fn [q [q none ] [q Integer ] [q 1 ] ]	ERROR:fn_invalid_spec	ERROR:undefined_word	NUR409: nor `none`
+run ; fn 5	ERROR:signature_error	ERROR:undefined_word	a specification is a list
+
+# --- OPTIONAL parameters: the install's extra signatures -----------------------------------
+# A parameter marked `?` may be left out. The reader only marks it; the
+# INSTALL adds, for every way of leaving optional parameters out, a signature
+# whose body calls the function BY NAME with each one's type's base value.
+# Two rows are NUR410, as the kernel has it: a type with no base value makes
+# the mark do nothing, silently.
+run ; def f ( fn [q [q n?:Integer ] [q Integer ] [q n ] ] ) ; f 5 f	5	ERROR:undefined_word	AN OPTIONAL PARAMETER may be left out: the function is then called with its type's base value
+run ; def f ( fn [q [q n?:Integer ] [q Integer ] [q n ] ] ) ; f/v	fn [[n:Integer][Integer][n] [][Integer][f 0]]	ERROR:undefined_word	the install adds a signature without it, whose body calls the function BY NAME
+run ; fn [q [q n?:Integer ] [q Integer ] [q n ] ]	fn [[n:Integer][Integer][n]]	ERROR:undefined_word	the function as the reader leaves it has no such signature: the install makes it
+run ; def f ( fn [q [q n:Integer ? ] [q Integer ] [q n ] ] ) ; f	0	ERROR:undefined_word	`?` after a parameter says the same
+run ; def f ( fn [q [q n:Integer m?:String ] [q Any ] [q [ n m ] ] ] ) ; f 5 f 5 'a'	[5 ''] [5 'a']	ERROR:undefined_word	the base value of String
+run ; def f ( fn [q [q n?:Integer m?:String ] [q Any ] [q [ n m ] ] ] ) ; f f 5 f 'a' f 5 'a'	[0 ''] [5 ''] [0 'a'] [5 'a']	ERROR:undefined_word	two optional parameters: every way of leaving some out
+run ; def f ( fn [q [q n?:Integer m?:String ] [q Any ] [q [ n m ] ] ] ) ; f/v	fn [[n:Integer m:String][Any][[n m]] [m:String][Any][f 0 m] [n:Integer][Any][f n ''] [][Any][f 0 '']]	ERROR:undefined_word	four signatures
+run ; def f ( fn [q [q n?:Boolean ] [q Any ] [q n ] ] ) ; f	false	ERROR:undefined_word	Boolean
+run ; def f ( fn [q [q n?:List ] [q Any ] [q n ] ] ) ; f	(quote [])	ERROR:undefined_word	List
+run ; def f ( fn [q [q n?:Map ] [q Any ] [q n ] ] ) ; f	{}	ERROR:undefined_word	Map
+run ; def f ( fn [q [q n?:None ] [q Any ] [q n ] ] ) ; f	None	ERROR:undefined_word	None
+run ; def f ( fn [q [q n?:Number ] [q Any ] [q n ] ] ) ; f	0	ERROR:undefined_word	Number
+run ; def f ( fn [q [q n?:Any ] [q Any ] [q n ] ] ) ; f	ERROR:signature_error	ERROR:undefined_word	NUR410: `Any` has no base value, and the parameter is silently not optional
+run ; def f ( fn [q [q n?:Any ] [q Any ] [q n ] ] ) ; f/v	fn [[n:Any][Any][n]]	ERROR:undefined_word	NUR410: no signature was added
+run ; def f ( fn [q [q n?:Integer ] [q Integer ] [q n ] ] ) ; def g f/v ; g g/v	0 fn [[n:Integer][Integer][n] [][Integer][g 0] [][Integer][f 0]]	ERROR:undefined_word	bound under another name the function is installed AGAIN: the new signature calls the new name, and the old one is still there
+
+# --- the install REPLACES a definition of the same parameter types ---------------------------
+# Bound by the program's own `def`, a function takes off the older
+# definitions of its name whose parameter types it repeats, and stacks over
+# the rest. (core/ts's `def` fixture is the plain binding: the first row
+# here is its `2 1`.)
+run def f 0 ; ; def f ( fn [q [q n:Integer ] [q Any ] [q 1 ] ] ) ; def f ( fn [q [q n:Integer ] [q Any ] [q 2 ] ] ) ; f 5 undef f f	2 0	ERROR:undefined_word	A REDEFINITION REPLACES: the same parameter types, and the older definition is gone — unbinding the newer shows what was bound before both
+run def f 0 ; ; def f ( fn [q [q n:Integer ] [q Any ] [q 1 ] ] ) ; def f ( fn [q [q m:Integer ] [q String ] [q 'x' ] ] ) ; f 5 undef f f	'x' 0	ERROR:undefined_word	whatever its names, returns and body
+run ; def f ( fn [q [q n:Integer ] [q Any ] [q 1 ] ] ) ; def f ( fn [q [q n:String ] [q Any ] [q 2 ] ] ) ; f 5 f 'a' undef f f 5	1 2 1	ERROR:undefined_word	OTHER parameter types: the two stack, and unbinding the newer leaves the older
+run ; def f fn( n Integer Any [ 1 ] ) ; def f fn( n Integer Any [ 2 ] ) ; f 5 undef f f 5	ERROR:undefined_word	2 1	the same of a `fn(` function the program binds
+run ; def f ( fn [q [q n:Integer ] [q Any ] [q 1 ] ] ) ; def f 7 ; f undef f f 5	7 1	ERROR:undefined_word	a value over a function
+
+# --- a NAME bound to a type, as a declaration (NUR411, as the kernel has it) -----------------
+# A name bound to a bare type is that type (the rows above, `t`). Bound to any
+# other type body it is `Any` with no pattern: accepted, and a wildcard.
+run def x d( Integer String ) ; ; def f ( fn [q [q n:Any ] [q x ] [q n ] ] ) ; f true	true	ERROR:undefined_word	NUR411: a name bound to a UNION is accepted as the declared return and enforces nothing — the same union written in place refuses `true`
+run def x [: Integer ] ; ; def f ( fn [q [q n:Any ] [q x ] [q n ] ] ) ; f [q 'a' ]	(quote ['a'])	ERROR:undefined_word	NUR411: a name bound to a typed list, the same
+run def x fn( n Any Any [ n ] ) ; ; def f ( fn [q [q n:Any ] [q x ] [q n ] ] ) ; f 5	5	ERROR:undefined_word	NUR411: and a name bound to a function
+run def x 5 ; ; def f ( fn [q [q n:Any ] [q x ] [q n ] ] ) ; f 5	ERROR:fn_invalid_spec	ERROR:undefined_word	a name bound to a value that is no type names no type
+
+# --- an unnamed argument is inert wherever its frame is stepped ---------------------------
+# A usurped call (`un/u …`) completes when the input, or its group, ends; the
+# frame it splices is stepped by the loop that resolves it, not the main one.
+# The argument span is passed over there as everywhere (core/go
+# `stepPastOpenParen`; two loops did not until 2026-11-28).
+run def un fn( _ Any Any [ ] ) ; un/u negq/uv	fn [[a:Integer][Integer][]]	ERROR:signature_error	a FUNCTION handed as the unnamed argument through `/u`: the call completes at the end of input, and the argument is data there too (the kernel once stepped it: `uncalled_function`)
+run def un fn( _ Any Any [ ] ) ; ( un/u negq/uv )	fn [[a:Integer][Integer][]]	ERROR:signature_error	at the close of a group, the same
+run def un fn( _ Any Any [ 7 ] ) ; un/u negq/uv	7	ERROR:signature_error	beneath a value the body leaves it is dropped, unrun (the kernel once CALLED it on that value: `-7`)
+
+# --- two more of the reader and the install (found in review) ----------------------------
+# A host word's signatures are LOCKED: the install's replacement passes over
+# them. And every part of a specification that may be a list is read through
+# the kernel's list reader, which gives a typed list's retained elements.
+run ; def negq ( fn [q [q n:Integer ] [q Integer ] [q 7 ] ] ) ; negq 5 undef negq negq 5	7 -5	ERROR:undefined_word	A HOST WORD IS LOCKED: a function defined over it with the same parameter types does not replace it — it stacks, and unbinding it shows the word
+run ; def negq ( fn [q [q n:Integer ] [q Integer ] [q 7 ] ] ) ; negq/v	fn [[n:Integer][Integer][7] [a:Integer][Integer][]]	ERROR:undefined_word	both definitions are the name's
+run ; def negq ( fn [q [q n:Integer ] [q Integer ] [q 7 ] ] ) ; def negq ( fn [q [q m:Integer ] [q Integer ] [q 8 ] ] ) ; negq 5 undef negq negq 5	8 -5	ERROR:undefined_word	a SECOND function replaces the first, and the word is still beneath
+run ; def f ( fn [q [q ] [q Integer ] [: Integer 7 ] ] ) ; f	7	ERROR:undefined_word	A TYPED LIST is read as the list of its retained elements — as a body
+run ; def f ( fn [q [: Integer 7 ] [q Integer ] [q ] ] ) ; f 7 f/v	7 fn [[:Integer][Integer][]]	ERROR:undefined_word	as a parameter list
+run ; def f ( fn [q [: Integer n:Integer ] [q Integer ] [q n ] ] ) ; f 5	5	ERROR:undefined_word	whatever its elements are
+run ; def f ( fn [q [q n:Any ] [: Integer Integer ] [q n ] ] ) ; f 5 ; f 'a' ;	ERROR:type_error	ERROR:undefined_word	as the returns
+run ; def f ( fn [q [q n:Any ] [: Integer ] [q n ] ] ) ; f 'a' f/v	'a' fn [[n:Any][][n]]	ERROR:undefined_word	and one with no retained elements is no returns at all
+
+# --- NUR412: an all-unnamed function value read bottom-up (the SPECIFICATION is the ts column)
+# With NUR407's, the only rows where the Lean specification agrees with core/ts
+# and not with core/go. A function VALUE all of whose parameters are unnamed,
+# standing after values that do not fit it top-first, is matched again with the
+# stack read bottom-up (core/go `stackMatchSig`) — the opposite of the one
+# argument rule, and of the same function called by its name
+# (`7 'a' f` is refused: `dispatch.tsv`). A usurp wrapper matched that way is
+# given a frame with no body: the function is not run.
+run 7 'a' fn( _ Integer _ Any Any [ argsq ] )	[7 'a']	ERROR:uncalled_function	NUR412: an all-unnamed function VALUE whose arguments do not fit top-first is read again BOTTOM-UP, and is called — the rule, and core/ts, refuse it
+run def f fn( _ Integer _ Any Any [ argsq ] ) ; 'a' 7 f/u	7	ERROR:uncalled_function	NUR412: usurped, the bottom-up reading matches the WRAPPER and its frame has no body — the function is never run, and the top argument is the answer
+run def f fn( _ Integer _ Any Any [ depthq ] ) ; 'a' 7 f/u	7	ERROR:uncalled_function	NUR412: whatever the body is

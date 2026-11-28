@@ -127,6 +127,11 @@ list only by becoming **Resolved** (the record is then deleted) or
 | [NUR405](#nur405) | The frame-pop word `__pa` is still registered though no frame has emitted it since 2026-10-08, and a program can call it: in a function's body it pops the frame's arguments and capture baseline, and the frame's own close then pops the ENCLOSING call's — `args` there answers "not inside a function", inside a function | the Lean specification's model of the args list, against core/go and the shipped words (2026-11-27) |
 | [NUR406](#nur406) | A function whose body unbinds its own parameter unbinds its CALLER's binding of that name when it closes: with `def g fn [[n:Integer][Integer][undef n 7]]`, a caller `fn [[n:Integer][Integer][g 2 drop n]]` given `5` reads the global `n` after the call, and at the top level `n` is undefined after `g 5`; `boru check` reports nothing | the Lean specification's model of the frame's close, against core/go and the shipped words (2026-11-27) |
 | [NUR407](#nur407) | Tail-call elision changes an answer: a callee that unbinds its own parameter reads the caller's binding of that name — unless the call is the last thing the caller does, when the caller's is already unbound: with `def n 8 ; def g fn [[n:Integer][Integer][undef n n]]`, `fn [[n:Integer][Integer][g 7]]` given `5` answers `8` and `fn [[n:Integer][Integer][g 7 add 0]]` answers `5` | the Lean specification's machine, which nests every call, against core/go (2026-11-27) |
+| [NUR408](#nur408) | A parameter or a return declared as the VALUE `none` is no constraint at all: `def f fn [[x:none][Integer][7]]` takes `5` and `"a"`, and `fn [[x:Any][none][x]]` returns anything, where `x:7` takes only `7` and a return `[7]` only `7` | the Lean specification's model of the function-spec reader, against core/go and the shipped words (2026-11-28) |
+| [NUR409](#nur409) | A parameter written WITHOUT a name takes fewer declarations than one written with a name: `[1.5]`, `[(Integer tor String)]`, `[none]`, `[[1 2]]` and a lowercase name bound to a type are each `function spec: invalid parameter` (or `unknown type`), where `x:1.5`, `x:(Integer tor String)`, `x:none`, `x:[1 2]` and `x:t` are read | the Lean specification's model of the function-spec reader, against core/go and the shipped words (2026-11-28) |
+| [NUR410](#nur410) | `?` on a parameter whose type has no base value does nothing, silently: `def f fn [[n?:Any][Any][n]]` is defined without complaint and `f` is `no signature matches`; the same for `Function`, a union, and a literal the base value is not (`n?:7`) | the Lean specification's model of the definition install, against core/go and the shipped words (2026-11-28) |
+| [NUR411](#nur411) | A lowercase name bound to a union or a typed list is accepted as a parameter's or a return's declaration and constrains nothing: with `def u (Integer tor String)`, `fn [[n:Any][u][n]]` returns `true` and `fn [[n:u][Any][n]]` takes it, where the union written in place, and a capitalised `def U`, both refuse it | the Lean specification's model of the function-spec reader, against core/go and the shipped words (2026-11-28) |
+| [NUR412](#nur412) | A function VALUE all of whose parameters are unnamed takes its stack arguments BOTTOM-UP — and so an unbound function literal of unnamed parameters cannot be called forward at all (`fn [[Integer String][List][args]] 5 "a"` is left uncalled, where `x:`/`y:` or a `def` makes it `[5 'a']`): `7 "a" fn [[Integer String][List][args]]` is `[7 'a']` and `"a" 7 fn […]` is not called, the opposite of the same function with named parameters and of the same function called by name; and a usurped one matched that way is not run — `def f fn [[Integer String][List][args]] ; "a" 7 f/u` returns its own argument (`<fn>: expected List, got Integer`) | the Lean specification's differential fuzzer, against core/go and the shipped words (2026-11-28) |
 
 Pending records normally use a compact form (rule / divergence /
 evidence / documentation status, plus a proposed verdict where one is
@@ -1935,5 +1940,232 @@ from nesting again, and the frame's close has exactly its own bindings to
 take. The alternative that keeps `undef` as it is — the gate declining
 whenever the callee can unbind — cannot be decided before the call: the
 unbinding may be anywhere in what the callee runs.
+
+---
+
+## NUR408 — a parameter or a return declared as the value `none` constrains nothing {#nur408}
+
+**Status:** Pending · **Recorded:** 2026-11-28 · measured through the shipped words · silent (`boru check`: 0 errors)
+
+**Rule:** "Types are values and values are types (ADR-010), so a literal
+declares a return that must equal it" (REFERENCE.md, on the output-sig);
+the same of a parameter — `x:7` admits `7` and nothing else.
+
+**Divergence:** `ResolveSigType` (`core/go/fn_params.go`) gives every
+scalar literal its family as the slot's type and the literal as the
+slot's PATTERN — Integer, Float, Boolean, String, Atom. `none` is not in
+that list: it is not a bare type node (that is `None`), not a scalar of
+the five, and falls to the function's last line, `return TAny, nil` — the
+slot is `Any` with no pattern.
+
+```
+def f fn [[x:7][Integer][7]] ; f 5          → signature_error
+def f fn [[x:None][Integer][7]] ; f 5       → signature_error        (the TYPE None)
+def f fn [[x:none][Integer][7]] ; f 5       → 7                      (the VALUE none: anything)
+def f fn [[x:none][Integer][7]] ; f "a"     → 7
+def f fn [[x:Any][7][x]] ; f 5              → type_error: expected 7, got Integer
+def f fn [[x:Any][none][x]] ; f 5           → 5                      (a return of anything)
+```
+
+A function declared to return `none` — the natural way to write "returns
+nothing useful" — checks nothing.
+
+The Lean specification states the arm as the kernel has it
+(`FnSpec.lean` `resolveSigType`, the `.none` case); the corpus notation
+cannot write the value `none` inside a specification, so no row pins it.
+
+**Proposed verdict:** resolve by fix — `none` in a declaration is the
+literal it is: the slot's type is `None` and the pattern `none`, as `7`
+is `Integer` with the pattern `7`. (The reader's last line then has
+nothing legitimate left to catch, and could refuse what reaches it.)
+
+---
+
+## NUR409 — a parameter written without a name takes fewer declarations than a named one {#nur409}
+
+**Status:** Pending · **Recorded:** 2026-11-28 · measured through the shipped words · loud
+
+**Rule:** "Unnamed parameters list the expected types positionally"
+(design/LANGREF.10.md); a named parameter is `name:type`. The name is
+the only thing the two spellings differ by.
+
+**Divergence:** the reader has two paths (`core/go/fn_params.go`
+`ParseFnParams`). A `name:Type` pair hands its type to `ResolveSigType`,
+which reads every declaration there is. An element with NO name is
+matched by the loop's own `switch`, which lists a few shapes — a type
+name, a type literal, an Integer, a Boolean, a String, a dotted
+annotation — and refuses the rest:
+
+```
+def f fn [[x:1.5][Integer][7]]                  read
+def f fn [[1.5][Integer][7]]                    function spec: invalid parameter: 1.5
+def f fn [[x:(Integer tor String)][Integer][7]] read
+def f fn [[(Integer tor String)][Integer][7]]   function spec: invalid parameter: paren([…])
+def f fn [[x:none][Integer][7]]                 read
+def f fn [[none][Integer][7]]                   function spec: invalid parameter: none
+def f fn [[x:[1 2]][Integer][7]]                read
+def f fn [[[1 2]][Integer][7]]                  function spec: invalid parameter: [1 2]
+def t Integer ; def f fn [[x:t][Integer][x]]    read
+def t Integer ; def f fn [[t][Integer][dup drop]]   function spec: invalid type "t"
+```
+
+`ParseFnReturns` had the same split and closed it — its comment says a
+named and an unnamed return "are one declaration written two ways" and
+that reducing only one "is the exact defect this change exists to
+remove". The parameters still have it.
+
+`core/spec/divergent.tsv` pins two rows of it at the kernel's level (a
+union and `none` in a parameter list), and the Lean specification
+reproduces the two paths (`FnSpec.lean` `parseParams`).
+
+**Proposed verdict:** resolve by fix — an unnamed element that is not
+one of the loop's markers (`?`, `|`, a `/q` atom) goes to
+`ResolveSigType`, as a named one's type does.
+
+---
+
+## NUR410 — `?` on a parameter whose type has no base value does nothing, silently {#nur410}
+
+**Status:** Pending · **Recorded:** 2026-11-28 · measured through the shipped words · silent at the definition
+
+**Rule:** a parameter marked optional may be left out of a call, and is
+then its type's base value (REFERENCE.md, "the `x?:Type` optional
+suffix"; `core/go/core_helpers.go` `ExpandOptionalSigs`).
+
+**Divergence:** the install makes one extra signature for each way of
+leaving optional parameters out, and SKIPS a way whose left-out
+parameter has no usable default — a type `BaseValue` does not know
+(`Any`, `Function`, a union, `Scalar`), or a pattern the base value does
+not satisfy. The skip is deliberate (the code explains the infinite
+self-recursion it replaced) and it is silent: the function is defined,
+the `?` is accepted, and the call it promised does not exist.
+
+```
+def f fn [[n?:Integer][Integer][n]] ; f              → 0
+def f fn [[n?:Any][Any][n]] ; f                      → signature_error: no signature matches
+def f fn [[n?:Function][Any][n]] ; f                 → signature_error
+def f fn [[n?:(Integer tor String)][Any][n]] ; f     → signature_error
+def f fn [[n?:7][Integer][n]] ; f                    → signature_error   (the base value 0 is not 7)
+```
+
+`core/spec/divergent.tsv` pins two rows at the kernel's level
+(`n?:Any`: the call, and the function's signatures — one, not two), and
+the Lean specification reproduces the skip (`FnSpec.lean`
+`expandOptional`).
+
+**Proposed verdict:** resolve by fix — a `?` that can make no signature
+is an error where the function is defined ("parameter `n` cannot be
+optional: `Any` has no base value"), so the mark either works or is
+refused.
+
+---
+
+## NUR411 — a lowercase name bound to a union or typed list is a wildcard declaration {#nur411}
+
+**Status:** Pending · **Recorded:** 2026-11-28 · measured through the shipped words · silent (a declared constraint is not enforced)
+
+**Rule:** a declared parameter type selects, and a declared return is
+checked: `def f fn [[n:Any][(Integer tor String)][n]] ; f true` is a
+`type_error`, and so is the same function over `def U (Integer tor
+String)` — "expected U, got Boolean".
+
+**Divergence:** a name that is not a registered type name is looked up on
+the def stack (`core/go/fn_params.go` `LookupDefType`), and what it is
+bound to is turned into a slot by `ResolveDefType`. That function knows
+records, options and bare type nodes; every other type body — a union, a
+typed list, a typed map, a function — falls to its last line,
+`return TAny, nil, nil`. The inline spelling of the same bodies goes
+through `ResolveSigType`, whose comments record this exact degradation
+being closed there ("a silent wildcard that dispatched EVERYTHING").
+
+```
+def f fn [[n:Any][(Integer tor String)][n]] ; f true              → type_error
+def U (Integer tor String) ; def f fn [[n:Any][U][n]] ; f true    → type_error: expected U, got Boolean
+def u (Integer tor String) ; def f fn [[n:Any][u][n]] ; f true    → true
+def u (Integer tor String) ; def f fn [[n:u][Any][n]] ; f true    → true
+def f fn [[n:[:Integer]][Any][n]] ; f ["a"]                       → signature_error
+def u [:Integer] ; def f fn [[n:u][Any][n]] ; f ["a"]             → ['a']
+def u Integer ; def f fn [[n:u][Any][n]] ; f "a"                  → signature_error   (a bare type IS enforced)
+def u 7 ; def f fn [[n:u][Any][n]] ; f 8                          → error at the definition: `u` is no type
+```
+
+`core/spec/divergent.tsv` pins three rows at the kernel's level, through
+a declared return, and the Lean specification reproduces the arm
+(`FnSpec.lean` `boundType`).
+
+**Proposed verdict:** resolve by fix — `ResolveDefType` hands a type body
+it does not itself know to `ResolveSigType`, so a name bound to a union
+means the union. (If a lowercase name is not meant to name a type at
+all, the fix is the error `def u 7` already gets; either way the
+wildcard goes.)
+
+---
+
+## NUR412 — an all-unnamed function value takes its stack arguments bottom-up {#nur412}
+
+**Status:** Pending · **Recorded:** 2026-11-28 · measured through the shipped words · one form silent (a function that is never run)
+
+**Rule:** the one argument rule (CLAUDE.md, "one rule, no exceptions"): a
+call fills its positions from the forward stack, "then fills every
+remaining position from the value stack in reverse — top of stack first".
+"Two-argument words are not a special case", and neither is a function
+whose parameters have no names.
+
+**Divergence:** a function VALUE standing at the pointer is first planned
+by that rule; when the plan fails, `execFnDefSig` falls back to the
+"legacy pure-stack path" (`core/go/engine.go` `ExecFnDefSigStackMatch`,
+`stackMatchSig`), whose comment states the two orders: "a signature with a
+named param reads the stack top-down (param 0 is the top), an all-unnamed
+one reads its window bottom-up". design/SIG-ORDER-REFACTOR.10.md lists it
+as the one bottom-first path left, kept for module wrappers.
+
+```
+def f fn [[Integer String][List][args]] ; "a" 7 f       → [7 'a']           (by name: top first)
+def f fn [[Integer String][List][args]] ; 7 "a" f       → signature_error
+7 "a" fn [[x:Integer y:String][List][args]]             → not called        (named: top first)
+"a" 7 fn [[x:Integer y:String][List][args]]             → [7 'a']
+7 "a" fn [[Integer String][List][args]]                 → [7 'a']           (all unnamed: BOTTOM first)
+"a" 7 fn [[Integer String][List][args]]                 → not called
+```
+
+The same path takes a USURP wrapper of such a function, and there it does
+worse than read the wrong way: it splices a frame from the wrapper
+signature's body, and a wrapper has none — its work is its handler. The
+function is never run, and the frame's top argument is what comes back:
+
+```
+def f fn [[Integer String][List][args]] ; 7 "a" f/u     → [7 'a']
+def f fn [[Integer String][List][args]] ; "a" 7 f/u     → type_error: <fn>: return value 1: expected List, got Integer
+```
+
+(with a declared return of `Any` the second is silently `7`).
+
+The same path is what applies a function LITERAL that was never bound,
+and there it shows in the ordinary forward call too. Forward arguments
+are seated on the stack in the order the top-first rule reads, the
+all-unnamed signature is read bottom-up, and the call does not happen;
+and signatures are tried in the order they were WRITTEN, a nullary one
+first if it was written first, where a bound function tries the one of
+more arguments first:
+
+```
+fn [[x:Integer y:String][List][args]] 5 "a"             → [5 'a']
+fn [[Integer String][List][args]] 5 "a"                 → a 5 fn (Integer, String)     (not called)
+def f fn [[Integer String][List][args]] ; f 5 "a"       → [5 'a']
+fn [[][Integer][1] [n:Integer][Integer][2]] 5           → 5 1      (the nullary one, written first)
+fn [[n:Integer][Integer][2] [][Integer][1]] 5           → 2
+def f fn [[][Integer][1] [n:Integer][Integer][2]] ; f 5 → 2
+```
+
+`core/spec/divergent.tsv` pins three rows at the kernel's level. The Lean
+specification does NOT reproduce it: it states the one rule, and its
+answers there are core/ts's — with NUR407's, the only ledger rows where
+the specification sides with core/ts.
+
+**Proposed verdict:** resolve by fix — the fallback reads top-first for
+every signature, and a wrapper met there runs its handler (or the
+fallback is confined to the module wrappers it was kept for). The
+alternative, Allowed, would put a second argument order into the one
+rule for one kind of value.
 
 ---

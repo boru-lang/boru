@@ -8,14 +8,14 @@
   core/ts/src/corespec.test.ts declare, written a third time on purpose:
   the runners share no code, so a bug in one cannot hide in another.
 -/
-import Boru.Core.Engine
+import Boru.Core.FnSpec
 
 namespace Boru.Corespec
 open Boru.Core
 
 private def p (name : String) (type : TypeId) (pattern : Option Value := none)
     (quote : Bool := false) (typeArg : Bool := false) : Param :=
-  .mk name type pattern quote typeArg
+  .mk name type pattern quote typeArg false
 
 private def word (name : String) (params : List Param) (returns : List TypeId) (barrier : Nat)
     (fullStack : Bool := false) : String × Value :=
@@ -43,6 +43,9 @@ def fixtureDefs : Defs :=
     -- definition of its own; and the same binding under a name the frame
     -- analysis does not know as a binding word
     word "def" [p "n" TAtom (quote := true), p "v" TAny] [] 2,
+    -- the function a written specification describes, as the reader
+    -- leaves it
+    word "fn" [p "spec" TList] [TFunction] 1,
     word "bindq" [p "n" TAtom (quote := true), p "v" TAny] [] 2,
     -- `/q` over an Any slot: the raw word already fills the slot
     word "qanyq" [p "n" TAny (quote := true)] [TAny] 1,
@@ -128,10 +131,22 @@ def fixtureNatives : Natives :=
       match a.getD 0 .none with
       | .atom n => pure ([], d.pop n)
       | _ => throw { code := "type_error", detail := "undef: not an atom" }),
+    -- the kernel's definition INSTALL: a plain value is bound, a
+    -- function is compiled under the name
     ("def", .plain fun a d =>
       match a.getD 0 .none with
-      | .atom n => pure ([], d.push n (a.getD 1 .none))
+      | .atom n => pure ([], FnSpec.install d n (a.getD 1 .none))
       | _ => throw { code := "type_error", detail := "def: not an atom" }),
+    ("fn", .plain fun a d => do
+      let elems ← elemsOf "fn" (a.getD 0 .none)
+      if elems.isEmpty || elems.length % 3 != 0 then
+        throw { code := "fn_invalid_spec", detail := "fn: list length must be a non-zero multiple of 3" }
+      match FnSpec.parseTriples d elems with
+      | .ok sigs =>
+        let (ident, d) := d.freshIdent
+        pure ([.fn "" sigs ident], d)
+      | .error "unmodelled" => throw { code := "unmodelled", detail := "fn: a specification outside the model" }
+      | .error e => throw { code := "fn_invalid_spec", detail := e }),
     ("bindq", .plain fun a d =>
       match a.getD 0 .none with
       | .atom n => pure ([], d.push n (a.getD 1 .none))
@@ -197,8 +212,8 @@ def fixtureNatives : Natives :=
         -- a new function each time one is built, capturing what the
         -- enclosing frame has bound
         let (ident, d) := d.freshIdent
-        let sig := Sig.mk [.mk name TAny none false false] [TAny] 1
-          (.boru body (computeCaptures d [name] body) true none) false
+        let sig := Sig.mk [.mk name TAny none false false false] [TAny] 1
+          (.boru body (computeCaptures d [name] body) true none []) false
         pure ([.fn "" [sig] ident], d)
       | _ => throw { code := "type_error", detail := "afn: the parameter is a name" }),
     ("depthq", .fullStack fun _ stack => pure (stack ++ [.int stack.length]))

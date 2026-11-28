@@ -136,6 +136,8 @@ inductive Value where
        /- how many unnamed arguments the frame was entered with: that
           many values beneath the declared returns are let pass -/
        (unnamed : Nat)
+       /- the declared returns' patterns, by position -/
+       (patterns : List (Option Value))
   /-- `Word/__MK` — a MARK: the head of a loop's region on the tape. -/
   | mark (id : Nat)
   /-- `Word/__MV` — the MOVE that ends a loop's region. Stepped, it takes
@@ -180,6 +182,10 @@ inductive Param where
        (quote : Bool)
        /- a TYPE-ARG slot: admits a type, declines every concrete value -/
        (typeArg : Bool)
+       /- OPTIONAL: when the function is installed, a signature without
+          this parameter is added, whose body calls the function by name
+          with the parameter's type's base value in its place -/
+       (optional : Bool)
 
 /-- What runs when a signature is selected. -/
 inductive Impl where
@@ -202,6 +208,11 @@ inductive Impl where
             call (`none`). core/go: `buildFnBodyHandler` against
             `execFnDefSig` -/
          (frameState : Option Bool)
+         /- the PATTERNS of the declared returns, by position: a return
+            declared as more than a type — a union, a literal — is checked
+            against the pattern as well as the type (core/go
+            `FnSig.ReturnPatterns`). Empty when none is declared -/
+         (returnPatterns : List (Option Value))
   /-- A usurp wrapper (`/u`): re-dispatch `orig` — the function as it was
       bound — with the collected arguments in reverse; `barrier` is the
       barrier of the signature this one wraps. -/
@@ -226,11 +237,12 @@ deriving instance BEq, Repr for Value, Loop, Param, Impl, Sig
 instance : Inhabited Value := ⟨Value.none⟩
 
 namespace Param
-def name : Param → String | mk n _ _ _ _ => n
-def type : Param → TypeId | mk _ t _ _ _ => t
-def pattern : Param → Option Value | mk _ _ p _ _ => p
-def quote : Param → Bool | mk _ _ _ q _ => q
-def typeArg : Param → Bool | mk _ _ _ _ t => t
+def name : Param → String | mk n _ _ _ _ _ => n
+def type : Param → TypeId | mk _ t _ _ _ _ => t
+def pattern : Param → Option Value | mk _ _ p _ _ _ => p
+def quote : Param → Bool | mk _ _ _ q _ _ => q
+def typeArg : Param → Bool | mk _ _ _ _ t _ => t
+def optional : Param → Bool | mk _ _ _ _ _ o => o
 end Param
 
 namespace Sig
@@ -304,7 +316,7 @@ def typeOf : Value → TypeId
   | forward _ _ => "Word/__FW"
   | fn _ _ _ => "Type/Function"
   | defCleanup _ _ _ => "Word/__IN/__DC"
-  | returnCheck _ _ => "Word/__RC"
+  | returnCheck _ _ _ => "Word/__RC"
   | mark _ => "Word/__MK"
   | move _ _ => "Word/__MV"
   | quoted v => typeOf v
@@ -316,7 +328,7 @@ def unquote : Value → Value
 
 /-- A marker the step loop reads structurally: it is never an operand. -/
 def isStructural : Value → Bool
-  | forward _ _ | defCleanup _ _ _ | returnCheck _ _ | mark _ | move _ _ => true
+  | forward _ _ | defCleanup _ _ _ | returnCheck _ _ _ | mark _ | move _ _ => true
   | _ => false
 
 /-- A pending container: one the parser wrote that nothing has evaluated. -/

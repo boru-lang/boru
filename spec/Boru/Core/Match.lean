@@ -150,7 +150,7 @@ namespace Sig
     `sigSlotValue`). -/
 def slotValue (s : Sig) (i : Nat) : Value :=
   match s.params[i]? with
-  | some (.mk _ type pattern _ _) => pattern.getD (.typeLit type)
+  | some (.mk _ type pattern _ _ _) => pattern.getD (.typeLit type)
   | none => .typeLit TAny
 
 /-- A PIPED barrier: some positions forward and some from the stack.
@@ -386,7 +386,7 @@ def scanAdmits (defs : Defs) (s : Sig) (fwd : Nat) (tok : Value) : Bool :=
           && !(!s.isTypeArg fwd && rejectsTypeLiteral (.typeLit t) expected)
       | none => sigArgMatches s fwd (.atom w.name) || expected == TAny
   match tok with
-  | .forward _ _ | .endMark | .closeParen | .openParen | .frameOpen _ | .defCleanup _ _ _ | .returnCheck _ _
+  | .forward _ _ | .endMark | .closeParen | .openParen | .frameOpen _ | .defCleanup _ _ _ | .returnCheck _ _ _
   | .mark _ | .move _ _ => false
   | .word w =>
     if s.isQuote fwd then conforms TAtom expected                  -- `/q`: the name is the operand

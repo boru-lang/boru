@@ -170,7 +170,7 @@ def pendingCollecting (tape : List Value) (defs : Defs) (ptr : Nat) : Bool :=
 
 /-- A token no forward scan walks past. -/
 def scanBoundary : Value → Bool
-  | .forward _ _ | .defCleanup _ _ _ | .returnCheck _ _ | .endMark | .closeParen
+  | .forward _ _ | .defCleanup _ _ _ | .returnCheck _ _ _ | .endMark | .closeParen
   | .mark _ | .move _ _ => true
   | _ => false
 
@@ -247,7 +247,7 @@ def commitBarrierForward (e : Engine) : Option Engine :=
 def answersItself (sigs : List Sig) (w : WordInfo) : Bool :=
   w.argCount.isNone && sigs.any fun s =>
     match s.impl with
-    | .boru (_ :: _) _ _ _ => true
+    | .boru (_ :: _) _ _ _ _ => true
     | _ => false
 
 /-- ARITY WIDENING (core/go `fnValueWouldWiden`). A function VALUE whose
@@ -289,7 +289,7 @@ def wouldWiden (tape : List Value) (defs : Defs) (sigs : List Sig) (completed id
 def usurpOver (name : String) (sigs : List Sig) (origIdent ident : Nat) : Value :=
   let orig := Value.fn name sigs origIdent
   let wrapped := sigs.map fun s =>
-    Sig.mk (s.params.reverse.map fun p => Param.mk p.name p.type p.pattern p.quote false)
+    Sig.mk (s.params.reverse.map fun p => Param.mk p.name p.type p.pattern p.quote false p.optional)
       s.returns s.arity (.usurp orig s.barrier) false
   .fn name (wrapped.foldl (fun acc s => Defs.insertSig s acc) []) ident
 
@@ -498,7 +498,7 @@ def stepToken (nat : Natives) : Nat → Engine → Except BoruError Engine
     | some (.frameOpen span) => pure { e with ptr := e.ptr + 1 + span }
     | some .closeParen => stepCloseParen nat fuel e
     | some .endMark => stepEnd nat fuel e
-    | some (.returnCheck _ _) => pure { e with ptr := e.ptr + 1 }
+    | some (.returnCheck _ _ _) => pure { e with ptr := e.ptr + 1 }
     | some (.mark _) => pure { e with ptr := e.ptr + 1 }
     | some (.move to loop) => stepMove nat fuel e to loop
     | some (.defCleanup names evalResidual snap) => do
@@ -1141,11 +1141,11 @@ def closeFrame (nat : Natives) : Nat → Engine → Nat → Nat → Except BoruE
       | _ => pure e
     | none =>
       let checkAt := (List.range closeIdx).find? fun i =>
-        i > openIdx && (match e.tape[i]? with | some (.returnCheck _ _) => true | _ => false)
+        i > openIdx && (match e.tape[i]? with | some (.returnCheck _ _ _) => true | _ => false)
       match checkAt with
       | some i =>
         match e.tok? i with
-        | some (.returnCheck returns unnamed) =>
+        | some (.returnCheck returns unnamed patterns) =>
           let tape := removeAt e.tape i
           let results := (tape.drop (openIdx + 1)).take (closeIdx - 1 - (openIdx + 1))
           -- THE DECLARED RETURNS ARE THE TOP of what the frame left. Beneath
@@ -1158,6 +1158,13 @@ def closeFrame (nat : Natives) : Nat → Engine → Nat → Nat → Except BoruE
             Engine.err "type_error" "return count"
           else if !(((results.drop extra).zip returns).all fun (v, t) => v.is t) then
             Engine.err "type_error" "return type"
+          -- a return declared as more than a type is checked against its
+          -- pattern too: the type of a union is Any, and admits everything
+          else if !((((results.drop extra).zip patterns).all fun (v, pat) =>
+              match pat with
+              | some p => unifies p v
+              | none => true)) then
+            Engine.err "type_error" "return pattern"
           else pure { e with tape := splice tape (openIdx + 1) extra [] }
         | _ => pure e
       | none => pure e
@@ -1219,7 +1226,7 @@ def execMatch (nat : Natives) :
           let results ← f args stack
           pure { e with tape := splice e.tape base (e.ptr + 1 - base) results, ptr := base }
         | _ => Engine.err "internal_error" ("no full-stack handler for " ++ name)
-      | .boru _ _ _ _ => Engine.err "internal_error" "a boru body is not a full-stack handler"
+      | .boru _ _ _ _ _ => Engine.err "internal_error" "a boru body is not a full-stack handler"
       | .usurp _ _ => Engine.err "internal_error" "a usurp wrapper is not a full-stack handler"
     else do
       let (results, defs) ←
@@ -1237,7 +1244,7 @@ def execMatch (nat : Natives) :
           -- takes from the stack before it, what it takes forward after
           let k := args.length - min b args.length
           pure (.openParen :: args.take k ++ [orig] ++ (args.drop k).reverse ++ [.closeParen], e.defs)
-        | .boru body captured anonymous frameState =>
+        | .boru body captured anonymous frameState returnPatterns =>
           -- a call frame: bind the named parameters, splice the body in
           -- a paren group closed by the cleanup marker and return check
           -- a NAMED parameter binds its argument; an UNNAMED one's argument
@@ -1274,7 +1281,7 @@ def execMatch (nat : Natives) :
           -- frame's names are no longer bound
           let evalResidual := !anonymous || bodyEvalsResidual body
           let tail := Value.defCleanup (captured.map (·.1) ++ names) evalResidual snap
-            :: (if s.returns.isEmpty then [] else [.returnCheck s.returns unnamed.length])
+            :: (if s.returns.isEmpty then [] else [.returnCheck s.returns unnamed.length returnPatterns])
           pure (.frameOpen unnamed.length :: unnamed ++ body ++ tail ++ [.closeParen], defs)
       let e := { e with defs := defs }
       -- a driven loop a signal passed THROUGH is abandoned where its word
@@ -1467,5 +1474,12 @@ def defaultFuel : Nat := 100000
 def run (nat : Natives) (defs : Defs) (program : List Value) (fuel : Nat := defaultFuel) :
     Except BoruError (List Value) :=
   (runProgram nat fuel defs program).map (·.1)
+
+/-- The bindings a program leaves, when it ends without an error. -/
+def runDefs (nat : Natives) (defs : Defs) (program : List Value) (fuel : Nat := defaultFuel) :
+    Option Defs :=
+  match runProgram nat fuel defs program with
+  | .ok (_, d) => some d
+  | .error _ => none
 
 end Boru.Core
