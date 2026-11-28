@@ -142,7 +142,7 @@ def canonSigs : List Sig → List String
 def canonParams : List Param → List String
   | [] => []
   -- an unnamed parameter has no name before the colon: `:Integer`
-  | .mk name type _ _ _ _ :: ps =>
+  | .mk name type _ _ _ _ _ :: ps =>
     (name ++ ":" ++ leafOf type) :: canonParams ps
 
 def canonImpl : Impl → List String

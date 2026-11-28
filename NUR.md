@@ -132,6 +132,8 @@ list only by becoming **Resolved** (the record is then deleted) or
 | [NUR410](#nur410) | `?` on a parameter whose type has no base value does nothing, silently: `def f fn [[n?:Any][Any][n]]` is defined without complaint and `f` is `no signature matches`; the same for `Function`, a union, and a literal the base value is not (`n?:7`) | the Lean specification's model of the definition install, against core/go and the shipped words (2026-11-28) |
 | [NUR411](#nur411) | A lowercase name bound to a union or a typed list is accepted as a parameter's or a return's declaration and constrains nothing: with `def u (Integer tor String)`, `fn [[n:Any][u][n]]` returns `true` and `fn [[n:u][Any][n]]` takes it, where the union written in place, and a capitalised `def U`, both refuse it | the Lean specification's model of the function-spec reader, against core/go and the shipped words (2026-11-28) |
 | [NUR412](#nur412) | A function VALUE all of whose parameters are unnamed takes its stack arguments BOTTOM-UP — and so an unbound function literal of unnamed parameters cannot be called forward at all (`fn [[Integer String][List][args]] 5 "a"` is left uncalled, where `x:`/`y:` or a `def` makes it `[5 'a']`): `7 "a" fn [[Integer String][List][args]]` is `[7 'a']` and `"a" 7 fn […]` is not called, the opposite of the same function with named parameters and of the same function called by name; and a usurped one matched that way is not run — `def f fn [[Integer String][List][args]] ; "a" 7 f/u` returns its own argument (`<fn>: expected List, got Integer`) | the Lean specification's differential fuzzer, against core/go and the shipped words (2026-11-28) |
+| [NUR413](#nur413) | `/u` does not carry a signature's raw-capture slots with the parameters it reverses: the wrapper drops the two no-evaluation slots, so a code body is EVALUATED before the word is handed it (`quote/u [add 1 2]` is `[3]`, `for/u [print i] 2` is `undefined word: i`, `if/u [print "no"] [print "yes"] true` prints both), and keeps the raw-paren and form slots at the positions they had before the reversal, which are other parameters' positions now | the Lean specification's model of the raw-capture slots, against core/go and the shipped words (2026-11-28) |
+| [NUR414](#nur414) | A paren expression that ARRIVES at a waiting word — a name bound to one, stepped — is captured as code when the word's signature has a raw-paren or form slot ANYWHERE, also at an ordinary slot of it; written at that same slot it is evaluated, because the plan asks the position and the arrival asks the signature | the Lean specification's model of the raw-capture slots, against core/go (2026-11-28) |
 
 Pending records normally use a compact form (rule / divergence /
 evidence / documentation status, plus a proposed verdict where one is
@@ -2167,5 +2169,120 @@ every signature, and a wrapper met there runs its handler (or the
 fallback is confined to the module wrappers it was kept for). The
 alternative, Allowed, would put a second argument order into the one
 rule for one kind of value.
+
+---
+
+## NUR413 — `/u` does not carry a signature's raw-capture slots {#nur413}
+
+**Status:** Pending · **Recorded:** 2026-11-28 · measured through the shipped words · silent (a code body is run that the word was to be handed as code)
+
+**Rule:** `/u` is the bound function "with its argument order reversed":
+`f/u a b c` is `f c b a` (`core/go/core_ref.go` `UsurpFunction`), and its
+own comment promises that "every original behaviour (barriers, quoting,
+return checks, closures, module scope) is preserved; usurp only reverses
+which caller argument lands in which original slot".
+
+**Divergence:** a signature marks a slot to take its operand as written in
+four per-position fields — `NoEvalArgs` (a list unevaluated),
+`NoEvalMapArgs` (a map), `RawParens` (a paren expression as code),
+`FormArgs` (any form). `usurpOver` builds the wrapper's signature from a
+copy of the original's with the parameters reversed, and:
+
+- sets `NoEvalArgs` and `NoEvalMapArgs` to nil, with the comment "the
+  original sig re-applies them on re-dispatch". It cannot: the WRAPPER is
+  what the call matches, so the wrapper's `execMatch` evaluates the list
+  or map before the original is ever handed it;
+- leaves `RawParens` and `FormArgs` as copied — indexed by the ORIGINAL's
+  positions on a signature whose parameters are now in the opposite
+  order. With one parameter the index is the same and the mode survives;
+  with two, the wrapper captures at the position the original evaluates
+  and evaluates at the position the original captures.
+
+Through the shipped words, where the no-evaluation slots are the code
+bodies of `quote`, `for`, `if` and the other words that take one:
+
+```
+quote [add 1 2]                          → [add 1 2]
+quote/u [add 1 2]                        → [3]
+for 2 [print i]                          → 0 1
+for/u [print i] 2                        → undefined word: i     (the body is run before there is a loop)
+if true [print "yes"] [print "no"]       → yes
+if/u [print "no"] [print "yes"] true     → no yes                (both branches run, then the chosen one's result)
+```
+
+At the kernel's level, with a form slot second of two (`form2q a b`):
+
+```
+form2q 1 x                               → [1 x]          (x bound to 5: the form slot takes the word)
+form2q/u x 1                             → [1 5]          (should be the line above)
+form2q p( addq 3 4 ) p( addq 1 2 )       → [7 (addq 1 2)]
+form2q/u p( addq 1 2 ) p( addq 3 4 )     → [7 3]          (should be the line above)
+```
+
+`core/spec/dispatch.tsv` pins the list mode's rows (core/ts drops it the
+same way), `core/spec/divergent.tsv` the map, paren and form modes', and
+the Lean specification reproduces both halves (`Engine.lean` `usurpOver`,
+`Theorems/Raw.lean` `nur413_usurp_does_not_carry_the_modes`).
+
+**Proposed verdict:** resolve by fix — the wrapper carries all four
+fields with their indices reversed, as it already carries the
+parameters, their patterns and `/q` (`reverseParams`). The re-dispatch
+then hands the original an operand that is still as it was written, at
+the slot that takes it so.
+
+---
+
+## NUR414 — a paren expression that arrives is captured by the signature, not the slot {#nur414}
+
+**Status:** Pending · **Recorded:** 2026-11-28 · measured at the kernel's level (`core/spec`), not through the shipped words · silent (code where a value was expected)
+
+**Rule:** the raw-capture fields are per POSITION: "RawParens marks arg
+positions where a forward ParenExpr is captured RAW", "FormArgs marks arg
+positions captured as a raw FORM" (`core/go/value.go`). A slot the
+signature does not mark is an ordinary slot, and an ordinary slot is
+handed the value a paren expression evaluates to.
+
+**Divergence:** the question is asked twice, and only once of the
+position. The plan walk, over the tokens written after the word, asks the
+position (`rawParenForward(fn, pos)`, `rawFormForward(fn, pos)`). The
+arrival — a paren expression that reaches the pointer while a word is
+parked waiting for its arguments — asks the parked word's SIGNATURE
+(`core/go/engine.go` `pendingForwardWantsRawParen`):
+
+```go
+return fwd.Sig != nil && (len(fwd.Sig.RawParens) > 0 || len(fwd.Sig.FormArgs) > 0)
+```
+
+so a signature with a raw-paren or form slot anywhere keeps a paren
+expression that arrives at ANY of its slots. Its sibling
+`hasPendingForwardFormArg`, which decides the same thing for a WORD,
+asks the parked forward's next slot (`fwd.Sig.FormArgs[fwd.CollectedArgs]`),
+which is the position.
+
+A paren expression arrives, rather than being written, when a name bound
+to one is stepped — a binding made by a host, a parameter a host call
+bound, a loop's element. With `form2q a b` (the form slot second) and
+`raw2q a b` (no paren or form slot), and `x` bound to `(addq 1 2)`:
+
+```
+form2q p( addq 1 2 ) 1      → [3 1]              (written at the ordinary slot: evaluated)
+form2q x 1                  → [(addq 1 2) 1]     (arriving at the same slot: captured as code)
+raw2q x 1                   → [3 1]              (a signature with no such slot: evaluated)
+```
+
+The plan walk has its own looseness of the same kind: it keeps a paren
+expression when ANY overload of the word marks the position, and the
+overload that then runs may not be that one — it is then evaluated at
+arrival instead, unless that overload marks some other position.
+
+`core/spec/divergent.tsv` pins three rows, and the Lean specification
+reproduces the arm (`Engine.lean` `pendingWantsRawParen`,
+`Theorems/Raw.lean` `nur414_an_arriving_paren_is_kept_by_the_signature`).
+No reproduction through the shipped words was found: `afn` and `quote`
+are the shipped signatures with a raw-paren slot, and `afn`'s other slot
+is itself a no-evaluation slot.
+
+**Proposed verdict:** resolve by fix — `pendingForwardWantsRawParen` asks
+the parked forward's next slot, as `hasPendingForwardFormArg` does.
 
 ---

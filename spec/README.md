@@ -47,8 +47,9 @@ make -C spec fuzz      # differential search against core/go
 on the model and compares the result with the row's `expected` column —
 the third runner of the corpus, sharing no code with the other two. It
 also reports, for `divergent.tsv` (where `core/go` and `core/ts`
-disagree), which engine the specification sides with — `core/go`, on
-every row today.
+disagree), which engine the specification sides with — `core/go` on all
+but five rows today, which are two recorded kernel defects the
+specification does not reproduce (NUR407, NUR412).
 
 **`verify-typetable`** regenerates `TypeTable.lean` from the Go table and
 fails on any difference: the specification's lattice is the kernel's.

@@ -146,7 +146,7 @@ def parseParams (d : Defs) : List Value → Params → R Params
       if w.name == "?" then
         -- the parameter BEFORE it is optional
         let ps := match acc.params.reverse with
-          | .mk n t pat q ta _ :: before => (Param.mk n t pat q ta true :: before).reverse
+          | .mk n t pat q ta _ raw :: before => (Param.mk n t pat q ta true raw :: before).reverse
           | [] => []
         parseParams d rest { acc with params := ps }
       else if w.name == "|" || w.name == "__SB" then
@@ -163,27 +163,27 @@ def parseParams (d : Defs) : List Value → Params → R Params
           if !validName name then throw s!"invalid parameter name {name}"
           else
             match resolveTypeName? typeName with
-            | some t => add (.mk name t none quote false optional)
+            | some t => add (.mk name t none quote false optional {})
             | none =>
               -- `name:kw/q`, where `kw` names no type: a KEYWORD slot — it
               -- admits exactly the written word `kw`
-              if quote then add (.mk name TAtom (some (.atom typeName)) true false optional)
+              if quote then add (.mk name TAtom (some (.atom typeName)) true false optional {})
               else throw s!"unknown type {typeName}"
         | none =>
           -- a bare type name: an unnamed parameter
           match resolveTypeName? w.name with
-          | some t => add (.mk "" t none false false false)
+          | some t => add (.mk "" t none false false false {})
           | none => throw s!"unknown type {w.name}"
-    | .typeLit t => add (.mk "" t none false false false)
-    | .int n => add (.mk "" TInteger (some (.int n)) false false false)
-    | .bool b => add (.mk "" TBoolean (some (.bool b)) false false false)
-    | .str s => add (.mk "" TString (some (.str s)) false false false)
+    | .typeLit t => add (.mk "" t none false false false {})
+    | .int n => add (.mk "" TInteger (some (.int n)) false false false {})
+    | .bool b => add (.mk "" TBoolean (some (.bool b)) false false false {})
+    | .str s => add (.mk "" TString (some (.str s)) false false false {})
     -- a map written here is an unnamed Map parameter with the map as its
     -- pattern (the parser's own `{name: Type}` pair is another thing, and
     -- is not reached)
     | v@(.map _ _) | v@(.typedMap _ _) => do
       let (t, pat) ← resolveSigType d v
-      add (.mk "" t pat false false false)
+      add (.mk "" t pat false false false {})
     | .atom _ => unmodelled
     | .parenExpr _ => unmodelled
     | _ => throw "invalid parameter"
@@ -293,7 +293,7 @@ def expandOptional (name : String) (s : Sig) : List Sig :=
             (args more (present + 1)).map (here ++ ·)
       match args params.zipIdx 0 with
       | some call =>
-        some (Sig.mk (kept.map fun p => .mk p.name p.type p.pattern false false false) returns
+        some (Sig.mk (kept.map fun p => .mk p.name p.type p.pattern false false false {}) returns
           (min barrier kept.length)
           (.boru (.word { name := name } :: call) captured anonymous none rpats) full)
       | none => none

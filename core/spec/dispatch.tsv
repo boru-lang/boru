@@ -1303,3 +1303,70 @@ run ; def negq fn( n Integer Integer [ 7 ] ) ; negq 5 undef negq negq 5	7 -5	a f
 run 'a' 7 fn( _ Integer _ Any Any [ argsq ] )	[7 'a']	the top of the stack is the first argument
 run 7 'a' fn( x Integer y Any Any [ argsq ] )	ERROR:uncalled_function	with a named parameter the other order is refused, by all three
 run def f fn( _ Integer _ Any Any [ argsq ] ) ; 7 'a' f	ERROR:signature_error	and so is the all-unnamed function called by its NAME
+
+# --- the raw-capture slots: a list handed over as it was written -------------------
+# A signature may mark a slot NO-EVALUATION for lists (core/go
+# `NoEvalArgs`): a pending list that fills it is handed to the word as it
+# was written — nothing in it is run or looked up — and is DATA from then
+# on. `rawlq` has that one slot and hands its argument back; `raw2q` has it
+# SECOND of two and hands back both. (The three other raw-capture modes —
+# a map taken unevaluated, a paren expression captured as code, a form
+# captured as written — are signature fields core/ts does not have: their
+# rows are in `divergent.tsv`.)
+run rawlq [ addq 1 2 ]	[addq 1 2]	A NO-EVALUATION SLOT: the pending list is handed over as it was written — its words are not run
+run [ addq 1 2 ] rawlq	[addq 1 2]	from the stack too: the mode is the slot's, whichever side fills it
+run [ addq 1 2 ] rawlq/s	[addq 1 2]	under /s
+run rawlq/f [ addq 1 2 ]	[addq 1 2]	under /f
+run rawlq/1 [ addq 1 2 ]	[addq 1 2]	and under a forced arity
+run rawlq [ nosuch ]	[nosuch]	nothing in it is looked up: an unbound word is no error
+run def x 5 ; rawlq [ x ]	[x]	and a bound one is not replaced by its value
+run rawlq [ [ addq 1 2 ] { a: nosuch } ]	[[addq 1 2] {a:nosuch}]	all the way down: a list or a map inside it is as raw
+run rawlq [ rawlq [ addq 1 2 ] ]	[rawlq [addq 1 2]]	a call written inside it is only its tokens
+run rawlq [ addq 1 2 ] rawlq	[addq 1 2]	WHAT IS HANDED BACK IS DATA: no longer pending, so nothing evaluates it later — not a second call
+run rawlq [ addq 1 2 ] dupq	[addq 1 2] [addq 1 2]	not an ordinary word that takes it
+run [ rawlq [ addq 1 2 ] ]	[[addq 1 2]]	not the list literal it is written in
+run { a: p( rawlq [ addq 1 2 ] ) }	{a:[addq 1 2]}	not a map member
+run rawlq ( rawlq [ addq 1 2 ] )	[addq 1 2]	not a group
+run unifyq ( rawlq [ addq 1 2 ] ) [q addq 1 2 ]	true	it IS the quoted list
+run rawlq [q addq 1 2 ]	[addq 1 2]	a quoted list was never pending: the slot changes nothing
+run rawlq [ ]	[]	the empty list
+run rawlq [ 1 2 3 ]	[1 2 3]	a list of literals reads the same either way
+run rawlq 5	5	THE MODE IS FOR A LIST: any other operand is taken as an ordinary slot takes it — a literal
+run rawlq ( addq 1 2 )	3	a group is evaluated
+run rawlq p( addq 1 2 )	3	a paren expression is
+run rawlq { a: p( addq 1 2 ) }	{a:3}	and a MAP is: the list mode says nothing about maps
+run rawlq { a: [ addq 1 2 ] }	{a:[3]}	a list INSIDE that map included
+run rawlq [: Integer 1 2 ]	[:Integer 1 2]	a typed list is no pending list
+run def x [ addq 1 2 ] ; rawlq x	[addq 1 2]	A NAME bound to a pending list delivers it pending, and the slot takes it as written
+run def x [ addq 1 2 ] ; x rawlq	[addq 1 2]	from the stack
+run def x [ addq 1 2 ] ; rawlq x/v	[addq 1 2]	and as /v
+run def x [ addq 1 2 ] ; dupq x	[3] [3]	(an ordinary slot evaluates it)
+run def x { a: p( addq 1 2 ) } ; rawlq x	{a:3}	a name bound to a pending map: evaluated
+run ; def x [ addq 1 2 ] ; rawlq x	[3]	(bound by the program's own `def`, the list was evaluated when it was bound: there is nothing left to keep)
+run rawlq [ addq 1 2 ] rawlq [ addq 3 4 ]	[addq 1 2] [addq 3 4]	two calls, two lists
+run rawlq [ addq 1 2 ] negq 1	[addq 1 2] -1	the next statement is its own
+run rawlq rawlq [ addq 1 2 ]	ERROR:signature_error	a raw slot is no exception to the forward barrier: a function word after the word is not its operand
+run def f fn( x Any Any [ rawlq [ x ] ] ) ; f 1	[x]	in a function's body: the parameter's NAME is in the list, not its value
+run ; def g rawlq/v ; g [ addq 1 2 ]	[addq 1 2]	the function as a VALUE keeps its slots: called through another name
+run ; def g rawlq/v ; [ addq 1 2 ] g	[addq 1 2]	from the stack
+run raw2q 1 [ addq 1 2 ]	[1 [addq 1 2]]	THE MODE IS ONE SLOT'S: the second of two keeps its list
+run raw2q [ addq 1 2 ] [ addq 3 4 ]	[[3] [addq 3 4]]	and the first, an ordinary slot, evaluates its own
+run [ addq 3 4 ] raw2q [ addq 1 2 ]	[[3] [addq 3 4]]	the slot is a position of the SIGNATURE, not a place on the tape: here the raw one is filled from the stack
+run [ addq 3 4 ] [ addq 1 2 ] raw2q	[[3] [addq 3 4]]	and here both are
+run [ addq 1 2 ] [ addq 3 4 ] raw2q/s	[[7] [addq 1 2]]	the top of the stack is the first slot
+run def x [ addq 1 2 ] ; raw2q 1 x	[1 [addq 1 2]]	a name at the raw slot
+run def x [ addq 1 2 ] ; raw2q x 1	[[3] 1]	and at the ordinary one
+run ; def g raw2q/v ; g 1 [ addq 1 2 ]	[1 [addq 1 2]]	through a binding of the function
+
+# --- NUR413: `/u` drops the no-evaluation mode -------------------------------------
+# The usurp wrapper is the function with its parameters reversed — and
+# WITHOUT the no-evaluation mode: the wrapper evaluates the list, and the
+# original is handed the result. As the kernel has it, not as it should be
+# (NUR413); core/ts drops it the same way.
+run rawlq/u [ addq 1 2 ]	[3]	NUR413: `/u` reverses the argument order of a one-argument word — nothing — and yet the list is evaluated
+run rawlq/u [ nosuch ]	ERROR:undefined_word	NUR413: so what the word takes as written, its reversal looks up
+run [ addq 1 2 ] rawlq/u	[3]	NUR413: from the stack
+run rawlq/u [q addq 1 2 ]	[addq 1 2]	(a quoted list is safe from it)
+run raw2q/u [ addq 1 2 ] 1	[1 [3]]	NUR413: `raw2q/u a b` is `raw2q b a` in everything but this — `raw2q 1 [ addq 1 2 ]` keeps its list
+run raw2q/u [ addq 1 2 ] [ addq 3 4 ]	[[7] [3]]	NUR413: both evaluated
+run ; def g raw2q/v ; g/u [ addq 1 2 ] 1	[1 [3]]	NUR413: through a binding too

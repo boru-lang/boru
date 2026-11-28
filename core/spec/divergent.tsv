@@ -859,3 +859,156 @@ run ; def f ( fn [q [q n:Any ] [: Integer ] [q n ] ] ) ; f 'a' f/v	'a' fn [[n:An
 run 7 'a' fn( _ Integer _ Any Any [ argsq ] )	[7 'a']	ERROR:uncalled_function	NUR412: an all-unnamed function VALUE whose arguments do not fit top-first is read again BOTTOM-UP, and is called — the rule, and core/ts, refuse it
 run def f fn( _ Integer _ Any Any [ argsq ] ) ; 'a' 7 f/u	7	ERROR:uncalled_function	NUR412: usurped, the bottom-up reading matches the WRAPPER and its frame has no body — the function is never run, and the top argument is the answer
 run def f fn( _ Integer _ Any Any [ depthq ] ) ; 'a' 7 f/u	7	ERROR:uncalled_function	NUR412: whatever the body is
+
+# --- the raw-capture slots core/ts does not have: a map, a paren expression, a form ---
+# Three of the kernel's four raw-capture modes are signature fields with no
+# counterpart in core/ts (`NoEvalMapArgs`, `RawParens`, `FormArgs`); the
+# fourth, the list mode, is in `dispatch.tsv`. Their fixtures are registered
+# by the Go runner and the Lean model only, so the `ts` column is the
+# missing word.
+#
+# `rawmq` — a pending MAP handed over as it was written.
+run rawmq { a: p( addq 1 2 ) }	{a:(addq 1 2)}	ERROR:undefined_word	THE MAP MODE: a pending map is handed over as it was written — a member's expression is not run
+run { a: p( addq 1 2 ) } rawmq	{a:(addq 1 2)}	ERROR:undefined_word	from the stack too
+run rawmq { a: [ addq 1 2 ] b: nosuch }	{a:[addq 1 2] b:nosuch}	ERROR:undefined_word	a list member is as raw, and an unbound word no error
+run rawmq { a: { b: p( addq 1 2 ) } }	{a:{b:(addq 1 2)}}	ERROR:undefined_word	all the way down
+run def x 5 ; rawmq { a: x }	{a:x}	ERROR:undefined_word	a bound word is not replaced by its value
+run rawmq { a: p( breakq ) }	{a:(breakq)}	ERROR:undefined_word	a member that would raise a signal never runs
+run { a: p( rawmq { b: p( addq 1 2 ) } ) }	{a:{b:(addq 1 2)}}	ERROR:undefined_word	what is handed back is DATA: the map it is written in does not evaluate it
+run rawmq { a: p( addq 1 2 ) } rawmq	{a:(addq 1 2)}	ERROR:undefined_word	nor a second call
+run rawmq {q a: nosuch }	{a:nosuch}	ERROR:undefined_word	a quoted map was never pending
+run rawmq [ addq 1 2 ]	[3]	ERROR:undefined_word	THE MAP MODE SAYS NOTHING ABOUT LISTS: a list at the slot is evaluated
+run rawmq 5	5	ERROR:undefined_word	and any other operand is taken as an ordinary slot takes it
+run rawmq {: Integer a: 1 }	{:Integer a:1}	ERROR:undefined_word	a typed map is no pending map
+run def x { a: p( addq 1 2 ) } ; rawmq x	{a:(addq 1 2)}	ERROR:undefined_word	a NAME bound to a pending map delivers it pending, and the slot takes it as written
+run ; def g rawmq/v ; g { a: p( addq 1 2 ) }	{a:(addq 1 2)}	ERROR:undefined_word	the function as a value keeps the slot
+run rawmq/u { a: p( addq 1 2 ) }	{a:3}	ERROR:undefined_word	NUR413: `/u` drops the map mode as it drops the list mode — the map is evaluated
+#
+# `rawpq` — a paren expression written after the word is captured as code.
+# It hands its capture back inside a one-element list: bare, a paren
+# expression re-enters the tape and runs.
+run rawpq p( addq 1 2 )	[(addq 1 2)]	ERROR:undefined_word	THE RAW PAREN: a paren expression written after the word is captured as code, not run
+run rawpq p( nosuch )	[(nosuch)]	ERROR:undefined_word	nothing in it is looked up
+run def x 5 ; rawpq p( x )	[(x)]	ERROR:undefined_word	a bound word in it is not replaced
+run rawpq p( )	[()]	ERROR:undefined_word	the empty one
+run rawpq p( p( addq 1 2 ) )	[((addq 1 2))]	ERROR:undefined_word	a nested one, whole
+run rawpq p( breakq )	[(breakq)]	ERROR:undefined_word	a signal in it is never raised
+run rawpq/f p( addq 1 2 )	[(addq 1 2)]	ERROR:undefined_word	under /f
+run rawpq/1 p( addq 1 2 )	[(addq 1 2)]	ERROR:undefined_word	under a forced arity
+run p( addq 1 2 ) rawpq	[3]	ERROR:undefined_word	ONLY FORWARD: a paren expression BEFORE the word has run by the time the word is reached
+run rawpq/s p( addq 1 2 )	ERROR:signature_error	ERROR:undefined_word	so stack-only has nothing to capture
+run rawpq ( addq 1 2 )	[3]	ERROR:undefined_word	A GROUP ON THE TAPE is not a paren expression: it is evaluated before any slot sees it
+run rawpq ( 1 2 )	[1] 2	ERROR:undefined_word	and only its first value is the operand
+run rawpq ( )	ERROR:no_value_error	ERROR:undefined_word	a group that leaves nothing is no operand
+run rawpq 5	[5]	ERROR:undefined_word	THE MODE IS FOR A PAREN EXPRESSION: a literal is taken as an ordinary slot takes it
+run rawpq [ addq 1 2 ]	[[3]]	ERROR:undefined_word	a pending list is evaluated
+run def x 5 ; rawpq x	[5]	ERROR:undefined_word	a bound name is its value — the paren mode is not the form mode
+run rawpq negq 1	ERROR:signature_error	ERROR:undefined_word	no exception to the forward barrier: a function word is not its operand
+run rawpq p( addq 1 2 ) negq 1	[(addq 1 2)] -1	ERROR:undefined_word	the next statement is its own
+run rawpq p( addq 1 2 ) rawpq	[[(addq 1 2)]]	ERROR:undefined_word	what is handed back is data: the second call takes the list from the stack
+run [ rawpq p( addq 1 2 ) ]	[[(addq 1 2)]]	ERROR:undefined_word	in a list literal
+run eachq [q 1 2 ] [q rawpq p( addq 1 2 ) ]	[1 [(addq 1 2)] 2 [(addq 1 2)]]	ERROR:undefined_word	in a loop's region
+run def f fn( x Any List [ rawpq p( x ) ] ) ; f 1	[(x)]	ERROR:undefined_word	in a function's body: the parameter's NAME is in the code
+run unifyq ( rawpq p( 1 ) ) ( rawpq p( 1 ) )	true	ERROR:undefined_word	two captures of the same text are equal
+run def x p( addq 1 2 ) ; rawpq x	[(addq 1 2)]	ERROR:undefined_word	A NAME bound to a paren expression arrives as one, and is captured
+run def x p( addq 1 2 ) ; rawpq x/v	[(addq 1 2)]	ERROR:undefined_word	as /v too
+run def x p( addq 1 2 ) ; x rawpq	[3]	ERROR:undefined_word	(before the word, it has run)
+run ; def g rawpq/v ; g p( addq 1 2 )	[(addq 1 2)]	ERROR:undefined_word	the function as a value keeps the slot
+run rawpq/u p( addq 1 2 )	[(addq 1 2)]	ERROR:undefined_word	`/u` KEEPS the paren mode, at the position it had: with one parameter, the right one (NUR413 is the two-parameter case)
+#
+# `formq` — whatever is written after the word is captured as it stands. It
+# hands its capture back inside a one-element list; `form2q` has the form
+# slot SECOND of two and hands back both arguments.
+run formq nosuch	[nosuch]	ERROR:undefined_word	THE FORM SLOT: whatever is written after the word is captured as it stands — an unbound word is no error
+run def x 5 ; formq x	[x]	ERROR:undefined_word	a bound word is the WORD, not its value
+run formq addq 1 2	[addq] 1 2	ERROR:undefined_word	a function word is not called, and its operands are not the form's
+run def f fn( n Integer Integer [ addq n 1 ] ) ; formq f 1	[f] 1	ERROR:undefined_word	a function the row defines, the same
+run formq formq	[formq]	ERROR:undefined_word	the word itself
+run def x 5 ; formq formq x	[formq] 5	ERROR:undefined_word	ONE form: the token after it is stepped
+run formq breakq	[breakq]	ERROR:undefined_word	a word that would raise a signal is only a word
+run forq 2 [q formq breakq ]	[breakq] [breakq]	ERROR:undefined_word	so the loop runs both rounds
+run formq p( addq 1 2 )	[(addq 1 2)]	ERROR:undefined_word	a paren expression is captured as code
+run formq 5	[5]	ERROR:undefined_word	a literal is itself
+run formq 'a'	['a']	ERROR:undefined_word	a string
+run formq Integer	[Integer]	ERROR:undefined_word	a type
+run formq true	[true]	ERROR:undefined_word	a word literal
+run formq [q addq 1 2 ]	[[addq 1 2]]	ERROR:undefined_word	a quoted list
+run formq fn( n Integer Integer [ addq n 1 ] ) 5	[fn [[n:Integer][Integer][addq n 1]]] 5	ERROR:undefined_word	a function VALUE written there is captured, not called
+run formq [ addq 1 2 ]	[[3]]	ERROR:undefined_word	BUT A PENDING LIST IS STILL EVALUATED: the slot captures the list, and the call evaluates what it captured — taking a list raw is the list mode's, another field
+run formq { a: p( addq 1 2 ) }	[{a:3}]	ERROR:undefined_word	and a pending map
+run formq ( addq 1 2 )	[3]	ERROR:undefined_word	a group on the tape is evaluated before any slot sees it
+run formq ( )	ERROR:no_value_error	ERROR:undefined_word	and one that leaves nothing is no operand
+run formq nosuch/2	[nosuch/2]	ERROR:undefined_word	THE WORD WITH ITS MODIFIERS: a forced arity is part of what was written
+run formq nosuch/s	[nosuch/s]	ERROR:undefined_word	/s is
+run formq addq/v	[fn [[a:Integer b:Integer][Integer][]]]	ERROR:undefined_word	EXCEPT /v: the reference is read before the form is captured, as at a /q slot
+run def x 5 ; formq x/v	[5]	ERROR:undefined_word	for a plain binding too
+run formq addq/u	ERROR:signature_error	ERROR:undefined_word	and /u is a call — a function word, which the forward barrier refuses
+run formq	ERROR:signature_error	ERROR:undefined_word	NOTHING WRITTEN: no form, and nothing on the stack
+run formq ;	ERROR:signature_error	ERROR:undefined_word	`end` is no form
+run ( formq )	ERROR:signature_error	ERROR:undefined_word	nor is a close paren
+run 5 formq	[5]	ERROR:undefined_word	WITH NOTHING FORWARD the slot is filled from the stack, like any other
+run p( addq 1 2 ) formq	[3]	ERROR:undefined_word	with what stands there: a paren expression before the word has run
+run def x 5 ; x formq	[5]	ERROR:undefined_word	and a word before it has been stepped
+run 5 formq/s	[5]	ERROR:undefined_word	stack only
+run formq/s nosuch	ERROR:signature_error	ERROR:undefined_word	stack only, with an empty stack
+run formq/f nosuch	[nosuch]	ERROR:undefined_word	forward only
+run formq/1 nosuch	[nosuch]	ERROR:undefined_word	a forced arity
+run formq/u nosuch	[nosuch]	ERROR:undefined_word	`/u` keeps the form mode, at the position it had: with one parameter, the right one
+run formq nosuch negq 1	[nosuch] -1	ERROR:undefined_word	the next statement is its own
+run ( formq nosuch )	[nosuch]	ERROR:undefined_word	in a group
+run [ formq nosuch ]	[[nosuch]]	ERROR:undefined_word	in a list literal
+run { a: p( formq nosuch ) }	{a:[nosuch]}	ERROR:undefined_word	in a map member
+run bothq 1 ( formq nosuch )	[nosuch]	ERROR:undefined_word	as another word's operand
+run eachq [q 1 2 ] [q formq nosuch ]	[1 [nosuch] 2 [nosuch]]	ERROR:undefined_word	in a loop's region
+run def f fn( x Any List [ formq x ] ) ; f 1	[x]	ERROR:undefined_word	in a function's body: the parameter's NAME
+run unifyq ( formq nosuch ) [q nosuch ]	true	ERROR:undefined_word	the capture IS the word in a quoted list
+run ; def g formq/v ; g nosuch	[nosuch]	ERROR:undefined_word	the function as a value keeps the slot
+run form2q 1 nosuch	[1 nosuch]	ERROR:undefined_word	THE MODE IS ONE SLOT'S: the second of two captures its word
+run def x 5 ; form2q x 1	[5 1]	ERROR:undefined_word	and the first, an ordinary slot, looks its word up
+run def x 5 ; form2q x x	[5 x]	ERROR:undefined_word	one name at both: its value, and itself
+run form2q 1 addq 1 2	[1 addq] 1 2	ERROR:undefined_word	a function word at the form slot
+run form2q p( addq 1 2 ) p( addq 3 4 )	[3 (addq 3 4)]	ERROR:undefined_word	two paren expressions: each by its own slot's mode
+run form2q 1 p( addq 1 2 ) 7	[1 (addq 1 2)] 7	ERROR:undefined_word	what follows the second is not the call's
+run 2 form2q 1	[1 2]	ERROR:undefined_word	FORWARD FILLS THE FIRST SLOT: the form slot is then filled from the stack, with a value
+run def x 5 ; 1 form2q x	[5 1]	ERROR:undefined_word	so this word stands at the ORDINARY slot, and is looked up
+run 1 2 form2q	[2 1]	ERROR:undefined_word	both from the stack
+run 2 p( addq 1 2 ) form2q	[3 2]	ERROR:undefined_word	a paren expression on the stack side has run
+run 1 2 form2q/s	[2 1]	ERROR:undefined_word	stack only
+run ; def g form2q/v ; g 1 nosuch	[1 nosuch]	ERROR:undefined_word	the function as a value
+
+# --- NUR413: `/u` keeps the paren and form modes at the ORIGINAL's positions -------
+# The usurp wrapper reverses the parameters and not the positions of the
+# paren and form modes (and drops the two no-evaluation modes: `rawmq/u`
+# above, the list mode in `dispatch.tsv`). `form2q/u a b` should be
+# `form2q b a`.
+run def x 5 ; form2q/u x 1	[1 5]	ERROR:undefined_word	NUR413: `form2q 1 x` is [1 x] — reversed, the wrapper captures raw at ITS second position, which is the original's first, and looks `x` up at its first
+run form2q/u p( addq 1 2 ) p( addq 3 4 )	[7 3]	ERROR:undefined_word	NUR413: `form2q p( addq 3 4 ) p( addq 1 2 )` is [7 (addq 1 2)] — reversed, the wrapper evaluates the one it should keep, and the original evaluates the other
+run def x 5 ; form2q/u 1 x	[5 1]	ERROR:undefined_word	(`form2q x 1` is [5 1] too: the wrapper captures the word, and the original looks it up)
+run ; def g form2q/v ; g/u p( addq 1 2 ) p( addq 3 4 )	[7 3]	ERROR:undefined_word	NUR413: through a binding
+
+# --- NUR414: a paren expression that ARRIVES is captured by the signature, not the slot ---
+# A paren expression written after the word is kept or evaluated by the mode
+# of the POSITION it is written at. One that arrives at a waiting word — a
+# name bound to it, stepped — is kept when the word's signature has a paren
+# or form slot ANYWHERE: an ordinary slot of such a signature captures it.
+run form2q p( addq 1 2 ) 1	[3 1]	ERROR:undefined_word	(WRITTEN at the ordinary slot, it is evaluated)
+run def x p( addq 1 2 ) ; form2q x 1	[(addq 1 2) 1]	ERROR:undefined_word	NUR414: a NAME bound to the same expression, at the same ordinary slot, is captured as code — because the second slot is a form slot
+run def x p( addq 1 2 ) ; form2q x nosuch	[(addq 1 2) nosuch]	ERROR:undefined_word	NUR414: with a form at the form slot
+run def x p( addq 1 2 ) ; form2q x/v 1	[(addq 1 2) 1]	ERROR:undefined_word	NUR414: as /v
+
+# --- a name bound to a paren expression, collected by a waiting word ---------------
+# Unrelated to the raw modes, and shown by the first fixture that hands its
+# arguments back in a list: core/ts collects the binding's paren expression
+# as it is, where core/go and the specification run it as the group it is.
+run def x p( addq 1 2 ) ; raw2q x 1	[3 1]	[(addq 1 2) 1]	a name bound to a paren expression is a GROUP where it is stepped — also when a word is waiting for it; core/ts hands the word the code
+
+# --- the dispatch order: a pattern is tried before a bare type ---------------------
+# Two overloads of one word whose slots differ only in that one carries a
+# PATTERN: the patterned one is tried first, in whichever order the two
+# were written. Reached through the `fn` fixture — the corpus's other
+# words have one signature each, and `fn(` declares types only.
+run ; def f ( fn [q [q 7 ] [q Any ] [q 'seven' ] [q Integer ] [q Any ] [q 'int' ] ] ) ; f 7	'seven'	ERROR:undefined_word	A PATTERN BEFORE A BARE TYPE: the overload that admits exactly 7 answers for 7
+run ; def f ( fn [q [q 7 ] [q Any ] [q 'seven' ] [q Integer ] [q Any ] [q 'int' ] ] ) ; f 8	'int'	ERROR:undefined_word	and declines 8, which the Integer overload takes
+run ; def f ( fn [q [q Integer ] [q Any ] [q 'int' ] [q 7 ] [q Any ] [q 'seven' ] ] ) ; f 7	'seven'	ERROR:undefined_word	written the other way round, the same: the order is the signatures', not the text's
+run ; def f ( fn [q [q Integer ] [q Any ] [q 'int' ] [q 7 ] [q Any ] [q 'seven' ] ] ) ; f 8	'int'	ERROR:undefined_word	and for the value the pattern declines
+run ; def f ( fn [q [q n:Integer ] [q Any ] [q 'int' ] [q 7 ] [q Any ] [q 'seven' ] ] ) ; f/v	fn [[:Integer][Any]['seven'] [n:Integer][Any]['int']]	ERROR:undefined_word	the function reads back with the patterned signature first

@@ -469,12 +469,29 @@ Three things from it are worth carrying even if the tables are never read:
   redefinition of the same parameter types replacing the older one, each
   body asked then whether its frames record. core/ts has neither — the
   reader lives a layer up, in eng/ts, and a binding is a binding — so the
-  96 rows that specify them are on the Go column of
+  101 rows that specify them are on the Go column of
   `core/spec/divergent.tsv`, and the `fn` fixture is the Go runner's and
   the Lean runner's only. The first row of the redefinitions is the one
   core/ts answers at all: two `fn(` functions of the same parameter
   types bound by `def` are `2 1` here and `undefined_word` after the
   `undef` in Go, where the second replaced the first.
+- **One raw-capture slot of four** (2026-11-28). A core/go signature can
+  mark a slot to take its operand as it was written, in four fields: a
+  list unevaluated (`NoEvalArgs`), a map (`NoEvalMapArgs`), a paren
+  expression as code (`RawParens`), any form (`FormArgs`). core/ts has
+  the first only, so the 107 rows that specify the other three are on the
+  Go column of `core/spec/divergent.tsv`, and their fixtures (`rawmq`,
+  `rawpq`, `formq`, `form2q`) are the Go runner's and the Lean runner's
+  only. The list mode is shared — 51 rows of `dispatch.tsv`, through
+  `rawlq` and `raw2q` — after a fix to the port: `autoEvalArgs` skipped a
+  no-evaluation slot WHOLE, so a map at the slot went unevaluated (Go's
+  field is list-only) and a list kept its pending flag, and one the
+  handler handed back was evaluated after all by whatever met it next
+  (`rawlq [ addq 1 2 ]` was `[3]`). Both engines drop the mode under `/u`
+  (NUR413), and agree in doing so. One row the new fixtures exposed is a
+  difference in a mechanism both have: a name bound to a paren
+  expression, collected by a waiting word, is run as a group in core/go
+  and handed over as code in core/ts.
 - NUR059: canon still renders sugar tags, `/r` and `/N` word modifiers,
   and paren groups in debug spelling. Both engines agree, so it is render
   quality rather than parity — pinned by corpus rows so a one-sided fix
