@@ -245,7 +245,11 @@ def gen_spec(rng):
                                    ["'Integer'"], ["'ok'"], ["'Nosuch'"], ["Bad:Integer"]])
         body = rng.choice(["n", "n", "addq n 1", "m", "[ n m ]", "", "7", "'a'", "n m", "argsq", "negq/s", "true",
                            "depthq", "k", "n 'a'", "[q 1 ]", "none", "{ a: n }", "def y n ; y", "sumq",
-                           "5", "n k m", "ifq [q n ] [q ( addq n -1 ) sf/s ] [q 0 ]", "sf"])
+                           "5", "n k m", "ifq [q n ] [q ( addq n -1 ) sf/s ] [q 0 ]"])
+        # (no body that calls `sf` unguarded: with an optional parameter it
+        # recurses without end, which the kernel's elision makes cheap and
+        # the model's nesting makes slow — the answer is a resource limit
+        # either way)
         # a part that is not a list stands for the list of itself
         ps = ["[q"] + params + ["]"] if (len(params) != 1 or rng.random() < 0.85) else params
         rs = ["[q"] + returns + ["]"] if (len(returns) != 1 or rng.random() < 0.8) else returns
