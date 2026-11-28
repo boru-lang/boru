@@ -137,6 +137,13 @@ list only by becoming **Resolved** (the record is then deleted) or
 | [NUR415](#nur415) | The one word that takes a data splice's MARKER where every other word takes its values — the binder, so that `def y w` makes `y` the same splice — is known by its NAME: `def w word [1 2] ; def y w ; y` is `1 2`, and with `def mydef def/v`, `mydef y w ; y` is `2 1` — `def`'s own function under another name binds the first value and leaves the second | the Lean specification's model of splice markers, against core/go and the shipped words (2026-11-28) |
 | [NUR416](#nur416) | A splice marker has no canonical form: `canon` of one is the engine's debug dump, `word()({[1 2]})`, which no parser accepts (ADR-015), with the payload in the engine's value print (`word(x)` for a word); core/ts prints `word(undefined)` for the same value | the Lean specification's model of splice markers, against core/go, core/ts and the shipped words (2026-11-28) |
 | [NUR417](#nur417) | An unapplied function value of no parameters is CALLED where it is stepped if `fn` made it and is DATA if `=>` made it: `(fn [[] [Integer] [42]])` is `42` and `([] => [42])` is the function, so `def a (fn [[] [Integer] [42]]) ; a/v` is `42` — the name is bound to the result — where `def a ([] => [42]) ; a/v` is the function; ADR-016 lists the difference as a defect, and `apply` was made uniform while the difference itself stayed | the Lean specification's model of functions of no parameters, against core/go and the shipped words (2026-11-28) |
+| [NUR418](#nur418) | Unbinding a type does not release its name: `def Foo 1 ; undef Foo ; def Foo 2` is `type_error: name part "Foo" in "Foo" conflicts with an existing type name`, where `def Foo 1 ; def Foo 2` — the same redefinition without the `undef` — is accepted; the name's reservation outlives its binding, so a type's name can be rebound but never unbound and reused | the Lean specification's model of type installation, against core/go and the shipped words (2026-11-28) |
+| [NUR419](#nur419) | A pending list or map is evaluated before a parameter's PATTERN judges it but not before a parameter's NAMED TYPE does: `def f fn [[n:[:Integer]][Any][n]] ; f [1 add 2]` is `[3]`, and with `def L [:Integer]` the same function written `n:L` is `no signature matches` for the same call — though `[1 add 2] is L` is `true`; the same for a named map shape and `{a:(1 add 2)}` | the Lean specification's model of type installation, against core/go and the shipped words (2026-11-28) |
+| [NUR420](#nur420) | An optional parameter of a named type is given its type's BASE VALUE without the type being asked whether that value is a member: `def One 1 ; def g fn [[n?:One][Any][n]] ; g` calls `g 0`, which no signature takes but the one that made the call, and runs until the tape is exhausted; the same for `def Big (Integer gt 10)`; the inline `n?:1` adds no such signature and is a plain `no signature matches` | the Lean specification's model of type installation, against core/go and the shipped words (2026-11-28) |
+| [NUR421](#nur421) | A singleton or structural type passes for a VALUE at a slot of the type it sits under, and is read as that type's zero: `def One 1 ; One add 1` is `1`, `def Seven 7 ; Seven mul 3` is `0`, `def S "abc" ; size S` is `0` — silently — where the builtin in the same place raises (`Integer add 1` is `no signature matches`); the exemption that admits it was written for a record's name handed to `refine Table` | the Lean specification's model of type installation, against core/go and the shipped words (2026-11-28) |
+| [NUR422](#nur422) | The meet of two named types depends on their ORDER and on which of them is named: with `def One 1` and `def Foo (Integer tor String)`, `One unify Foo` is `One` and `Foo unify One` is no meet; the same union written in place gives the VALUE `1` either way; and `tand`, documented as the same meet, gives `1` for all four | the Lean specification's model of type installation, against core/go and the shipped words (2026-11-28) |
+| [NUR423](#nur423) | A union met inside a typed container comes back as a ZERO: with `def U (Integer tor String)`, `(quote [U]) unify [:Integer]` is `[0]` — the element's meet is `Integer`, and the kernel hands back the union's payload retagged Integer, which every reader takes for 0 (`['']` under `[:String]`); core/ts and the Lean specification answer `[Integer]` | the Lean specification's differential fuzzer over type installation, against core/go, core/ts and the shipped words (2026-11-28) |
+| [NUR424](#nur424) | `true`, `false` or an unbound name written AFTER a word is not taken at a slot of a named type that admits it: with `def Foo (String tor Boolean) ; def f fn [[n:Foo][Any][n]]`, `f true` is `no signature matches (got Word)` where `true f` and `f (true)` are `true` — and where the same union written in place of the name takes `f true` | the Lean specification's differential fuzzer over type installation, against core/go and the shipped words (2026-11-28) |
 
 Pending records normally use a compact form (rule / divergence /
 evidence / documentation status, plus a proposed verdict where one is
@@ -2436,5 +2443,303 @@ anonymous one is the answer that keeps a function a value: unapplied, a
 function of no parameters is data where it stands, and a NAME bound to it
 or an `apply` calls it. (The other uniform answer — both are called where
 they stand — would make `([] => [42])` unbindable too.)
+
+---
+
+## NUR418 — unbinding a type does not release its name {#nur418}
+
+**Status:** Pending · **Recorded:** 2026-11-28 · measured through the shipped words · loud (a `type_error` at the redefinition)
+
+**Rule:** `undef` undoes `def` (REFERENCE.md's word table: "`undef` —
+Remove the latest definition"): the name's newest binding is removed and
+what it shadowed, or nothing, is left. A name with no binding is free.
+
+**Divergence:** a type's name is reserved as well as bound, and `undef`
+removes only the binding. `InstallType` registers every part of the name
+(`core/go/core_type.go`, the `RegisterPart` loop at its end) and
+`validateTypeName` refuses a name with a registered part — unless the
+name is a type binding NOW, which is what lets a redefinition through:
+
+```
+def Foo 1 ; def Foo 2 ; 2 is Foo            → true      (a redefinition stacks)
+def Foo 1 ; undef Foo ; Foo                 → undefined word: Foo
+def Foo 1 ; undef Foo ; def Foo 2           → type_error: name part "Foo" in "Foo" conflicts with an existing type name
+def Foo Integer ; undef Foo ; def Foo String → the same
+```
+
+So the one sequence that leaves a name unbound is the one after which it
+cannot be bound. `undef` retires the minted node (`TypeTable.Retire`) and
+leaves `Types.parts` alone; nothing ever removes a part but the analysis
+pass's own rollback (`ForgetTypePartsSince`).
+
+`core/spec/divergent.tsv` pins it through the `typeq` fixture, and the
+Lean specification states it (`TypeInstall.lean` `registerPart`;
+`Theorems/TypeInstall.lean` `nur418_unbinding_does_not_release_the_name`).
+
+**Proposed verdict:** resolve by fix — a part is reserved while a binding
+that registered it is live: `undef` of a type binding releases the parts
+no other live type binding of the registry holds.
+
+---
+
+## NUR419 — a named type does not have its pending operand evaluated {#nur419}
+
+**Status:** Pending · **Recorded:** 2026-11-28 · measured through the shipped words · loud (`no signature matches`) but wrong
+
+**Rule:** NUR235's, as fixed: a pending list or map standing at a slot is
+not yet the value the callee receives, so a slot that judges a
+container's CONTENTS has it evaluated first (`core/go/match.go`
+`patternOperand`). And a name is its content: `def L [:Integer]` gives
+the typed list a name, and `x is L` is `x is [:Integer]`.
+
+**Divergence:** the evaluation is keyed on the slot's PATTERN. A typed
+list or a map shape written in the parameter list is a pattern; the same
+shape under a name is the slot's TYPE (the minted node, `FnParam.Type`),
+with no pattern — and the node's membership rule
+(`BindingBodyUnifier.Match`) is handed the operand as it stands:
+
+```
+def f fn [[n:[:Integer]][Any][n]] ; f [1 add 2]                    → [3]
+def L [:Integer] ; def f fn [[n:L][Any][n]] ; f [1 add 2]          → no signature matches (got List; nearest [L])
+def L [:Integer] ; [1 add 2] is L                                  → true
+def L [:Integer] ; def f fn [[n:L][Any][n]] ; f [3]                → [3]
+def f fn [[n:{a:Integer}][Any][n]] ; f {a:(1 add 2)}               → {a:3}
+def M {a:Integer} ; def f fn [[n:M][Any][n]] ; f {a:(1 add 2)}     → no signature matches
+```
+
+The check pass reports the same `no_signature`, so the two lanes agree
+with each other and disagree with `is`. A union with a container among
+its alternatives is the same case (`DisjunctUnifier.Match`).
+
+`core/spec/divergent.tsv` pins it, and the Lean specification states it
+(`Match.lean` `patternNeed` reads `Sig.pattern?`, which a named type is
+not; `Theorems/TypeInstall.lean`
+`nur419_a_named_types_pending_operand_is_not_evaluated`).
+
+**Proposed verdict:** resolve by fix — `patternOperand`'s question is
+"does this slot's verdict read a container's contents", and a slot whose
+type is a node with a content-deciding rule over a container reads them:
+ask the node (`TypeContentOf`) where there is no pattern.
+
+---
+
+## NUR420 — an omitted parameter of a named type is given a base value the type refuses {#nur420}
+
+**Status:** Pending · **Recorded:** 2026-11-28 · measured through the shipped words · loud, late (the tape's growth ceiling)
+
+**Rule:** an optional parameter (`n?:T`) adds a signature without it
+whose body calls the function with `T`'s base value (`core/go`
+`ExpandOptionalSigs`, `omittedDefaultValue`). A parameter
+whose type has no base value, or whose own pattern refuses the base
+value, adds nothing — `def g fn [[n?:1][Any][n]] ; g` is `no signature
+matches`, because 0 is not 1.
+
+**Divergence:** the refusal is the PATTERN's. A parameter of a named
+type has the node for its type and no pattern, and the base value is
+read off the lattice: `One` (`def One 1`) sits under Integer, so its base
+value is 0, and nothing asks `One` whether 0 is a member. The added
+signature's body calls `g 0`; the one-parameter signature refuses 0; the
+signature of no parameters takes the call again:
+
+```
+def One 1 ; def g fn [[n?:One][Any][n]] ; g            → tape_exhausted (the 396718-entry ceiling)
+def Big (Integer gt 10) ; def g fn [[n?:Big][Any][n]] ; g   → the same
+def g fn [[n?:1][Any][n]] ; g                          → no signature matches
+def Z 0 ; def g fn [[n?:Z][Any][n]] ; g                → 0       (the base value happens to be the member)
+def U (Integer tor String) ; def g fn [[n?:U][Any][n]] ; g  → no signature matches (a union has no base value)
+```
+
+The Lean specification states the expansion as the kernel makes it
+(`FnSpec.lean` `expandOptional`; `Theorems/TypeInstall.lean`
+`nur420_an_omitted_parameter_of_a_named_type_is_given_a_base_value_unasked`).
+No corpus row pins it: the answer is a resource limit.
+
+**Proposed verdict:** resolve by fix — the expansion asks the parameter's
+type, not only its pattern, whether the base value is a member
+(`v.Is(node)`), and adds nothing when it is not: the inline form's answer.
+
+---
+
+## NUR421 — a singleton or structural type passes for a value of the type it sits under {#nur421}
+
+**Status:** Pending · **Recorded:** 2026-11-28 · measured through the shipped words · silent (a wrong number)
+
+**Rule:** a type is not a value of itself: a type literal is refused at
+every slot that reads a payload (`core/go/signature.go`
+`rejectsTypeLiteral`, whose comment gives the reason — "handlers that
+read its payload via AsX() would silently pull the zero value. That used
+to make programs like `addq Integer 1` quietly compute `addq 0 1`
+instead of raising").
+
+**Divergence:** the refusal has an exemption for a node "carrying
+recorded type CONTENT" — written so that `refine Table R` still collects
+a record's name where it collected the record's body — and every
+singleton and structural type is such a node. It is minted under the
+node its content sits at, so the slot's lattice test admits it, and the
+handler reads the payload it does not have:
+
+```
+def One 1 ; One add 1                                     → 1        (0 + 1)
+def Seven 7 ; Seven mul 3                                 → 0
+def L [:Integer] ; size L                                 → 0
+def S "abc" ; size S                                      → 0
+def One 1 ; def f fn [[n:Integer][Integer][n add 1]] ; f One   → 1
+Integer add 1                                             → no signature matches
+def P (refine Integer) ; … P at an Integer slot           → refused (a newtype records no content)
+```
+
+The singleton is neither read as its literal (`One add 1` is not 2) nor
+refused. A union's node sits under `Type/Disjunct` and is refused by the
+lattice test, so only the kinds minted under a value type show it.
+
+`core/spec/divergent.tsv` pins it through `typeq` and the Integer-slot
+fixtures, and the Lean specification states it (`Match.lean`
+`rejectsTypeLiteral`; `Theorems/TypeInstall.lean`
+`nur421_a_singleton_passes_for_a_value`).
+
+**Proposed verdict:** resolve by fix — the exemption is for a slot that
+WANTS a type's content (a `Node`-typed type argument such as `refine
+Table`'s), not for every slot: keep the refusal at a concrete-payload
+slot whatever the node records, and let the words that take a named
+structure declare it (a type-arg slot).
+
+---
+
+## NUR422 — the meet of two named types depends on their order {#nur422}
+
+**Status:** Pending · **Recorded:** 2026-11-28 · measured through the shipped words · silent (a different answer for the swapped operands)
+
+**Rule:** unification is the MEET of its two operands: it does not
+depend on their order, and it is a function of what they denote.
+`core/go/unify_disjunct.go` states the disjunct's rule so — "the meet is
+the disjunct of the meets of its alternatives with that value — the set
+intersection, and what `tand` answers for the same pair" — and
+REFERENCE.md names `tand` the intersection.
+
+**Divergence:** two named types are settled by the LEFT operand's rule
+(`dispatchUnifier` walks from each denotation in turn and takes the first
+Unifier). A union's rule (`DisjunctUnifier.Unify`) puts the other operand
+to its alternatives; a singleton's or a structural type's
+(`BindingBodyUnifier.Unify` → `unifyMembership`), facing another TYPE,
+"settles by the structural rule" — the lattice, where no minted type is
+under another:
+
+```
+def One 1 ; def Foo (Integer tor String)
+One unify Foo                      → One        (Foo's rule: Integer takes the singleton)
+Foo unify One                      → unify-fail (One's rule: the lattice)
+One unify (Integer tor String)     → 1          (the union in place is a VALUE to One's rule)
+(Integer tor String) unify One     → 1
+One tand Foo  /  Foo tand One      → 1
+def L [:Integer] ; def Foo ([:Integer] tor String)
+L unify Foo                        → [:Integer]
+Foo unify L                        → unify-fail
+```
+
+(An infix `a unify b` hands `b` to the first slot, so the kernel's left
+operand is the one written second.) Three answers for one pair of types —
+the type, the value, nothing — by order and by whether the union has a
+name.
+
+`core/spec/divergent.tsv` pins the kernel's answers, and the Lean
+specification states them (`Unify.lean` `unifyInner`, the two-named-types
+arm; `Theorems/TypeInstall.lean`
+`nur422_the_meet_of_two_named_types_depends_on_their_order`).
+
+**Proposed verdict:** resolve by fix — a type-level pair in which either
+side is a union node is the union's (try both operands' rules for the
+one that owns a type-level answer, as the both-bare-nodes case of
+`dispatchUnifier` already does for `OptNum unify None`), and the answer
+for a singleton against a union is one thing whichever is named.
+
+---
+
+## NUR423 — a union met inside a typed container comes back as a zero {#nur423}
+
+**Status:** Pending · **Recorded:** 2026-11-28 · measured through the shipped words · silent (a wrong value)
+
+**Rule:** the meet of a list with a typed list is, element by element,
+the meet of the element with the child type
+(`unifyTypedListWithConcrete`); and `Integer tor String` against
+`Integer` is `Integer` — which is what the same pair answers outside a
+container, and in a plain map (`{a:(Integer tor String)}` against
+`{a:Integer}` is `{a:Integer}`).
+
+**Divergence:** each element's meet is passed through
+`reparentSwappedElem` (`core/go/unify_list.go`), written for a VALUE
+narrowed into a newtype: "Unify of a concrete element against a
+bare-refine child returns the TYPE LITERAL … Return the source element
+reparented to the canonical minted type instead." Its test is
+`IsBareTypeNode(&unified) && IsConcrete(&src)` — and a union VALUE is
+concrete. So when a union element meets the child as a single bare type,
+the union's payload is retagged with that type and handed back: a value
+whose type is Integer and whose payload is a `DisjunctInfo`. Every
+reader takes it for the type's zero:
+
+```
+def U (Integer tor String) ; (quote [U]) unify [:Integer]     → [0]
+(Integer tor String) unify Integer                            → Integer
+core/spec:  meetq [q d( Integer String ) ] [: Integer ]       → [0]      core/ts: [Integer]
+            meetq {q a: d( Integer String ) } {: Integer }    → {a:0}    core/ts: {a:Integer}
+            meetq [q d( String Boolean ) ] [: Scalar/String ] → ['']     core/ts: [String]
+            meetq [q d( 1 2 ) ] [: Integer ]                  → [(1 tor 2)]   (the meet is no bare type: untouched)
+```
+
+Found by the specification's differential fuzzer
+(`spec/tools/diff-fuzz.py`) once it generated named unions inside lists.
+core/ts and the Lean specification answer the meet; the five rows are in
+`core/spec/divergent.tsv` with the specification on core/ts's side.
+
+**Proposed verdict:** resolve by fix — the retag is for a plain value:
+`reparentSwappedElem` returns `unified` untouched when the source is
+itself a type (`IsTypeBody(&src)`), in the typed-list and the typed-map
+walk alike.
+
+---
+
+## NUR424 — a word literal written after a word is not claimed by a slot of a named type {#nur424}
+
+**Status:** Pending · **Recorded:** 2026-11-28 · measured through the shipped words · loud (`no signature matches`) but wrong
+
+**Rule:** the one argument rule (CLAUDE.md): a call form only chooses
+where the split falls — `f a ≡ a f`. And a named type is its content:
+`def Foo (String tor Boolean)` admits what `(String tor Boolean)` admits.
+
+**Divergence:** the plan-time scan of the tokens after a word
+(`core/go/collect_kernel.go` `CollectCandidateScan`) does not resolve
+`true`, `false` or an unbound name: it asks the slot whether "a Boolean"
+— "an atom" — would fit, with a PROBE that has the type and no payload
+(`booleanProbeDatum`, `atomProbeDatum`: `Datum{Parent: TBoolean}`). A
+builtin slot answers by the lattice and is satisfied. A named type's
+membership rule treats a value with no payload as a TYPE — "the type
+itself, not an inhabitant" (`DisjunctUnifier.matchR`,
+`matchMembership`) — and asks the lattice whether Boolean is under the
+minted node, which nothing is:
+
+```
+def Foo (String tor Boolean) ; def f fn [[n:Foo][Any][n]]
+f true          → no signature matches (got Word; nearest [Foo])
+true f          → true
+f (true)        → true
+f "a"           → a
+true is Foo     → true
+def f fn [[n:(String tor Boolean)][Any][n]] ; f true     → true     (the union in place is a pattern)
+def T true ; def f fn [[n:T][Any][n]] ; f true           → no signature matches
+def T true ; def f fn [[n:T][Any][n]] ; true f           → true
+```
+
+The check pass reports the same `no_signature`. Found by the
+specification's differential fuzzer once it drew a function of a named
+type called on `true` (`spec/tools/diff-fuzz.py`).
+
+`core/spec/divergent.tsv` pins it, and the Lean specification states it
+(`Match.lean` `scanAdmits`, the probe; `Theorems/TypeInstall.lean`
+`nur424_a_word_literal_is_not_claimed_by_a_slot_of_a_named_type`).
+
+**Proposed verdict:** resolve by fix — for a slot whose type has a
+content-deciding membership rule (`HasConstraintUnify`), the scan asks
+with the VALUE the word literal denotes (`true`/`false` are known at
+plan time; an unbound name is its atom), as it already does for every
+literal token that is not a word.
 
 ---

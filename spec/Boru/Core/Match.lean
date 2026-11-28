@@ -31,8 +31,35 @@ namespace Defs
 
 def stack (d : Defs) (name : String) : List Value := (d.lookup name).getD []
 
-/-- The active binding of a name. -/
-def top? (d : Defs) (name : String) : Option Value := (d.stack name).head?
+/-- The active binding of a name — what the name DENOTES (core/go
+    `DefTable.Top`): a value binding's value, a type binding's node. -/
+def top? (d : Defs) (name : String) : Option Value :=
+  match (d.stack name).head? with
+  | some (.typeBind node) => some node
+  | v => v
+
+/-- Is the active binding of `name` a TYPE binding (core/go
+    `DefTable.IsType`). -/
+def isType (d : Defs) (name : String) : Bool :=
+  match (d.stack name).head? with
+  | some (.typeBind _) => true
+  | _ => false
+
+/-- The lattice node a type binding binds (core/go
+    `Registry.LookupTypeName`). A name bound to a VALUE that happens to be
+    a type has none: only a type binding names a type. -/
+def typeNode? (d : Defs) (name : String) : Option Value :=
+  match (d.stack name).head? with
+  | some (.typeBind node) => some node
+  | _ => none
+
+/-- What a type binding was DECLARED with (core/go
+    `Registry.TopTypeBody`): the content of a minted node; for an alias,
+    the node it adopted. -/
+def typeBody? (d : Defs) (name : String) : Option Value :=
+  match d.typeNode? name with
+  | some (.named _ body) => some body
+  | n => n
 
 def push (d : Defs) (name : String) (v : Value) : Defs :=
   if (d.lookup name).isSome then
@@ -225,6 +252,15 @@ end Defs
 namespace Sig
 
 def ptype (s : Sig) (i : Nat) : TypeId := ((s.param? i).map Param.type).getD TAny
+/-- THE NAMED TYPE OF A SLOT. A slot declared as a type a program defined
+    has that type's NODE for its type (core/go `FnParam.Type`), and the
+    node carries the rule its members are decided by. A path cannot carry
+    it, so the slot holds the node where a pattern would stand — and it
+    is not one: it is the slot's TYPE, consulted wherever a type is. -/
+def named? (s : Sig) (i : Nat) : Option Value :=
+  match (s.param? i).bind Param.pattern with
+  | some (.named path body) => some (.named path body)
+  | _ => none
 def isQuote (s : Sig) (i : Nat) : Bool := ((s.param? i).map Param.quote).getD false
 def isTypeArg (s : Sig) (i : Nat) : Bool := ((s.param? i).map Param.typeArg).getD false
 /-- The slot's raw-capture modes; an ordinary slot has none. -/
@@ -240,7 +276,11 @@ def keepsParen (s : Sig) (i : Nat) : Bool := (s.raw i).paren || (s.raw i).form
     parked forward is asked this, not which slot is next (core/go
     `pendingForwardWantsRawParen`). -/
 def wantsRawParen (s : Sig) : Bool := s.params.any fun p => p.raw.paren || p.raw.form
-def pattern? (s : Sig) (i : Nat) : Option Value := (s.param? i).bind Param.pattern
+/-- The slot's structural PATTERN, if it declares one. -/
+def pattern? (s : Sig) (i : Nat) : Option Value :=
+  match (s.param? i).bind Param.pattern with
+  | some (.named _ _) => none
+  | p => p
 
 /-- Does the signature capture THIS token structurally at slot `i`
     (core/go `capturesForwardToken`): a raw-paren, form or type-arg slot
@@ -273,17 +313,29 @@ def hasForwardSigs (sigs : List Sig) : Bool := sigs.any (·.barrier > 0)
 def sigTypeMatchesAsType (v : Value) (t : TypeId) : Bool :=
   match v.unquote with
   | .typeLit n => conforms n t
+  | .named path _ => conforms path t
   | .typedList _ _ | .typedMap _ _ | .disjunct _ | .fn _ _ _ => conforms v.typeOf t
   | _ => false
 
-/-- Does `v` fit slot `i` of `s` by type. -/
+/-- Does `v` fit slot `i` of `s` by type. A slot of a NAMED type asks
+    the type whether `v` is a member. -/
 def sigArgMatches (s : Sig) (i : Nat) (v : Value) : Bool :=
-  if s.isTypeArg i then sigTypeMatchesAsType v (s.ptype i) else v.is (s.ptype i)
+  if s.isTypeArg i then sigTypeMatchesAsType v (s.ptype i)
+  else match s.named? i with
+    | some node => memberMatch node v
+    | none => v.is (s.ptype i)
 
 /-- A bare type literal is declined at a concrete-payload slot: `Integer`
-    the type is not an Integer. `Any` and `Type` slots take it. -/
+    the type is not an Integer. `Any` and `Type` slots take it.
+
+    A NAMED type that carries content is NOT declined (core/go
+    `rejectsTypeLiteral`, the `TypeBody` arm) — so `One`, the type whose
+    one member is 1, passes for an Integer at an Integer slot, where the
+    type `Integer` is refused: as the kernel has it, not as it should be
+    (NUR421). -/
 def rejectsTypeLiteral (v : Value) (expected : TypeId) : Bool :=
   v.isTypeLiteral && expected != TAny && expected != TType
+    && !(match v.unquote with | .named _ _ => true | _ => false)
 
 /-! ## Patterns
 
@@ -451,16 +503,23 @@ def scanAdmits (defs : Defs) (s : Sig) (fwd : Nat) (tok : Value) : Bool :=
   let literal (v : Value) : Bool :=
     (sigArgMatches s fwd v || (expected == TAny && !s.isTypeArg fwd))
       && !(!s.isTypeArg fwd && rejectsTypeLiteral v expected)
+  -- A word literal, or an unbound word, is read by the plan as "a Boolean
+  -- — an atom — will stand here", not as the value: a PROBE of that type
+  -- with no payload. A slot of a NAMED type asks for the value, and to it
+  -- a probe is a type, which is no member: such a slot never claims the
+  -- word written after it, though it takes the same value from the stack
+  -- or from a group (NUR424, as the kernel has it).
+  let probe (v : Value) : Bool := (s.named? fwd).isNone && sigArgMatches s fwd v
   -- a word that is not claimed through its binding
   let bareWord (w : WordInfo) : Bool :=
     if (defs.lookup? w.name).isSome then false                    -- a function word is a boundary
     else if w.name == "true" || w.name == "false" then
-      sigArgMatches s fwd (.bool true) || expected == TAny
+      probe (.bool true) || expected == TAny
     else match resolveTypeName? w.name with
       | some t =>
         sigArgMatches s fwd (.typeLit t)
           && !(!s.isTypeArg fwd && rejectsTypeLiteral (.typeLit t) expected)
-      | none => sigArgMatches s fwd (.atom w.name) || expected == TAny
+      | none => probe (.atom w.name) || expected == TAny
   match tok with
   | .forward _ _ | .endMark | .closeParen | .openParen | .frameOpen _ | .defCleanup _ _ _ | .returnCheck _ _ _
   | .mark _ | .move _ _ => false

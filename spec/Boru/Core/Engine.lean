@@ -332,11 +332,13 @@ def usurpOver (name : String) (sigs : List Sig) (origIdent ident : Nat) : Value 
 /-- Resolve the type-name words inside an inert TYPE SHAPE — a typed
     container's child, a disjunct's alternatives — where the value is
     consumed or left as a result (ADR-012 rule 4). A quoted value stays
-    opaque. -/
-def resolveInert : Value → Value
-  | .typedList child elems => .typedList (resolveWordsDeep child) elems
-  | .typedMap child entries => .typedMap (resolveWordsDeep child) entries
-  | .disjunct alts => resolveWordsDeep (.disjunct alts)
+    opaque. A name a program bound to a type is resolved to that type's
+    declared CONTENT, not to its node: `[: Foo ]`, where `Foo` is a union,
+    is a list of the union's alternatives. -/
+def resolveInert (d : Defs) : Value → Value
+  | .typedList child elems => .typedList (resolveWordsDeepWith d.typeBody? child) elems
+  | .typedMap child entries => .typedMap (resolveWordsDeepWith d.typeBody? child) entries
+  | .disjunct alts => resolveWordsDeepWith d.typeBody? (.disjunct alts)
   | v => v
 
 /-- A FRAME'S CLEANUP (core/go `stepDefCleanup`). What the body bound for
@@ -1348,12 +1350,18 @@ def closeFrame (nat : Natives) : Nat → Engine → Nat → Nat → Except BoruE
           let extra := results.length - returns.length
           if results.length < returns.length || extra > unnamed then
             Engine.err "type_error" "return count"
-          else if !(((results.drop extra).zip returns).all fun (v, t) => v.is t) then
+          -- a return declared as a NAMED type asks the type whether the
+          -- value is a member, as a slot of that type does
+          else if !(((results.drop extra).zip returns).zipIdx.all fun ((v, t), k) =>
+              match patterns[k]? with
+              | some (some (.named path body)) => memberMatch (.named path body) v
+              | _ => v.is t) then
             Engine.err "type_error" "return type"
           -- a return declared as more than a type is checked against its
           -- pattern too: the type of a union is Any, and admits everything
           else if !((((results.drop extra).zip patterns).all fun (v, pat) =>
               match pat with
+              | some (.named _ _) => true
               | some p => unifies p v
               | none => true)) then
             Engine.err "type_error" "return pattern"
@@ -1382,7 +1390,7 @@ def sweepRange (nat : Natives) : Nat → Engine → Nat → Nat → Except BoruE
           -- stops for the run to resolve it
           if defs.flowing then pure { e with defs := defs } else
           sweepRange nat fuel { e with tape := setAt e.tape i v', defs := defs } (i + 1) hi
-        else sweepRange nat fuel { e with tape := setAt e.tape i (resolveInert v) } (i + 1) hi
+        else sweepRange nat fuel { e with tape := setAt e.tape i (resolveInert e.defs v) } (i + 1) hi
       | none => pure e
 
 /-- Run a matched signature: evaluate its pending container arguments,
@@ -1516,7 +1524,7 @@ def evalArgs (nat : Natives) :
     let (vs', defs) ← evalArgs nat fuel defs vs
     -- a slot with either mode leaves an inert type shape unresolved too,
     -- whatever the value is
-    pure ((if raw.list || raw.map then v' else resolveInert v') :: vs', defs)
+    pure ((if raw.list || raw.map then v' else resolveInert defs v') :: vs', defs)
 
 /-- Evaluate a pending container. A list's elements run as one program
     and the list of its residuals is the value. A map evaluates member by

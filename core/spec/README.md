@@ -141,6 +141,21 @@ anonymous function whose every signature takes nothing (core/go
 the call. The notation is in all three runners; the two fixtures are the
 Go runner's and the Lean runner's, core/ts having no closures.
 
+### A type a program defines
+
+`typeq Name body` is the kernel's type installer (`InstallType`) as a
+word: what a capitalised `def` is in the language above the core. A bare
+type as the body makes an ALIAS — the name adopts that node; a union
+(`d( … )`), a literal, a list or a map, a typed container MINTS a node,
+under the node the body sits at, whose members the body decides. The
+name is then a type wherever one is read: stepped (the node, which
+renders as the name), as a parameter's or a return's declaration in a
+`fn [q … ]` specification (`n:Foo`), and inside a type shape (`[: Foo ]`,
+where it is the type's content). Every refusal of the installer is
+`ERROR:type_error`, but for a function as the body, which is
+`ERROR:def_error`. The Go runner's and the Lean runner's only: core/ts
+installs no types.
+
 ### A splice marker
 
 `s( item )` writes a SPLICE MARKER (`Word/__SP`) wrapping one item, as
@@ -278,7 +293,7 @@ than silently re-baselined. Each runner also **fails a row whose `go` and
 belongs in, or this stops being an honest debt list. Shrink-only, exactly as
 `parser/spec/divergent.tsv` is.
 
-It holds **744 rows**. 704 are a mechanism `core/ts` does not have at
+It holds **928 rows**. 883 are a mechanism `core/ts` does not have at
 all: closures (61 rows, the `afn` fixture — and, for an anonymous
 function of no parameters and the application that calls it, the
 `afn0q` and `applyq` fixtures; two of them NUR417, pinned as the kernel
@@ -310,9 +325,15 @@ parameters the reader made (three of them NUR417), two of
 them NUR409, two NUR410 and three NUR411, pinned as the kernel has it);
 two of the four raw-capture slots (94 rows, the `rawpq`, `formq` and
 `form2q` fixtures — three of them NUR413 and three NUR414, pinned as the
-kernel has it); and a pattern that reads a container's contents, with
+kernel has it); a pattern that reads a container's contents, with
 the evaluation of the pending operand it judges (74 rows, the `mpatq`,
-`lpatq`, `rawmpatq` and `rawlpatq` fixtures — two of them NUR413). Seven are a difference in a mechanism both have:
+`lpatq`, `rawmpatq` and `rawlpatq` fixtures — two of them NUR413); and a
+type a program defines (179 rows, the `typeq` fixture: the alias, the
+union, the singleton and the structural type; a slot and a return of a
+named type; the dispatch order; a name inside a shape; what the
+installer refuses; redefinition and unbinding — one of them NUR418,
+three NUR419, six NUR421, six NUR422 and four NUR424, pinned as the
+kernel has it). Seven are a difference in a mechanism both have:
 `core/ts` puts a list argument's quoted BINDING in the args list, where
 the kernel puts the argument (two rows), and hands a waiting word the
 paren expression a name is bound to as code, where the kernel runs it as
@@ -324,8 +345,11 @@ after a collecting word, where the kernel's forward barrier refuses it
 (one).
 Three are a rendering: a splice marker left on the stack prints as each
 engine's own debug dump (NUR416). Two are a diagnostic: the kernel reports a
-void argument of the word named `def` as `def_error`. **Five are the only
-rows where the Lean specification agrees with the `ts` column.** Two are
+void argument of the word named `def` as `def_error`. **Ten are the only
+rows where the Lean specification agrees with the `ts` column.** Five are
+NUR423: a union met inside a typed container comes back from core/go as
+the type's zero, where `core/ts` and the specification answer the meet.
+Two are
 NUR407: core/go's tail-call elision changes the answer of a callee that
 unbinds its own parameter, and `core/ts`, which only nests, gives the
 nested answer — `TestCoreSpecTailCallsUnobservable` in `core/go` runs every

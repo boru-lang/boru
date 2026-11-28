@@ -30,6 +30,7 @@ The specification is three things at once, on purpose:
 | [`Boru/Core/Match.lean`](Boru/Core/Match.lean) | the binding store, slot admission, the plan: which signature a call takes and where its arguments come from |
 | [`Boru/Core/Engine.lean`](Boru/Core/Engine.lean) | the step loop |
 | [`Boru/Core/FnSpec.lean`](Boru/Core/FnSpec.lean) | a function's written specification read into signatures, and the install that compiles it under a name |
+| [`Boru/Core/TypeInstall.lean`](Boru/Core/TypeInstall.lean) | a type a program defines: the alias, the minted node, the installer's checks |
 | [`Boru/Core/Theorems/`](Boru/Core/Theorems) | what is proved |
 | [`Boru/Corespec/`](Boru/Corespec), [`Corespec.lean`](Corespec.lean) | the corpus notation, the fixture words, and the runner |
 | [`COVERAGE.md`](COVERAGE.md) | which kernel mechanisms are specified, and which are not yet |
@@ -48,8 +49,8 @@ on the model and compares the result with the row's `expected` column —
 the third runner of the corpus, sharing no code with the other two. It
 also reports, for `divergent.tsv` (where `core/go` and `core/ts`
 disagree), which engine the specification sides with — `core/go` on all
-but five rows today, which are two recorded kernel defects the
-specification does not reproduce (NUR407, NUR412).
+but ten rows today, which are three recorded kernel defects the
+specification does not reproduce (NUR407, NUR412, NUR423).
 
 **`verify-typetable`** regenerates `TypeTable.lean` from the Go table and
 fails on any difference: the specification's lattice is the kernel's.
@@ -118,20 +119,38 @@ outlives the call (NUR384); a parameter written without a name is read by
 a shorter list of forms than a named one (NUR409); `?` on a parameter
 whose type has no base value adds no signature and says nothing (NUR410);
 and a name bound to a union or a typed container, used as a declaration,
-constrains nothing (NUR411).
+constrains nothing (NUR411); `/u` does not carry a signature's
+raw-capture slots with the parameters it reverses (NUR413); a paren
+expression that arrives at a waiting word is captured by the signature,
+not by the slot it arrives at (NUR414); the binder that takes a splice's
+marker is known by its name (NUR415); a splice marker's canonical form is
+the engine's debug print (NUR416); an unapplied function of no parameters
+is called or kept by where it came from (NUR417); and of a type a program
+defines: unbinding it
+does not release its name (NUR418); a pending operand is not evaluated
+for a slot of a named type as it is for the same shape written in place
+(NUR419); an omitted parameter of a named type is given its type's base
+value without the type being asked (NUR420); a singleton or structural
+type passes for a value at a slot of the type it sits under, and is read
+as zero (NUR421); the meet of two named types depends on their order
+(NUR422); and `true`, `false` or an unbound name written after a word is
+not claimed by a slot of a named type that admits it (NUR424).
 Each is marked where it is modelled and where it is pinned. One more is
 stated in the model as the kernel has it but cannot be written in the
 corpus notation: the value `none` in a declaration constrains nothing
 (NUR408).
 
-Two the model deliberately does NOT reproduce, though each is a rule it
-could state. Tail-call elision changes the answer of a callee that unbinds
+Three the model deliberately does NOT reproduce, though the first two are
+rules it could state. Tail-call elision changes the answer of a callee that unbinds
 its own parameter (NUR407): the kernel's own contract is that elision
 never shows, and the specification is that contract — its machine nests
 every call. And a function value all of whose parameters are unnamed takes
 its stack arguments bottom-up (NUR412), against the one argument rule the
-specification states at every arity. The five ledger rows that pin the
-two are the only ones where the specification sides with `core/ts`.
+specification states at every arity. And a union met inside a typed
+container comes back as the child type's zero (NUR423): the kernel hands
+back the union's payload retagged, a value no rule describes, where the
+specification answers the meet. The ten ledger rows that pin the three
+are the only ones where the specification sides with `core/ts`.
 
 Two the model never had, and found by disagreeing with the kernel. A
 loop's inert inputs — and a call frame's unnamed arguments — were stepped

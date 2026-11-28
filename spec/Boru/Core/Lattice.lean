@@ -38,9 +38,19 @@ structure TypeDecl where
   alias : Option String
   deriving Repr, BEq, DecidableEq
 
-/-- The last path segment — the name a type literal renders as. -/
+/-- The separator of a MINTED node's path: a character no name can hold.
+    A node a program defines is not in any table; its path is its
+    parent's, then the name it was defined under, then the number that
+    tells it from every other node of that name — each after this
+    separator. The name may itself hold slashes. -/
+def mintSep : String := "\x01"
+
+/-- The name a type literal renders as: a builtin's last path segment; a
+    minted node's own name, whole. -/
 def leafOf (path : TypeId) : String :=
-  (path.splitOn "/").getLastD path
+  match (path.splitOn mintSep).reverse with
+  | _ident :: name :: _ :: _ => name
+  | _ => (path.splitOn "/").getLastD path
 
 def TypeDecl.leaf (d : TypeDecl) : String := leafOf d.path
 

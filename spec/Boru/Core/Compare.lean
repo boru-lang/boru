@@ -24,18 +24,34 @@ namespace Boru.Core
 
 /-! ## Ordering types -/
 
-/-- The rank of a node: its own, or the nearest ancestor's that has one. -/
+/-- The rank of a node: its own, or the nearest ancestor's that has one.
+    A MINTED node has the rank of its branch's EXTERNAL BAND (core/go
+    `externalBandFor`): one rank for every type a program defines under
+    `Scalar`, one under `Node`, and so on — above every builtin of the
+    branch. -/
 def typeRank (t : TypeId) : Nat :=
-  ((builtin.chain t).filterMap fun p => (builtin.find? p).bind fun d =>
+  let inherited := ((typeChain t).filterMap fun p => (builtin.find? p).bind fun d =>
     if d.rank != 0 then some d.rank else none).headD 0
+  if (mintedParent? t).isNone then inherited
+  else match (t.splitOn "/").headD "" with
+    | "Scalar" => 21000000000
+    | "Node" => 31000000000
+    | "Ideal" => 41000000000
+    | "Word" => 51000000000
+    | "Type" => 61000000000
+    | _ => inherited
 
-/-- Rank, then depth, then leaf name. -/
+/-- Rank, then depth, then leaf name — and two minted nodes of one name
+    in the order they were minted. -/
 def compareTypes (a b : TypeId) : Ordering :=
   if a == b then .eq
   else match compare (typeRank a) (typeRank b) with
     | .eq =>
-      match compare (builtin.depth a) (builtin.depth b) with
-      | .eq => compare (leafOf a) (leafOf b)
+      match compare (typeDepth a) (typeDepth b) with
+      | .eq =>
+        (match compare (leafOf a) (leafOf b) with
+         | .eq => compare (mintedIdent a) (mintedIdent b)
+         | o => o)
       | o => o
     | o => o
 
@@ -128,10 +144,10 @@ def compareNumbers (a b : Value) : Ordering :=
 /-- The family that owns the comparison of two types, if any: the first
     of these on the walk up from their common ancestor. -/
 def comparerFamily? (ta tb : TypeId) : Option TypeId :=
-  match builtin.lca? ta tb with
+  match typeLca? ta tb with
   | none => none
   | some l =>
-    (builtin.chain l).find? fun p =>
+    (typeChain l).find? fun p =>
       p == "Scalar/Number" || p == "Scalar/String" || p == "Scalar/Boolean" || p == "Scalar/Atom"
         || p == "Scalar" || p == "Word"
 
