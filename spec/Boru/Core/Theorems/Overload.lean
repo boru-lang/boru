@@ -33,7 +33,7 @@ abbrev Overload := List TypeId × Int
 
 def sigOf (o : Overload) : Sig :=
   .mk (o.1.zipIdx.map fun (t, i) => .mk s!"p{i}" t none false false) [TAny] o.1.length
-    (.boru [.int o.2] [] false) false
+    (.boru [.int o.2] [] false none) false
 
 /-- The fixture with `f` defined once per overload, in the order given:
     the last is the newest. -/

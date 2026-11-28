@@ -684,3 +684,16 @@ run def n 9 ; afn n [q [q n ] ] 5	[n]	ERROR:undefined_word	a quoted list is nobo
 run def n 9 ; def f fn( x Any Any [ afn n [q [ addq n x ] ] ] ) ; bothq 0 ( f 10 ) 5	ERROR:signature_error	ERROR:undefined_word	a CAPTURE is no more bound than the parameter when the list is evaluated
 run 1 ; def ( ) 3	ERROR:def_error	ERROR:no_value_error	a void argument of the word named `def` is reported under that word's own code
 run def f fn( n Any Any [ def y ( ) ; n ] ) ; f 5	ERROR:def_error	ERROR:no_value_error	in a body
+
+# --- an ALIAS of a binding word is one, to a function asked at the call ---------------
+# core/go `fnValueIsBindingWord`: a body word bound to the function of `def`,
+# `undef`, `afn` or another of the kernel's list makes the frame record its
+# entry state, as the word itself would. An `afn`-built function is a value,
+# never installed, so it is asked at every call — against the bindings of
+# that moment, and before the frame binds its own parameter.
+run def y 1 ; 0 def mydef def/v ; afn n [q mydef y 3 ; y ] 5 y	0 3 1	ERROR:undefined_word	AN ALIAS OF A BINDING WORD IS ONE: a function value is asked at the call whether its frame records, and the name is bound to `def`'s function by then
+run def y 1 ; 0 def d2 def/v ; def d3 d2/v ; afn n [q d3 y 3 ; y ] 5 y	0 3 1	ERROR:undefined_word	an alias of an alias: the same function, under whatever name
+run def y 1 ; 0 def myun undef/v ; afn n [q bindq y 3 ; myun z n ] 5 y	0 5 1	ERROR:undefined_word	an alias of `undef` makes the frame record, as `undef` does
+run def y 1 ; 0 def n def/v ; afn n [q bindq y 3 ; n ] 5 y	0 5 1	ERROR:undefined_word	asked BEFORE the frame binds its parameter: the parameter's name still means the alias
+run def y 1 ; 0 def mybind bindq/v ; afn n [q mybind y 3 ; n ] 5 y	0 5 3	ERROR:undefined_word	an alias of a word that is NOT a binding word is not one
+run 0 def mk afn/v ; bothq 0 ( afn x [q mk n [q addq n x ] ] 10 ) 5	0 15	ERROR:undefined_word	an alias of `afn` in a function value's body: the frame keeps a baseline, and the function it builds captures

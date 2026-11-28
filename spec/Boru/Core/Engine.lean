@@ -247,7 +247,7 @@ def commitBarrierForward (e : Engine) : Option Engine :=
 def answersItself (sigs : List Sig) (w : WordInfo) : Bool :=
   w.argCount.isNone && sigs.any fun s =>
     match s.impl with
-    | .boru (_ :: _) _ _ => true
+    | .boru (_ :: _) _ _ _ => true
     | _ => false
 
 /-- ARITY WIDENING (core/go `fnValueWouldWiden`). A function VALUE whose
@@ -402,10 +402,28 @@ def frameStateWords : List String :=
 def bodyEvalsResidual (body : List Value) : Bool :=
   body.length > 1 || (match body with | [.parenExpr _] => true | _ => false)
 
-/-- A body that names none of them is a LEAF: its frame is entered with
-    no baseline (`bodyNeedsFrameState`). -/
-def bodyNeedsFrameState (body : List Value) : Bool :=
-  (bodyWordsList body).any frameStateWords.contains
+/-- A name STANDS FOR a binding word when it is bound to that word's own
+    function (core/go `fnValueIsBindingWord`): `def mydef def/v` makes
+    `mydef` one. The function is known by the word's name, or — reached
+    through another reference, under another name — by BEING the function
+    a binding word is bound to: a host function of the same identity. -/
+def standsForBindingWord (d : Defs) (name : String) : Bool :=
+  match d.top? name with
+  | some (.fn fname sigs ident) =>
+    frameStateWords.contains fname ||
+    (!sigs.isEmpty && sigs.all (fun s => match s with | .mk _ _ _ (.native _) _ => true | _ => false) &&
+      frameStateWords.any fun fw =>
+        match d.top? fw with
+        | some (.fn _ _ i) => i == ident
+        | _ => false)
+  | _ => false
+
+/-- A body NEEDS FRAME STATE when it names a binding word, or a name that
+    stands for one in the bindings it is asked against. A body that names
+    none is a LEAF: its frame is entered with no baseline and records no
+    snapshot (`bodyNeedsFrameState`). -/
+def bodyNeedsFrameState (d : Defs) (body : List Value) : Bool :=
+  (bodyWordsList body).any fun n => frameStateWords.contains n || standsForBindingWord d n
 
 mutual
 /-- The names a body binds for itself — `def NAME` at any depth outside a
@@ -1201,7 +1219,7 @@ def execMatch (nat : Natives) :
           let results ← f args stack
           pure { e with tape := splice e.tape base (e.ptr + 1 - base) results, ptr := base }
         | _ => Engine.err "internal_error" ("no full-stack handler for " ++ name)
-      | .boru _ _ _ => Engine.err "internal_error" "a boru body is not a full-stack handler"
+      | .boru _ _ _ _ => Engine.err "internal_error" "a boru body is not a full-stack handler"
       | .usurp _ _ => Engine.err "internal_error" "a usurp wrapper is not a full-stack handler"
     else do
       let (results, defs) ←
@@ -1219,7 +1237,7 @@ def execMatch (nat : Natives) :
           -- takes from the stack before it, what it takes forward after
           let k := args.length - min b args.length
           pure (.openParen :: args.take k ++ [orig] ++ (args.drop k).reverse ++ [.closeParen], e.defs)
-        | .boru body captured anonymous =>
+        | .boru body captured anonymous frameState =>
           -- a call frame: bind the named parameters, splice the body in
           -- a paren group closed by the cleanup marker and return check
           -- a NAMED parameter binds its argument; an UNNAMED one's argument
@@ -1232,7 +1250,12 @@ def execMatch (nat : Natives) :
           -- the baseline is recorded BEFORE the frame binds anything, so
           -- what it binds is what a function built in its body captures;
           -- and the call's arguments, all of them, go on the args stack
-          let defs := (e.defs.pushBaseline (bodyNeedsFrameState body)).pushArgs args
+          -- WHEN the frame is asked whether it records its entry state: an
+          -- installed function was asked when it was made; a function
+          -- value is asked now, against the bindings of the call —
+          -- before it binds anything of its own
+          let needsState := frameState.getD (bodyNeedsFrameState e.defs body)
+          let defs := (e.defs.pushBaseline needsState).pushArgs args
           -- a closure's captures go in first: a parameter of the same
           -- name shadows one
           let defs := captured.foldl (fun d (nm, v) => d.push nm v) defs
@@ -1242,7 +1265,7 @@ def execMatch (nat : Natives) :
           -- THE ENTRY SNAPSHOT, taken once the captures and parameters
           -- are bound: what the body binds above it ends with the frame.
           -- A leaf frame takes none (the same test as its baseline)
-          let snap := if bodyNeedsFrameState body then some defs.depths else none
+          let snap := if needsState then some defs.depths else none
           -- THE RESIDUAL RULE (core/go `ResidualEvalsInFrame`): the pending
           -- containers a body leaves are evaluated in the frame, while its
           -- bindings are live — unless the function is ANONYMOUS and its

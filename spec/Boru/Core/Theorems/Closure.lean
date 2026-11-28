@@ -25,7 +25,7 @@ def w (name : String) : Value := .word { name }
 /-- `outer x` builds, in its own frame, the function `n ↦ body`. -/
 def outerOver (body : List Value) : Value :=
   .fn "outer" [.mk [.mk "x" TAny none false false] [TAny] 1
-    (.boru [w "afn", w "n", .list body false] [] false) false] 9001
+    (.boru [w "afn", w "n", .list body false] [] false none) false] 9001
 
 /-- The fixture, `outer`, and whatever globals a theorem binds. -/
 def defsWith (body : List Value) (globals : List (String × Value)) : Defs :=

@@ -194,6 +194,14 @@ inductive Impl where
             named one in a single thing: how its body's residual is
             evaluated -/
          (anonymous : Bool)
+         /- whether a call of it RECORDS the frame's entry state — the
+            baseline a closure is measured against and the snapshot the
+            close goes back to. An INSTALLED function is asked once, when
+            it is made, against the bindings of that moment (`some`); a
+            function value that was never installed is asked at every
+            call (`none`). core/go: `buildFnBodyHandler` against
+            `execFnDefSig` -/
+         (frameState : Option Bool)
   /-- A usurp wrapper (`/u`): re-dispatch `orig` — the function as it was
       bound — with the collected arguments in reverse; `barrier` is the
       barrier of the signature this one wraps. -/

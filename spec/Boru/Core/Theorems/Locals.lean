@@ -212,6 +212,33 @@ theorem a_leaf_frame_undoes_nothing :
       out [("y", o)] (defv "y" v ++ [w "y"]) [w "f", .int 5, w "y"] == vals [v, o]) = true := by
   native_decide
 
+/-- AN ALIAS OF A BINDING WORD IS ONE (core/go `fnValueIsBindingWord`).
+    A name bound to `def`'s own function makes a body that names it record
+    its entry state, as `def` would — through a second alias too — and a
+    name bound to `bindq`'s function does not. The question is asked of
+    the bindings AT THE CALL for a function value (an `afn`-built one) and
+    was asked WHEN IT WAS MADE for an installed one: the same body, in a
+    function made before the alias was bound, records nothing. -/
+theorem an_alias_of_a_binding_word_is_one :
+    (pairs.all fun (v, o) =>
+      let fnOf (name : String) : Value := (Boru.Corespec.fixtureDefs.top? name).getD .none
+      let d (target : String) : Defs :=
+        ((Boru.Corespec.fixtureDefs.push "y" o).push "al" (fnOf target)).push "al2"
+          (.fn "al" (match fnOf target with | .fn _ sigs _ => sigs | _ => []) (match fnOf target with | .fn _ _ i => i | _ => 0))
+      let call (al : String) : List Value :=
+        [w "afn", w "n", .list ([w al, w "y", v, .endMark, w "y"]) false, .int 5, w "y"]
+      -- asked at the call: the alias is found, and the binding ends
+      outWith (d "def") (call "al") == vals [v, o] &&
+      outWith (d "def") (call "al2") == vals [v, o] &&
+      -- an alias of a word that is not a binding word
+      outWith (d "bindq") (call "al") == vals [v, v] &&
+      -- asked when it was made: `some false` is what an installed function
+      -- answered before the alias existed
+      outWith ((d "def").push "f" (.fn "f" [.mk [.mk "n" TAny none false false] [TAny] 1
+          (.boru [w "al", w "y", v, .endMark, w "y"] [] false (some false)) false] 9209))
+        [w "f", .int 5, w "y"] == vals [v, v]) = true := by
+  native_decide
+
 /-- AND SO A PARAMETER CAN OUTLIVE ITS CALL (NUR384 again): bound over in
     a leaf frame, the parameter's name loses ONE binding at the close —
     the body's — and the argument is what the name reads afterwards. -/

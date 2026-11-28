@@ -30,7 +30,7 @@ open Boru.Core.Counted (w ws outWith ints)
 /-- A boru-bodied function of one parameter `n`, typed, with one typed
     return. -/
 def fnT (name : String) (ptype rtype : TypeId) (body : List Value) (ident : Nat) : Value :=
-  .fn name [.mk [.mk "n" ptype none false false] [rtype] 1 (.boru body [] false) false] ident
+  .fn name [.mk [.mk "n" ptype none false false] [rtype] 1 (.boru body [] false none) false] ident
 
 /-- The fixture, the outer bindings — oldest first — and the functions. -/
 def withFns (outer : List (String × Value)) (fns : List (String × Value)) : Defs :=

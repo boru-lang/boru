@@ -198,7 +198,7 @@ def fixtureNatives : Natives :=
         -- enclosing frame has bound
         let (ident, d) := d.freshIdent
         let sig := Sig.mk [.mk name TAny none false false] [TAny] 1
-          (.boru body (computeCaptures d [name] body) true) false
+          (.boru body (computeCaptures d [name] body) true none) false
         pure ([.fn "" [sig] ident], d)
       | _ => throw { code := "type_error", detail := "afn: the parameter is a name" }),
     ("depthq", .fullStack fun _ stack => pure (stack ++ [.int stack.length]))

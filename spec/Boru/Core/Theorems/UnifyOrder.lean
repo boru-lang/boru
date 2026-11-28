@@ -165,7 +165,7 @@ theorem map_alternatives_meet_as_patterns :
     and an `Any` like every other. -/
 theorem function_identity :
     let f (ident : Nat) : Value :=
-      .fn "f" [.mk [.mk "n" TInteger none false false] [TInteger] 1 (.boru [.word { name := "n" }] [] false) false] ident
+      .fn "f" [.mk [.mk "n" TInteger none false false] [TInteger] 1 (.boru [.word { name := "n" }] [] false none) false] ident
     (unifies (f 1) (f 1) && !unifies (f 1) (f 2)
       && canon (f 1) == canon (f 2)
       && (simplifyDisjunctAlts [f 1, f 1]).length == 1

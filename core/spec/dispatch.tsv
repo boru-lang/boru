@@ -1278,3 +1278,12 @@ run def n 9 ; def f fn( n Any Any [ [ n ] ] ) ; f 5	[5]	a NAMED function's body 
 run def n 9 ; def f fn( n Any Any [ { a: n } ] ) ; f 5	{a:5}	a map
 run 1 ; def y ( )		a group that leaves nothing is no argument: the value is taken from the stack
 run 1 ; undef ( )	ERROR:no_value_error	and where there is none to take, the word has no value to work on
+
+# --- a name bound to a binding word's function -----------------------------------
+# `def mydef def/v` binds the FUNCTION, and the name then calls as the word
+# does. Whether a frame records its entry state is asked of the bindings: an
+# INSTALLED function — a `fn(` of the row — was asked when it was made, before
+# any alias the program binds. (A function VALUE is asked at each call, and
+# finds the alias: `divergent.tsv`, with the `afn` it needs.)
+run 0 def mydef def/v ; mydef y 3 ; y	0 3	a name bound to a word's FUNCTION calls as the word does
+run def y 1 ; 0 def mydef def/v ; def f fn( n Any Any [ mydef y 3 ; y ] ) ; f 5 y	0 3 3	AN INSTALLED FUNCTION WAS ASKED WHEN IT WAS MADE — before the program ran, and before the alias was bound: its frame records nothing

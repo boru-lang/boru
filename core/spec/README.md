@@ -202,7 +202,7 @@ than silently re-baselined. Each runner also **fails a row whose `go` and
 belongs in, or this stops being an honest debt list. Shrink-only, exactly as
 `parser/spec/divergent.tsv` is.
 
-It holds **406 rows**. 377 are a mechanism `core/ts` does not have at
+It holds **412 rows**. 383 are a mechanism `core/ts` does not have at
 all: closures (26 rows, the `afn` fixture); driven loops (35 rows, the
 `eachq` fixture — eight of them the same loop out of a group and inside one
 a waiting word evaluates, where the kernel once stepped the loop's inert
@@ -221,8 +221,9 @@ loop, a region, a branch or a closure; the frame's ENTRY SNAPSHOT, which
 ends a body's own definitions with the call (28 rows — `core/ts` leaves
 them bound — and 4 more that bind in a round, a region or a branch outside
 a function); a function that calls itself last, through a branch (13
-rows); and the deferred residual of an anonymous function's one bare
-container (9 rows). Two are a difference in a mechanism both have:
+rows); the deferred residual of an anonymous function's one bare
+container (9 rows); and an alias of a binding word in the body of a
+function value (6 rows). Two are a difference in a mechanism both have:
 `core/ts` puts a list argument's quoted BINDING in the args list, where
 the kernel puts the argument. Two are a diagnostic: the kernel reports a
 void argument of the word named `def` as `def_error`. **Two are NUR407,

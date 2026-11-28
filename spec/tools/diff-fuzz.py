@@ -227,6 +227,20 @@ def gen_program(rng, max_len):
                              "d( )", "d( 1 2 )", "[: Integer ]", "List", "String", "''", "{q }", "null"],
                             rng.randint(1, 4)):
             toks += ["def", "c", v, ";"]
+    # an ALIAS of a binding word, bound while the program runs: a function
+    # VALUE whose body names it is asked at the call whether its frame
+    # records, and finds the alias; an installed function was asked before
+    if rng.random() < 0.08:
+        target = rng.choice(["def/v", "def/v", "undef/v", "afn/v", "bindq/v", "negq/v"])
+        toks += ["0", "def", "al", target, ";"]
+        body = rng.choice(["al y 3 ; n", "al y 3 ; y", "bindq y 3 ; al z n", "al m [q addq m n ]",
+                           "al n 9 ; n", "al y n ; { a: y }", "al x n ; x", "bindq y n ; al y", "al y"])
+        toks += rng.choice([["afn", "n", "[q"] + body.split() + ["]", "5"],
+                            ["bothq", "0", "(", "afn", "n", "[q"] + body.split() + ["]", "5", ")", "7"],
+                            ["eachq", "[q", "1", "2", "]", "[q", "al", "y", "]"],
+                            ["al", "y", "4", ";"]])
+        if rng.random() < 0.7:
+            toks += [rng.choice(["y", "x", "al/v", ";"])]
     # a function that BUILDS a closure in its frame, and calls of it
     if rng.random() < 0.10:
         inner = rng.choice(["addq n x", "x", "n", "addq n y", "afn m [q addq m x ]", "addq x 1", "n x"])
@@ -267,7 +281,8 @@ def gen_program(rng, max_len):
                            "[ ifq [q n ] [q ( addq n -1 ) inc/s ] [q afn m [q addq m n ] ] ]",
                            "[ ifq [q n ] [q ( addq n -1 ) inc ] [q 0 ] ]",
                            "[ forq 1 [q ifq [q n ] [q ( addq n -1 ) inc/s ] [q 0 ] ] ]",
-                           "[ outer n ]", "[ ( inc2 n ) ]", "[ inc2 n ]", "[ def y 3 ; inc2 n ]", "[ 7 inc2 n ]"])
+                           "[ outer n ]", "[ ( inc2 n ) ]", "[ inc2 n ]", "[ def y 3 ; inc2 n ]", "[ 7 inc2 n ]",
+                           "[ al y 3 ; n ]", "[ al y n ; y ]"])
         toks += ["def", "inc", "fn(", "n", rng.choice(["Integer", "Any"]),
                  rng.choice(["Integer", "Any"])] + body.split() + [")", ";"]
         # a second function of the SAME parameter name, which `inc` may call
