@@ -95,6 +95,8 @@ def canon : Value → String
   | .quoted (.list elems e) => "(quote " ++ canon (.list elems e) ++ ")"
   | .quoted (.typedList c elems) => "(quote " ++ canon (.typedList c elems) ++ ")"
   | .quoted v => canon v
+  -- the application mark is spent where it is stepped, and never printed
+  | .applied v => canon v
 
 /-- A typed container's tag: an unresolved type name is still a bare word
     there (ADR-012 rule 4). -/

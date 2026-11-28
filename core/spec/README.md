@@ -130,6 +130,17 @@ The word answers the function as the reader leaves it; binding it with
 planned, a row writes `def f ( fn [q … ] )`. Every refusal of the reader
 is `ERROR:fn_invalid_spec`. The Go runner's and the Lean runner's only.
 
+### A function of no parameters
+
+`fn( RTYPE [ body ] )` writes a NAMED function that takes nothing: it is
+called wherever it is stepped, since a call of it needs nothing beside
+it. `afn0q [q body ]` builds an ANONYMOUS one, which is data where it
+stands; `applyq v` is the application that calls it — it marks an
+anonymous function whose every signature takes nothing (core/go
+`MarkApplied`, basic's `apply`), and the step that meets the mark makes
+the call. The notation is in all three runners; the two fixtures are the
+Go runner's and the Lean runner's, core/ts having no closures.
+
 ### A splice marker
 
 `s( item )` writes a SPLICE MARKER (`Word/__SP`) wrapping one item, as
@@ -227,7 +238,7 @@ built. They nest, and they work in `run` and `list` alike.
 | `d( … )` | a DISJUNCT of the listed items (`d( )` is the empty one) |
 | `[: T … ]` | a typed list: the child constraint, then any retained elements |
 | `{: T k: v … }` | a typed map: the child constraint, then any retained entries |
-| `fn( NAME PTYPE … RTYPE [ body ] )` | a function value: its parameters in signature order — a name and a type each — then one return, and a boru body. All of them may be collected forward. The types are the seven the notation spells as literals, and `Number` and `Scalar`, so a row can declare a chain of types each above the next. The name `_` is an UNNAMED parameter: its argument is not bound, and enters the frame as a value |
+| `fn( NAME PTYPE … RTYPE [ body ] )` | a function value: its parameters in signature order — a name and a type each — then one return, and a boru body. With no parameters at all — `fn( RTYPE [ body ] )` — it is a function that takes nothing. All of them may be collected forward. The types are the seven the notation spells as literals, and `Number` and `Scalar`, so a row can declare a chain of types each above the next. The name `_` is an UNNAMED parameter: its argument is not bound, and enters the frame as a value |
 
 The bare bracket is always the PARSER's form and the `q` variant the
 runtime's, because that distinction is load-bearing: the step loop
@@ -267,8 +278,11 @@ than silently re-baselined. Each runner also **fails a row whose `go` and
 belongs in, or this stops being an honest debt list. Shrink-only, exactly as
 `parser/spec/divergent.tsv` is.
 
-It holds **703 rows**. 665 are a mechanism `core/ts` does not have at
-all: closures (26 rows, the `afn` fixture); driven loops (36 rows, the
+It holds **744 rows**. 704 are a mechanism `core/ts` does not have at
+all: closures (61 rows, the `afn` fixture — and, for an anonymous
+function of no parameters and the application that calls it, the
+`afn0q` and `applyq` fixtures; two of them NUR417, pinned as the kernel
+has it); driven loops (36 rows, the
 `eachq` fixture — eight of them the same loop out of a group and inside one
 a waiting word evaluates, where the kernel once stepped the loop's inert
 inputs); call regions (26 rows, the `callq` fixture); counted and conditional loops (74 rows, the `forq`, `rangeq` and
@@ -289,20 +303,25 @@ a function); a function that calls itself last, through a branch (13
 rows); the deferred residual of an anonymous function's one bare
 container (9 rows); an alias of a binding word in the body of a
 function value (6 rows); and the function-spec reader and the definition
-install (105 rows, the `fn` fixture and `def` over a function — five of
+install (109 rows, the `fn` fixture and `def` over a function — five of
 them the dispatch order of a pattern against a bare type, four a
-keyword slot beside a word bound to a splice, two of
+keyword slot beside a word bound to a splice, four a function of no
+parameters the reader made (three of them NUR417), two of
 them NUR409, two NUR410 and three NUR411, pinned as the kernel has it);
 two of the four raw-capture slots (94 rows, the `rawpq`, `formq` and
 `form2q` fixtures — three of them NUR413 and three NUR414, pinned as the
 kernel has it); and a pattern that reads a container's contents, with
 the evaluation of the pending operand it judges (74 rows, the `mpatq`,
-`lpatq`, `rawmpatq` and `rawlpatq` fixtures — two of them NUR413). Five are a difference in a mechanism both have:
+`lpatq`, `rawmpatq` and `rawlpatq` fixtures — two of them NUR413). Seven are a difference in a mechanism both have:
 `core/ts` puts a list argument's quoted BINDING in the args list, where
 the kernel puts the argument (two rows), and hands a waiting word the
 paren expression a name is bound to as code, where the kernel runs it as
 the group it is (one), and leaves a splice marker written as a map
-member unfired, where the kernel fires it in the member's region (two).
+member unfired, where the kernel fires it in the member's region (two),
+as it leaves a function of no parameters written there uncalled (one);
+and it collects the result of a function word of no parameters written
+after a collecting word, where the kernel's forward barrier refuses it
+(one).
 Three are a rendering: a splice marker left on the stack prints as each
 engine's own debug dump (NUR416). Two are a diagnostic: the kernel reports a
 void argument of the word named `def` as `def_error`. **Five are the only

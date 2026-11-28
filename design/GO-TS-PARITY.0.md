@@ -518,6 +518,17 @@ Three things from it are worth carrying even if the tables are never read:
   (`{ a: s( [q 1 2 ] ) }` is `{a:word(undefined)}`), where core/go fires
   it in the member's region. Three more are each engine's own debug print
   of a marker left on the stack (NUR416: neither is source).
+- **A function of no parameters is shared; the anonymous one is not**
+  (2026-11-28). `fn( RTYPE [ body ] )` writes a function that takes
+  nothing in all three runners, and the 37 rows of
+  `core/spec/dispatch.tsv` that say it is called wherever it is stepped
+  agree. Two rows are gaps in the port: core/ts leaves one written as a
+  map member uncalled, and collects the result of a function word of no
+  parameters written after a collecting word, where core/go's forward
+  barrier refuses the call. The anonymous kind — data where it stands,
+  called only by an application that was asked for (`MarkApplied`) — needs
+  closures, which core/ts does not have: its 35 rows, through the `afn0q`
+  and `applyq` fixtures, are on the Go column.
 - NUR059: canon still renders sugar tags, `/r` and `/N` word modifiers,
   and paren groups in debug spelling. Both engines agree, so it is render
   quality rather than parity — pinned by corpus rows so a one-sided fix

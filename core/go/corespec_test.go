@@ -307,7 +307,9 @@ func coreSpecItem(t *testing.T, r *Registry, toks []string, pos int) (Value, int
 			pos++
 		}
 		spec := toks[head:pos]
-		if len(spec) < 3 || len(spec)%2 == 0 {
+		// `fn( RTYPE [ body ] )` — the return alone — is a function of NO
+		// parameters.
+		if len(spec)%2 == 0 {
 			t.Fatalf("fn( wants NAME PTYPE … RTYPE before its body, got %q", spec)
 		}
 		// The NAMED type itself, as core/ts's runner declares it. A type
@@ -725,6 +727,47 @@ func coreSpecRegistry(t *testing.T) *Registry {
 			})}, nil
 		}),
 		BarrierPos: 2,
+	})
+	// afn0q builds an anonymous function of NO parameters — `afn0q [q body…
+	// ]` — which afn, taking one parameter name, cannot. Such a function is
+	// the one value whose call needs nothing beside it, and the kernel
+	// treats it as DATA where it stands: only an explicit application calls
+	// it. (Under this name the frame-state analysis does not know it as a
+	// constructing word: built in a function's body it captures nothing.)
+	r.Register("afn0q", Signature{
+		Params:  []FnParam{{Name: "body", Type: TList}},
+		Returns: []*Type{TFunction},
+		Impl: Go(func(a []Value, _ map[string]Value, _ []Value, reg *Registry) ([]Value, error) {
+			body, err := AsList(a[0])
+			if err != nil {
+				return nil, coreSpecNotAList("afn0q", a[0])
+			}
+			sig := Signature{
+				Params:     []FnParam{},
+				Returns:    []*Type{TAny},
+				Impl:       Boru(body.Slice()),
+				BarrierPos: 0,
+			}
+			return []Value{NewFunction(FnDefInfo{
+				Signatures: []Signature{sig},
+				Anonymous:  true,
+				Captured:   ComputeCaptures(reg, &sig),
+				Registry:   reg,
+			})}, nil
+		}),
+		BarrierPos: 1,
+	})
+	// applyq is the APPLICATION MARK (MarkApplied, basic's `apply`): it
+	// stamps the one-shot signal on an anonymous function whose signatures
+	// all take nothing and hands it back — and the re-step, finding the
+	// mark, calls it. Any other value is handed back as it is.
+	r.Register("applyq", Signature{
+		Params:  []FnParam{{Name: "f", Type: TAny}},
+		Returns: []*Type{TAny},
+		Impl: Go(func(a []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Value, error) {
+			return []Value{MarkApplied(a[0])}, nil
+		}),
+		BarrierPos: 1,
 	})
 	// eachq is the door onto DRIVEN LOOPS: the protocol a looping native
 	// uses to run its iterations on the tape (LoopDriver, loop.go). Its

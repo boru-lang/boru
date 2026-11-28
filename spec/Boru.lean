@@ -26,3 +26,4 @@ import Boru.Core.Theorems.FnSpec
 import Boru.Core.Theorems.Raw
 import Boru.Core.Theorems.PatternOperand
 import Boru.Core.Theorems.Splice
+import Boru.Core.Theorems.ZeroArg

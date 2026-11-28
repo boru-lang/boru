@@ -931,6 +931,19 @@ def stepLiteral (nat : Natives) : Nat → Engine → Except BoruError Engine
     let valIdx := e.ptr
     match e.tok? valIdx with
     | none => pure e
+    | some (.applied inner) =>
+      -- THE APPLICATION MARK is spent by the step that meets it (core/go
+      -- `takeAppliedMark`), whatever follows: on a function with nothing
+      -- waiting for it, it is the request to call; anywhere else the
+      -- value is stepped again as itself
+      let e := { e with tape := setAt e.tape valIdx inner }
+      match inner, pendingForwardIdx e.tape e.ptr with
+      | .fn name sigs _, none =>
+        match e.tok? (valIdx + 1) with
+        | some (.dispatchMod _) =>
+          pure { e with tape := removeAt e.tape (valIdx + 1), ptr := valIdx + 1, sealAt := none }
+        | _ => dispatchFnValue nat fuel e name sigs true
+      | _, _ => pure e
     | some val =>
       -- a paren expression becomes its marker span and is re-stepped —
       -- unless a parked forward that captures parens raw is waiting: then
@@ -959,7 +972,7 @@ def stepLiteral (nat : Natives) : Nat → Engine → Except BoruError Engine
           match e.tok? (valIdx + 1) with
           | some (.dispatchMod _) =>
             pure { e with tape := removeAt e.tape (valIdx + 1), ptr := valIdx + 1, sealAt := none }
-          | _ => dispatchFnValue nat fuel e name sigs
+          | _ => dispatchFnValue nat fuel e name sigs false
         | _ => pure { e with ptr := e.ptr + 1 }
       | some fwdIdx =>
         match e.tok? fwdIdx with
@@ -1020,9 +1033,10 @@ def stepLiteral (nat : Natives) : Nat → Engine → Except BoruError Engine
     plan walk, the plan, then a parked forward or an immediate run. With no
     match, a named function that has anything to be called on is an
     `uncalled_function` error; with nothing at all around it, it is data. -/
-def dispatchFnValue (nat : Natives) : Nat → Engine → String → List Sig → Except BoruError Engine
-  | 0, _, _, _ => Engine.outOfFuel
-  | fuel + 1, e, name, sigs => do
+def dispatchFnValue (nat : Natives) :
+    Nat → Engine → String → List Sig → Bool → Except BoruError Engine
+  | 0, _, _, _, _ => Engine.outOfFuel
+  | fuel + 1, e, name, sigs, applied => do
     let sealed := e.sealAt == some e.ptr
     let e := { e with sealAt := none }
     let w : WordInfo := { name := name, forceStack := sealed }
@@ -1043,6 +1057,17 @@ def dispatchFnValue (nat : Natives) : Nat → Engine → String → List Sig →
         Engine.err "uncalled_function" ("call to '" ++ name ++ "' matched no signature")
       else pure { e with ptr := e.ptr + 1 }
     | some p =>
+      -- AN ANONYMOUS FUNCTION THAT TAKES NOTHING IS DATA WHERE IT STANDS
+      -- (core/go `execFnDefLiteral`'s gate): a call of it would need
+      -- nothing beside it, so standing anywhere would be a call — and the
+      -- value could not be bound, stored or handed on. Only an
+      -- APPLICATION that was asked for calls it: the mark `applied`
+      -- carries. A function that is not anonymous is called (NUR417, as
+      -- the kernel has it: the two differ by where they came from)
+      let anonymous := sigs.any fun s => match s.impl with
+        | .boru _ _ true _ _ => true
+        | _ => false
+      if anonymous && !applied && p.positions.isEmpty then pure { e with ptr := e.ptr + 1 } else
       let fwdCount := (p.positions.filter (· > e.ptr)).length
       let stkCount := p.positions.length - fwdCount
       if fwdCount > 0 then

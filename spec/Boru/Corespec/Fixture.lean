@@ -98,6 +98,9 @@ def fixtureDefs : Defs :=
     -- the CLOSURE fixture: build an anonymous one-parameter function at
     -- run time, where the capture analysis runs
     word "afn" [p "param" TAtom (quote := true), p "body" TList] ["Type/Function"] 2,
+    -- an anonymous function of NO parameters, and the application mark
+    word "afn0q" [p "body" TList] ["Type/Function"] 1,
+    word "applyq" [p "f" TAny] [TAny] 1,
     -- the FULL-STACK fixture
     word "depthq" [] [] 0 (fullStack := true)
   ].zipIdx.map fun ((n, v), i) =>
@@ -251,6 +254,22 @@ def fixtureNatives : Natives :=
           (.boru body (computeCaptures d [name] body) true none []) false
         pure ([.fn "" [sig] ident], d)
       | _ => throw { code := "type_error", detail := "afn: the parameter is a name" }),
+    ("afn0q", .plain fun a d => do
+      let body ← elemsOf "afn0q" (a.getD 0 .none)
+      let (ident, d) := d.freshIdent
+      let sig := Sig.mk [] [TAny] 0 (.boru body (computeCaptures d [] body) true none []) false
+      pure ([.fn "" [sig] ident], d)),
+    -- THE APPLICATION MARK (core/go `MarkApplied`): on an anonymous
+    -- function whose every signature takes nothing; any other value is
+    -- handed back as it is
+    ("applyq", .plain fun a d =>
+      let v := a.getD 0 .none
+      let marks := match v with
+        | .fn _ sigs _ =>
+          !sigs.isEmpty && sigs.all fun s => s.arity == 0 &&
+            (match s.impl with | .boru _ _ true _ _ => true | _ => false)
+        | _ => false
+      pure ([if marks then .applied v else v], d)),
     ("depthq", .fullStack fun _ stack => pure (stack ++ [.int stack.length]))
   ]
 

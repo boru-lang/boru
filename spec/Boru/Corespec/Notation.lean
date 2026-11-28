@@ -140,7 +140,9 @@ partial def item : List String → Except String (Value × List String)
     -- order, then the one return
     let spec := rest.takeWhile fun t => t != "[" && t != "[q"
     let rest := rest.drop spec.length
-    if spec.length < 3 || spec.length % 2 == 0 then
+    -- `fn( RTYPE [ body ] )`, the return alone, is a function of NO
+    -- parameters
+    if spec.length % 2 == 0 then
       throw "fn( wants NAME PTYPE … RTYPE before its body"
     let rec params : List String → Except String (List Param)
       | name :: ty :: more@(_ :: _) =>
