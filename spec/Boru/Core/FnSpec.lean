@@ -188,6 +188,17 @@ def parseParams (d : Defs) : List Value → Params → R Params
     | .parenExpr _ => unmodelled
     | _ => throw "invalid parameter"
 
+/-- THE ELEMENTS OF A LIST-FAMILY VALUE (core/go `AsList`): a list's
+    elements, and a TYPED list's retained ones. Every part of a
+    specification that may be a list is read through this: `[: Integer 7 ]`
+    as a body is the body `7`, and as a parameter list the one parameter
+    `7`. -/
+def listElems? : Value → Option (List Value)
+  | .list elems _ => some elems
+  | .typedList _ elems => some elems
+  | .quoted v => listElems? v
+  | _ => none
+
 /-- A named return — `name:Type` — is its type (core/go
     `unwrapNamedReturn`). -/
 def unwrapNamedReturn : Value → R Value
@@ -201,12 +212,8 @@ def unwrapNamedReturn : Value → R Value
 /-- READ THE RETURNS (core/go `ParseFnReturns`): a list of declarations,
     or one declaration standing alone. -/
 def parseReturns (d : Defs) (output : Value) : R (List TypeId × List (Option Value)) :=
-  let slots : R (List Value) := match output with
-    | .list elems _ => pure elems
-    | .quoted _ | .typedList _ _ => unmodelled
-    | v => pure [v]
+  let slots : List Value := (listElems? output).getD [output]
   do
-    let slots ← slots
     let resolved ← slots.mapM fun slot => do
       let v ← unwrapNamedReturn slot
       match v with
@@ -220,15 +227,10 @@ def parseReturns (d : Defs) (output : Value) : R (List TypeId × List (Option Va
     stands for the list of itself. -/
 def parseTriples (d : Defs) : List Value → R (List Sig)
   | input :: output :: body :: rest => do
-    let inputElems ← match input with
-      | .list elems _ => pure elems
-      | .quoted _ | .typedList _ _ => unmodelled
-      | v => pure [v]
+    let inputElems := (listElems? input).getD [input]
     let ps ← parseParams d inputElems {}
     let (returns, pats) ← parseReturns d output
-    let bodyElems := match body with
-      | .list elems _ => elems
-      | v => [v]
+    let bodyElems := (listElems? body).getD [body]
     let sig := Sig.mk ps.params returns (ps.barrier.getD ps.params.length)
       (.boru bodyElems [] false none pats) false
     pure (sig :: (← parseTriples d rest))
@@ -307,17 +309,23 @@ def overlap (a b : List Sig) : Bool :=
 
 /-- INSTALL A DEFINITION (core/go `InstallDef`). A value that is not a
     function is bound. A function is COMPILED under the name: an older
-    definition of the name that it overlaps is taken off, its optional
+    definition of the name that it overlaps is taken off — unless it is a
+    host word's, which is locked and stays — its optional
     parameters are expanded, and each body is asked — now — whether its
     frames record their entry state. A host function is bound under the
     name as it is. -/
 def install (d : Defs) (name : String) : Value → Defs
   | .fn _ sigs ident =>
     let isBoru (s : Sig) : Bool := match s with | .mk _ _ _ (.boru _ _ _ _ _) _ => true | _ => false
-    -- a redefinition REPLACES: the entries of the name it overlaps go
+    -- a redefinition REPLACES: the entries of the name it overlaps go —
+    -- but for a HOST word's, whose signatures are locked (core/go
+    -- `hasLockedSig`): a function defined over a host word of the same
+    -- parameter types stacks on it, and unbinding it shows the word
+    let locked (oldSigs : List Sig) : Bool :=
+      oldSigs.any fun s => match s with | .mk _ _ _ (.native _) _ => true | _ => false
     let kept := (d.stack name).filter fun old =>
       match old with
-      | .fn _ oldSigs _ => !(overlap oldSigs sigs)
+      | .fn _ oldSigs _ => locked oldSigs || !(overlap oldSigs sigs)
       | _ => true
     let d := if kept.length == (d.stack name).length then d
       else kept.reverse.foldl (fun acc v => acc.push name v) (d.popTo name 0)

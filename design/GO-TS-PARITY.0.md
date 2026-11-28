@@ -466,7 +466,7 @@ Three things from it are worth carrying even if the tables are never read:
   redefinition of the same parameter types replacing the older one, each
   body asked then whether its frames record. core/ts has neither — the
   reader lives a layer up, in eng/ts, and a binding is a binding — so the
-  88 rows that specify them are on the Go column of
+  96 rows that specify them are on the Go column of
   `core/spec/divergent.tsv`, and the `fn` fixture is the Go runner's and
   the Lean runner's only. The first row of the redefinitions is the one
   core/ts answers at all: two `fn(` functions of the same parameter

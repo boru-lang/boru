@@ -1295,3 +1295,4 @@ run def y 1 ; def f fn( n Any Any [ mydef y 3 ; y ] ) ; 0 def mydef def/v ; f 5 
 # redefinition replaces — is in `divergent.tsv`: core/ts only binds.)
 run def f fn( n Integer Any [ 1 ] ) ; def f fn( n Integer Any [ 2 ] ) ; f 5 undef f f 5	2 1	a row's LEADING clauses only bind: two definitions of the same parameter types are both there, the newer first
 run ; def f 1 ; def f 2 ; f undef f f	2 1	values that are no function are bound one over the other
+run ; def negq fn( n Integer Integer [ 7 ] ) ; negq 5 undef negq negq 5	7 -5	a function bound over a host word of the same parameter types: the word is beneath it

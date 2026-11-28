@@ -121,6 +121,24 @@ theorem triples_and_their_short_forms :
       (read (triple [w "n:Integer"] [] [.int 1] ++ [.list [] false])).length == 1) = true := by
   native_decide
 
+/-- A TYPED LIST IS READ AS THE LIST OF ITS RETAINED ELEMENTS, in every
+    part of a specification that may be a list (core/go `AsList`): as the
+    parameters, as the returns and as the body it reads exactly as the
+    plain list of the same elements does — and with nothing retained it is
+    the empty list. -/
+theorem a_typed_list_is_the_list_of_its_elements :
+    (let typed (elems : List Value) : Value := .typedList (.typeLit TInteger) elems
+     let same (a b : List Value) : Bool :=
+       canon (.fn "" (read a) 0) == canon (.fn "" (read b) 0) && (read a).length == 1
+     same [typed [w "n:Integer"], .list [.typeLit TInteger] false, .list [w "n"] false]
+          (triple [w "n:Integer"] [.typeLit TInteger] [w "n"]) &&
+     same [.list [w "n:Integer"] false, typed [.typeLit TInteger], .list [w "n"] false]
+          (triple [w "n:Integer"] [.typeLit TInteger] [w "n"]) &&
+     same [.list [w "n:Integer"] false, .list [.typeLit TInteger] false, typed [w "n"]]
+          (triple [w "n:Integer"] [.typeLit TInteger] [w "n"]) &&
+     same [typed [], typed [], typed []] (triple [] [] [])) = true := by
+  native_decide
+
 /-- NUR409, AS THE KERNEL HAS IT — recorded, not the rule. WITHOUT A NAME
     THE READER TAKES LESS. A union, a list and `none` are declarations —
     `resolveSigType` reads each — and a parameter list refuses each where
@@ -261,6 +279,21 @@ theorem a_redefinition_replaces :
      depthOf (a ++ other) "f" == 2 &&
      out (a ++ other ++ [w "f", .int 5, w "f", .str "x"]) == ints [1, 3] &&
      depthOf (a ++ [w "def", w "f", .int 7, .endMark]) "f" == 2) = true := by
+  native_decide
+
+/-- A HOST WORD IS LOCKED: the install's replacement passes over it. A
+    function defined over a host word with the word's own parameter types
+    stacks on it — the name holds both, the function is tried first, and
+    unbinding the function shows the word again. A second function of
+    those types replaces the first, and the word is still beneath. -/
+theorem a_host_word_survives_a_redefinition :
+    (let over := defn "negq" (triple [w "n:Integer"] [.typeLit TInteger] [.int 7])
+     let again := defn "negq" (triple [w "m:Integer"] [.typeLit TInteger] [.int 8])
+     depthOf over "negq" == 2 &&
+     out (over ++ [w "negq", .int 5]) == ints [7] &&
+     out (over ++ [w "undef", w "negq", w "negq", .int 5]) == ints [-5] &&
+     depthOf (over ++ again) "negq" == 2 &&
+     out (over ++ again ++ [w "negq", .int 5, w "undef", w "negq", w "negq", .int 5]) == ints [8, -5]) = true := by
   native_decide
 
 /-- A BODY IS ASKED AT THE INSTALL whether its frames record: the reader

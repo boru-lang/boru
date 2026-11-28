@@ -834,3 +834,16 @@ run def x 5 ; ; def f ( fn [q [q n:Any ] [q x ] [q n ] ] ) ; f 5	ERROR:fn_invali
 run def un fn( _ Any Any [ ] ) ; un/u negq/uv	fn [[a:Integer][Integer][]]	ERROR:signature_error	a FUNCTION handed as the unnamed argument through `/u`: the call completes at the end of input, and the argument is data there too (the kernel once stepped it: `uncalled_function`)
 run def un fn( _ Any Any [ ] ) ; ( un/u negq/uv )	fn [[a:Integer][Integer][]]	ERROR:signature_error	at the close of a group, the same
 run def un fn( _ Any Any [ 7 ] ) ; un/u negq/uv	7	ERROR:signature_error	beneath a value the body leaves it is dropped, unrun (the kernel once CALLED it on that value: `-7`)
+
+# --- two more of the reader and the install (found in review) ----------------------------
+# A host word's signatures are LOCKED: the install's replacement passes over
+# them. And every part of a specification that may be a list is read through
+# the kernel's list reader, which gives a typed list's retained elements.
+run ; def negq ( fn [q [q n:Integer ] [q Integer ] [q 7 ] ] ) ; negq 5 undef negq negq 5	7 -5	ERROR:undefined_word	A HOST WORD IS LOCKED: a function defined over it with the same parameter types does not replace it — it stacks, and unbinding it shows the word
+run ; def negq ( fn [q [q n:Integer ] [q Integer ] [q 7 ] ] ) ; negq/v	fn [[n:Integer][Integer][7] [a:Integer][Integer][]]	ERROR:undefined_word	both definitions are the name's
+run ; def negq ( fn [q [q n:Integer ] [q Integer ] [q 7 ] ] ) ; def negq ( fn [q [q m:Integer ] [q Integer ] [q 8 ] ] ) ; negq 5 undef negq negq 5	8 -5	ERROR:undefined_word	a SECOND function replaces the first, and the word is still beneath
+run ; def f ( fn [q [q ] [q Integer ] [: Integer 7 ] ] ) ; f	7	ERROR:undefined_word	A TYPED LIST is read as the list of its retained elements — as a body
+run ; def f ( fn [q [: Integer 7 ] [q Integer ] [q ] ] ) ; f 7 f/v	7 fn [[:Integer][Integer][]]	ERROR:undefined_word	as a parameter list
+run ; def f ( fn [q [: Integer n:Integer ] [q Integer ] [q n ] ] ) ; f 5	5	ERROR:undefined_word	whatever its elements are
+run ; def f ( fn [q [q n:Any ] [: Integer Integer ] [q n ] ] ) ; f 5 ; f 'a' ;	ERROR:type_error	ERROR:undefined_word	as the returns
+run ; def f ( fn [q [q n:Any ] [: Integer ] [q n ] ] ) ; f 'a' f/v	'a' fn [[n:Any][][n]]	ERROR:undefined_word	and one with no retained elements is no returns at all
