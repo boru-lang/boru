@@ -131,6 +131,7 @@ list only by becoming **Resolved** (the record is then deleted) or
 | [NUR409](#nur409) | A parameter written WITHOUT a name takes fewer declarations than one written with a name: `[1.5]`, `[(Integer tor String)]`, `[none]`, `[[1 2]]` and a lowercase name bound to a type are each `function spec: invalid parameter` (or `unknown type`), where `x:1.5`, `x:(Integer tor String)`, `x:none`, `x:[1 2]` and `x:t` are read | the Lean specification's model of the function-spec reader, against core/go and the shipped words (2026-11-28) |
 | [NUR410](#nur410) | `?` on a parameter whose type has no base value does nothing, silently: `def f fn [[n?:Any][Any][n]]` is defined without complaint and `f` is `no signature matches`; the same for `Function`, a union, and a literal the base value is not (`n?:7`) | the Lean specification's model of the definition install, against core/go and the shipped words (2026-11-28) |
 | [NUR411](#nur411) | A lowercase name bound to a union or a typed list is accepted as a parameter's or a return's declaration and constrains nothing: with `def u (Integer tor String)`, `fn [[n:Any][u][n]]` returns `true` and `fn [[n:u][Any][n]]` takes it, where the union written in place, and a capitalised `def U`, both refuse it | the Lean specification's model of the function-spec reader, against core/go and the shipped words (2026-11-28) |
+| [NUR412](#nur412) | A function VALUE all of whose parameters are unnamed takes its stack arguments BOTTOM-UP — and so an unbound function literal of unnamed parameters cannot be called forward at all (`fn [[Integer String][List][args]] 5 "a"` is left uncalled, where `x:`/`y:` or a `def` makes it `[5 'a']`): `7 "a" fn [[Integer String][List][args]]` is `[7 'a']` and `"a" 7 fn […]` is not called, the opposite of the same function with named parameters and of the same function called by name; and a usurped one matched that way is not run — `def f fn [[Integer String][List][args]] ; "a" 7 f/u` returns its own argument (`<fn>: expected List, got Integer`) | the Lean specification's differential fuzzer, against core/go and the shipped words (2026-11-28) |
 
 Pending records normally use a compact form (rule / divergence /
 evidence / documentation status, plus a proposed verdict where one is
@@ -2097,5 +2098,74 @@ it does not itself know to `ResolveSigType`, so a name bound to a union
 means the union. (If a lowercase name is not meant to name a type at
 all, the fix is the error `def u 7` already gets; either way the
 wildcard goes.)
+
+---
+
+## NUR412 — an all-unnamed function value takes its stack arguments bottom-up {#nur412}
+
+**Status:** Pending · **Recorded:** 2026-11-28 · measured through the shipped words · one form silent (a function that is never run)
+
+**Rule:** the one argument rule (CLAUDE.md, "one rule, no exceptions"): a
+call fills its positions from the forward stack, "then fills every
+remaining position from the value stack in reverse — top of stack first".
+"Two-argument words are not a special case", and neither is a function
+whose parameters have no names.
+
+**Divergence:** a function VALUE standing at the pointer is first planned
+by that rule; when the plan fails, `execFnDefSig` falls back to the
+"legacy pure-stack path" (`core/go/engine.go` `ExecFnDefSigStackMatch`,
+`stackMatchSig`), whose comment states the two orders: "a signature with a
+named param reads the stack top-down (param 0 is the top), an all-unnamed
+one reads its window bottom-up". design/SIG-ORDER-REFACTOR.10.md lists it
+as the one bottom-first path left, kept for module wrappers.
+
+```
+def f fn [[Integer String][List][args]] ; "a" 7 f       → [7 'a']           (by name: top first)
+def f fn [[Integer String][List][args]] ; 7 "a" f       → signature_error
+7 "a" fn [[x:Integer y:String][List][args]]             → not called        (named: top first)
+"a" 7 fn [[x:Integer y:String][List][args]]             → [7 'a']
+7 "a" fn [[Integer String][List][args]]                 → [7 'a']           (all unnamed: BOTTOM first)
+"a" 7 fn [[Integer String][List][args]]                 → not called
+```
+
+The same path takes a USURP wrapper of such a function, and there it does
+worse than read the wrong way: it splices a frame from the wrapper
+signature's body, and a wrapper has none — its work is its handler. The
+function is never run, and the frame's top argument is what comes back:
+
+```
+def f fn [[Integer String][List][args]] ; 7 "a" f/u     → [7 'a']
+def f fn [[Integer String][List][args]] ; "a" 7 f/u     → type_error: <fn>: return value 1: expected List, got Integer
+```
+
+(with a declared return of `Any` the second is silently `7`).
+
+The same path is what applies a function LITERAL that was never bound,
+and there it shows in the ordinary forward call too. Forward arguments
+are seated on the stack in the order the top-first rule reads, the
+all-unnamed signature is read bottom-up, and the call does not happen;
+and signatures are tried in the order they were WRITTEN, a nullary one
+first if it was written first, where a bound function tries the one of
+more arguments first:
+
+```
+fn [[x:Integer y:String][List][args]] 5 "a"             → [5 'a']
+fn [[Integer String][List][args]] 5 "a"                 → a 5 fn (Integer, String)     (not called)
+def f fn [[Integer String][List][args]] ; f 5 "a"       → [5 'a']
+fn [[][Integer][1] [n:Integer][Integer][2]] 5           → 5 1      (the nullary one, written first)
+fn [[n:Integer][Integer][2] [][Integer][1]] 5           → 2
+def f fn [[][Integer][1] [n:Integer][Integer][2]] ; f 5 → 2
+```
+
+`core/spec/divergent.tsv` pins three rows at the kernel's level. The Lean
+specification does NOT reproduce it: it states the one rule, and its
+answers there are core/ts's — with NUR407's, the only ledger rows where
+the specification sides with core/ts.
+
+**Proposed verdict:** resolve by fix — the fallback reads top-first for
+every signature, and a wrapper met there runs its handler (or the
+fallback is confined to the module wrappers it was kept for). The
+alternative, Allowed, would put a second argument order into the one
+rule for one kind of value.
 
 ---

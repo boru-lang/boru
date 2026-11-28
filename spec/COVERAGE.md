@@ -77,6 +77,13 @@ extending the notation and its fixture in all three runners first.
   bare `Type/q` atom, a dotted annotation, a type a program defined,
   generics; an optional parameter that is unnamed (its added signature
   reads the args list through words the fixture does not have);
+- the kernel's own path for applying a function value that was never
+  installed (`execFnDefSig`'s splice, `ExecFnDefSigStackMatch`): the model
+  applies such a value by the one argument rule and the dispatch order,
+  as it applies an installed one, and the kernel does not for unnamed
+  parameters and for several signatures (NUR412); and it reads a list
+  bound to a named parameter back UNQUOTED there, where an installed
+  function's frame and a closure's read it quoted;
 - of the install: a function that came from another registry and is
   rebound as a wrapper, an un-definition (`FnUndef`), a class type, the
   `/s` definition; and the compile cache — a second install of one

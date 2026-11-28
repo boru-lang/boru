@@ -457,7 +457,10 @@ Three things from it are worth carrying even if the tables are never read:
   name; core/go, having closed the caller's frame first because the call
   was its last act, reads what was beneath that. core/ts only nests, and
   gives the nested answer — which is the Lean specification's. Two ledger
-  rows; they leave with the kernel fix.
+  rows; they leave with the kernel fix. And NUR412: core/go reads the
+  stack arguments of an all-unnamed function value bottom-up, where
+  core/ts reads them top-first as the one argument rule says (three
+  rows).
 - **No function-spec reader and no definition install** (2026-11-28).
   core/go reads a written function — `[[params][returns][body]]` triples
   — into signatures (`ParseFnDef`, `ParseFnParams`, `ParseFnReturns`,

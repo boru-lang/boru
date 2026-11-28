@@ -228,7 +228,7 @@ def renderResult : Except BoruError (List Value) → String
 
 /-- Evaluate one row's expression to the string its `expected` column
     is compared with. -/
-def eval (expr : String) : Except String String :=
+def eval (expr : String) (fuel : Nat := defaultFuel) : Except String String :=
   let (kind, arg) := match expr.splitOn " " with
     | [] => ("", "")
     | k :: rest => (k, " ".intercalate rest)
@@ -270,7 +270,7 @@ def eval (expr : String) : Except String String :=
     let (defs, toks) ← defClauses fixtureDefs (fields arg)
     let program ← assemble toks
     -- the program's own `fn(` functions are made before it runs too
-    pure (renderResult (run fixtureNatives defs (program.map (install defs))))
+    pure (renderResult (run fixtureNatives defs (program.map (install defs)) fuel))
   | k => throw s!"unknown expression kind {k}"
 
 end Boru.Corespec

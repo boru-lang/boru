@@ -30,8 +30,8 @@ def readRows (path : System.FilePath) : IO (List Row) := do
     rows := { file := name, line := n, cols := l.splitOn "\t" } :: rows
   pure rows.reverse
 
-def evalStr (expr : String) : String :=
-  match eval expr with
+def evalStr (expr : String) (fuel : Nat := Boru.Core.defaultFuel) : String :=
+  match eval expr fuel with
   | .ok s => s
   | .error e => "NOTATION:" ++ e
 
@@ -44,11 +44,22 @@ def specFiles (dir : System.FilePath) : IO (List String) := do
     |>.filter fun n => n.endsWith ".tsv" && n != "divergent.tsv"
   pure (names.mergeSort (· ≤ ·))
 
+/-- The probe's step budget: the model's own, unless `CORESPEC_FUEL` names
+    another. A program that does not terminate runs to the budget, and the
+    model — which nests every call — pays for a long tape as it goes; the
+    differential search asks for a smaller budget than the corpus needs,
+    since it reads "ran out" as one answer whichever limit was met. -/
+def probeFuel : IO Nat := do
+  match (← IO.getEnv "CORESPEC_FUEL").bind String.toNat? with
+  | some n => pure n
+  | none => pure Boru.Core.defaultFuel
+
 def runProbe (path : String) : IO UInt32 := do
   let text ← IO.FS.readFile path
+  let fuel ← probeFuel
   for l in text.splitOn "\n" do
     if l.isEmpty then continue
-    IO.println (evalStr l)
+    IO.println (evalStr l fuel)
   pure 0
 
 def main (args : List String) : IO UInt32 := do

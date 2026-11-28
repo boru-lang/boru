@@ -14,6 +14,15 @@ specification and the kernel part ways, and either the model or the
 kernel (or the corpus, which did not pin the case) is wrong.
 
     tools/diff-fuzz.py [--n 2000] [--seed 1] [--max-len 8] [--out FILE]
+
+Two disagreements are KNOWN and are the kernel's, recorded in NUR.md; the
+model states the rule in both, and a seed may still draw them:
+
+  NUR407  a callee that unbinds its own parameter, called LAST by a
+          function of the same parameter name (tail-call elision shows)
+  NUR412  an all-unnamed function value — a `fn(` of `_` parameters, or
+          `name/u` of one — with its arguments on the stack in the order
+          the one argument rule refuses (the kernel reads them bottom-up)
 """
 import argparse, os, random, subprocess, sys, tempfile
 
@@ -377,8 +386,16 @@ def gen_program(rng, max_len):
                                 ["undef", "sf"], ["def", "g", "sf/v", ";", "g", "5"], ["def", "g", "sf/v", ";", "g/v"],
                                 ["sf", ";"], ["sf", "'a'", "5"], ["sf", "7", "7"]])
     if rng.random() < 0.04:
-        # the function value as the reader leaves it, applied where it stands
-        toks += [";", "fn"] + gen_spec(rng) + rng.choice([["5"], [], ["'a'"], ["5", "6"]])
+        # the function value as the reader leaves it, applied where it
+        # stands — ONE signature of named scalar parameters. Beyond that the
+        # kernel applies an uninstalled value by its legacy stack path
+        # (NUR412: unnamed parameters read bottom-up, several signatures
+        # tried in written order), which the model does not follow.
+        ptype = rng.choice(["Integer", "Any", "String", "Scalar"])
+        body = rng.choice(["n", "addq n 1", "7", "'a'", "n n", "", "argsq", "depthq", "def y n ; y"])
+        ret = rng.choice([["Integer"], ["Any"], [], ["d(", "Integer", "String", ")"], ["7"]])
+        toks += [";", "fn", "[q", "[q", f"n:{ptype}", "]", "[q"] + ret + ["]", "[q"] + body.split() + ["]", "]"]
+        toks += rng.choice([["5"], [], ["'a'"], ["5", "6"], ["7"]])
     # a word with SEVERAL definitions, of one or two parameters: which one
     # a call takes is the dispatch order — more arguments first, then the
     # more specific type at the first position that differs, then the
@@ -454,7 +471,14 @@ def main():
         return 2
     go = open(go_out).read().split("\n")
 
-    r = subprocess.run(["lake", "exe", "corespec", "--probe", inp], cwd=SPEC, capture_output=True, text=True)
+    # The model nests every call, so a program that recurses without end
+    # costs it a long tape before its budget runs out. The search reads
+    # "ran out" as one answer whichever limit was met, so it gives the
+    # model a smaller budget than the corpus runner's; a generated program
+    # that terminates does so in a few hundred steps.
+    lean_env = dict(os.environ, CORESPEC_FUEL=os.environ.get("CORESPEC_FUEL", "20000"))
+    r = subprocess.run(["lake", "exe", "corespec", "--probe", inp], cwd=SPEC, capture_output=True, text=True,
+                       env=lean_env)
     if r.returncode != 0:
         sys.stderr.write("lean probe failed:\n" + r.stdout[-3000:] + r.stderr[-3000:])
         return 2

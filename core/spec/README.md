@@ -222,7 +222,7 @@ than silently re-baselined. Each runner also **fails a row whose `go` and
 belongs in, or this stops being an honest debt list. Shrink-only, exactly as
 `parser/spec/divergent.tsv` is.
 
-It holds **511 rows**. 482 are a mechanism `core/ts` does not have at
+It holds **514 rows**. 482 are a mechanism `core/ts` does not have at
 all: closures (26 rows, the `afn` fixture); driven loops (35 rows, the
 `eachq` fixture — eight of them the same loop out of a group and inside one
 a waiting word evaluates, where the kernel once stepped the loop's inert
@@ -248,12 +248,15 @@ install (96 rows, the `fn` fixture and `def` over a function — two of
 them NUR409, two NUR410 and three NUR411, pinned as the kernel has it). Two are a difference in a mechanism both have:
 `core/ts` puts a list argument's quoted BINDING in the args list, where
 the kernel puts the argument. Two are a diagnostic: the kernel reports a
-void argument of the word named `def` as `def_error`. **Two are NUR407,
-and are the only rows where the Lean specification agrees with the `ts`
-column**: core/go's tail-call elision changes the answer of a callee that
+void argument of the word named `def` as `def_error`. **Five are the only
+rows where the Lean specification agrees with the `ts` column.** Two are
+NUR407: core/go's tail-call elision changes the answer of a callee that
 unbinds its own parameter, and `core/ts`, which only nests, gives the
 nested answer — `TestCoreSpecTailCallsUnobservable` in `core/go` runs every
-row of the corpus with elision off and holds exactly those two to it. One
+row of the corpus with elision off and holds exactly those two to it.
+Three are NUR412: core/go reads an all-unnamed function value's stack
+arguments bottom-up, against the one argument rule that `core/ts` and the
+specification both state. One
 is a
 recorded kernel defect pinned as the kernel has
 it — NUR392, an unmatched `(` in a function's body — where `core/ts`

@@ -847,3 +847,15 @@ run ; def f ( fn [q [: Integer 7 ] [q Integer ] [q ] ] ) ; f 7 f/v	7 fn [[:Integ
 run ; def f ( fn [q [: Integer n:Integer ] [q Integer ] [q n ] ] ) ; f 5	5	ERROR:undefined_word	whatever its elements are
 run ; def f ( fn [q [q n:Any ] [: Integer Integer ] [q n ] ] ) ; f 5 ; f 'a' ;	ERROR:type_error	ERROR:undefined_word	as the returns
 run ; def f ( fn [q [q n:Any ] [: Integer ] [q n ] ] ) ; f 'a' f/v	'a' fn [[n:Any][][n]]	ERROR:undefined_word	and one with no retained elements is no returns at all
+
+# --- NUR412: an all-unnamed function value read bottom-up (the SPECIFICATION is the ts column)
+# With NUR407's, the only rows where the Lean specification agrees with core/ts
+# and not with core/go. A function VALUE all of whose parameters are unnamed,
+# standing after values that do not fit it top-first, is matched again with the
+# stack read bottom-up (core/go `stackMatchSig`) — the opposite of the one
+# argument rule, and of the same function called by its name
+# (`7 'a' f` is refused: `dispatch.tsv`). A usurp wrapper matched that way is
+# given a frame with no body: the function is not run.
+run 7 'a' fn( _ Integer _ Any Any [ argsq ] )	[7 'a']	ERROR:uncalled_function	NUR412: an all-unnamed function VALUE whose arguments do not fit top-first is read again BOTTOM-UP, and is called — the rule, and core/ts, refuse it
+run def f fn( _ Integer _ Any Any [ argsq ] ) ; 'a' 7 f/u	7	ERROR:uncalled_function	NUR412: usurped, the bottom-up reading matches the WRAPPER and its frame has no body — the function is never run, and the top argument is the answer
+run def f fn( _ Integer _ Any Any [ depthq ] ) ; 'a' 7 f/u	7	ERROR:uncalled_function	NUR412: whatever the body is

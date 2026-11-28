@@ -123,12 +123,14 @@ stated in the model as the kernel has it but cannot be written in the
 corpus notation: the value `none` in a declaration constrains nothing
 (NUR408).
 
-One the model deliberately does NOT reproduce, though it is a rule it
-could state: tail-call elision changes the answer of a callee that unbinds
-its own parameter (NUR407). The kernel's own contract is that elision
+Two the model deliberately does NOT reproduce, though each is a rule it
+could state. Tail-call elision changes the answer of a callee that unbinds
+its own parameter (NUR407): the kernel's own contract is that elision
 never shows, and the specification is that contract — its machine nests
-every call. The two ledger rows that pin it are the only ones where the
-specification sides with `core/ts`.
+every call. And a function value all of whose parameters are unnamed takes
+its stack arguments bottom-up (NUR412), against the one argument rule the
+specification states at every arity. The five ledger rows that pin the
+two are the only ones where the specification sides with `core/ts`.
 
 Two the model never had, and found by disagreeing with the kernel. A
 loop's inert inputs — and a call frame's unnamed arguments — were stepped
