@@ -199,7 +199,9 @@ function item(toks: string[], st: { i: number }): Value {
     while (st.i < toks.length && "[" !== toks[st.i] && "[q" !== toks[st.i]) {
       spec.push(toks[st.i++]!);
     }
-    if (spec.length < 3 || 0 === spec.length % 2) {
+    // `fn( RTYPE [ body ] )` — the return alone — is a function of NO
+    // parameters.
+    if (0 === spec.length % 2) {
       throw new Error(`fn( wants NAME PTYPE … RTYPE before its body: ${spec.join(" ")}`);
     }
     const fnType = (name: string): BoruType => {

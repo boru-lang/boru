@@ -34,11 +34,11 @@ WORDS = ["addq", "negq", "pairq", "sumq", "boomq", "patq", "dupq", "__pa", "unde
          "qanyq", "bothq", "tyq", "tpatq", "unifyq", "meetq", "meetq", "depthq", "afn", "eachq",
          "forq", "forq", "rangeq", "whileq", "breakq", "contq", "ifq", "ifq", "replayq", "callq", "callq",
          "argsq", "def", "bindq", "rawlq", "rawmq", "rawpq", "formq", "raw2q", "form2q",
-         "mpatq", "rawmpatq", "lpatq", "rawlpatq", "spliceq"]
+         "mpatq", "rawmpatq", "lpatq", "rawlpatq", "spliceq", "afn0q", "applyq", "applyq"]
 RAW = ("rawlq", "rawmq", "rawpq", "formq", "raw2q", "form2q", "mpatq", "rawmpatq", "lpatq", "rawlpatq")
 LITS = ["0", "1", "2", "5", "7", "-3", "'a'", "'x'", "true", "false", "none", "null"]
 TYPES = ["Integer", "String", "Any", "None", "List", "Map", "Boolean", "Word", "Scalar/String"]
-NAMES = ["x", "y", "n", "nosuchword", "w", "w", "m"]
+NAMES = ["x", "y", "n", "nosuchword", "w", "w", "m", "z", "z"]
 MARKS = ["(", ")", ";"]
 
 
@@ -192,6 +192,18 @@ def gen_item(rng, depth):
                                "undef c fn( n Integer Integer [ n ] )", "undef c ;", "undef c (",
                                "undef c boomq", "undef c x", "7", ""])
             return ["whileq", "[q"] + cond.split() + ["]", "[q"] + body.split() + ["]"]
+        if w in ("afn0q", "applyq") and depth == 2 and rng.random() < 0.8:
+            # a function of NO parameters: anonymous, it is data where it
+            # stands, and only an application that was asked for calls it
+            body = rng.choice(["42", "1 2", "", "x", "n", "addq 1 2", "afn0q [q 7 ]", "depthq", "argsq", "breakq",
+                               "nosuchword", "w", "i", "def y 3 ; y", "[ 1 ]", "negq", "c"])
+            made = ["afn0q", "[q"] + body.split() + ["]"]
+            if w == "afn0q":
+                return made
+            target = rng.choice([["("] + made + [")"], ["("] + made + [")"], ["z/v"], ["z"], ["negq/v"], ["5"],
+                                 ["(", "afn", "n", "[q", "n", "]", ")"], ["fn(", "Any", "[", "42", "]", ")"], ["x"]])
+            return rng.choice([["applyq"] + target, ["applyq"] + target, target + ["applyq"],
+                               ["dupq", "(", "applyq"] + target + [")"]])
         if w in RAW and depth == 2 and rng.random() < 0.7:
             # a raw-capture word with operands its modes tell apart: a
             # pending list, a pending map, a paren expression, a word bound
@@ -306,6 +318,13 @@ def gen_program(rng, max_len):
         toks += ["def", "x"] + gen_value(rng, 1) + [";"]
     if rng.random() < 0.08:
         toks += ["def", "y"] + gen_value(rng, 1) + [";"]
+    # `z`: a name bound to a function of no parameters — named (called
+    # wherever it is stepped) or anonymous (data until applied)
+    if rng.random() < 0.15:
+        if rng.random() < 0.5:
+            toks += ["def", "z", "fn(", "Any", "["] + rng.choice(["42", "1 2", "", "x", "depthq", "argsq"]).split() + ["]", ")", ";"]
+        else:
+            toks += [";", "def", "z", "(", "afn0q", "[q"] + rng.choice(["42", "x", "1 2", "", "afn0q [q 7 ]"]).split() + ["]", ")", ";"]
     # names bound to SPLICE MARKERS: `w` a data splice — a word that
     # collects it reads it as the group `(w)` — and `m` a code-bearing one,
     # a macro that runs against the live stack

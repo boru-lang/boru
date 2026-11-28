@@ -136,6 +136,7 @@ list only by becoming **Resolved** (the record is then deleted) or
 | [NUR414](#nur414) | A paren expression that ARRIVES at a waiting word — a name bound to one, stepped — is captured as code when the word's signature has a raw-paren or form slot ANYWHERE, also at an ordinary slot of it; written at that same slot it is evaluated, because the plan asks the position and the arrival asks the signature | the Lean specification's model of the raw-capture slots, against core/go (2026-11-28) |
 | [NUR415](#nur415) | The one word that takes a data splice's MARKER where every other word takes its values — the binder, so that `def y w` makes `y` the same splice — is known by its NAME: `def w word [1 2] ; def y w ; y` is `1 2`, and with `def mydef def/v`, `mydef y w ; y` is `2 1` — `def`'s own function under another name binds the first value and leaves the second | the Lean specification's model of splice markers, against core/go and the shipped words (2026-11-28) |
 | [NUR416](#nur416) | A splice marker has no canonical form: `canon` of one is the engine's debug dump, `word()({[1 2]})`, which no parser accepts (ADR-015), with the payload in the engine's value print (`word(x)` for a word); core/ts prints `word(undefined)` for the same value | the Lean specification's model of splice markers, against core/go, core/ts and the shipped words (2026-11-28) |
+| [NUR417](#nur417) | An unapplied function value of no parameters is CALLED where it is stepped if `fn` made it and is DATA if `=>` made it: `(fn [[] [Integer] [42]])` is `42` and `([] => [42])` is the function, so `def a (fn [[] [Integer] [42]]) ; a/v` is `42` — the name is bound to the result — where `def a ([] => [42]) ; a/v` is the function; ADR-016 lists the difference as a defect, and `apply` was made uniform while the difference itself stayed | the Lean specification's model of functions of no parameters, against core/go and the shipped words (2026-11-28) |
 
 Pending records normally use a compact form (rule / divergence /
 evidence / documentation status, plus a proposed verdict where one is
@@ -2373,5 +2374,67 @@ as a function value renders as its `fn` construction. (What that source
 is — `word [1 2]` re-parses to a marker that fires where it stands — is
 ADR-015's question for a value that acts when stepped, and the answer
 chosen for a function value is the precedent.)
+
+---
+
+## NUR417 — a function value of no parameters is called or kept by where it came from {#nur417}
+
+**Status:** Pending · **Recorded:** 2026-11-28 · measured through the shipped words · silent (a name bound to a call's result where the function was meant)
+
+**Rule:** ADR-016, "Arity and origin never change function behaviour":
+"Every function behaves the same way whatever its arity and wherever it
+came from — named or anonymous, module or local, boru or native." It names
+this very case as one of two defects standing when it was written:
+"`execFnDefLiteral` treats a 0-arg **anonymous** value as data where a
+named one dispatches."
+
+**Divergence:** the gate is still there (`core/go/engine.go`
+`execFnDefLiteral`):
+
+```go
+if ((fnDef.Anonymous && !applied) || fnDef.Macro) &&
+    fwdCount == 0 && len(positions) == 0 {
+    e.Pointer++
+    return nil
+}
+```
+
+What changed since ADR-016 is `applied`: an explicit `apply` now calls
+either kind (`MarkApplied`, `takeAppliedMark` — whose comment records that
+without it "the gate let ORIGIN decide … which ADR-016 forbids"). The
+difference the ADR named was not removed, only made answerable: a
+function value of no parameters that nobody applied is called where it is
+stepped if `fn` made it, and is data if `=>` made it.
+
+```
+fn [[] [Integer] [42]]                     → 42
+[] => [42]                                 → fn
+(fn [[] [Integer] [42]])                   → 42
+([] => [42])                               → fn
+[(fn [[] [Integer] [42]])]                 → [42]
+[([] => [42])]                             → [fn]
+def a (fn [[] [Integer] [42]]) ; a/v       → 42       (a is bound to the RESULT)
+def a ([] => [42]) ; a/v                   → fn a
+def a fn [[] [Integer] [42]] ; a/v         → fn a     (collected by `def`, it was never stepped)
+```
+
+So a `fn` value of no parameters cannot be produced by an expression and
+then bound, stored in a list or handed to a word that hands it back: the
+moment it is stepped with nothing waiting for it, it is spent. A word
+that collects one and returns it shows the same thing — `dupq f/v` calls
+each copy of a named one and leaves two functions of an anonymous one.
+
+`core/spec/dispatch.tsv` pins the named kind through `fn( RTYPE [ body ]
+)` (all three runners agree), `core/spec/divergent.tsv` the anonymous kind
+and the application mark through the `afn0q` and `applyq` fixtures, and
+the Lean specification reproduces the gate (`Engine.lean`
+`dispatchFnValue`; `Theorems/ZeroArg.lean`
+`nur417_where_it_came_from_decides`).
+
+**Proposed verdict:** resolve by fix — one answer for both, and the
+anonymous one is the answer that keeps a function a value: unapplied, a
+function of no parameters is data where it stands, and a NAME bound to it
+or an `apply` calls it. (The other uniform answer — both are called where
+they stand — would make `([] => [42])` unbindable too.)
 
 ---

@@ -1118,3 +1118,57 @@ run def w s( [q 5 ] ) ; ; def f ( fn [q [q n:kw/q ] [q Any ] [q 'keyword' ] ] ) 
 
 # --- a marker's print, for other payloads ------------------------------------------
 run def w s( [q 'a'b' p( addq 1 2 ) ] ) ; w/v	word()({['a'b' paren([word(addq) 1 2])]})	word(undefined)	NUR416: the payload is in the engine's value print, not canon — a string between single quotes with nothing escaped, a paren expression as `paren([…])`
+
+# --- a function of no parameters: where core/ts differs ----------------------------
+run { a: fn( Any [ 42 ] ) }	{a:42}	{a:fn [[][Any][42]]}	WRITTEN AS A MAP MEMBER it is stepped in the member's region, and called — core/ts leaves the member a function
+run def f fn( Any [ 42 ] ) ; unifyq f 42	ERROR:signature_error	true	a function word after a collecting word is the forward barrier — core/ts collects its result
+
+# --- an anonymous function of no parameters, and the application mark (NUR417) -----
+# `afn0q [q body ]` builds an ANONYMOUS function of no parameters. Where a
+# named one is called wherever it is stepped (`dispatch.tsv`), an
+# anonymous one is DATA: it can be bound, stored and handed on, and only an
+# application that was ASKED for calls it. `applyq v` is that request
+# (core/go `MarkApplied`, basic's `apply`): it marks an anonymous function
+# whose every signature takes nothing, and the step that meets the mark
+# spends it and makes the call. That the two kinds differ at all is
+# NUR417. core/ts has no closures, so both fixtures are the Go runner's
+# and the Lean runner's.
+run afn0q [q 42 ]	fn [[][Any][42]]	ERROR:undefined_word	AN ANONYMOUS FUNCTION OF NO PARAMETERS IS DATA where it stands (NUR417: a named one is called)
+run ( afn0q [q 42 ] )	fn [[][Any][42]]	ERROR:undefined_word	in a group
+run afn0q [q 42 ] 5	fn [[][Any][42]] 5	ERROR:undefined_word	with a value after it
+run 5 afn0q [q 42 ]	5 fn [[][Any][42]]	ERROR:undefined_word	and before
+run bothq 1 ( afn0q [q 42 ] )	fn [[][Any][42]]	ERROR:undefined_word	handed back by a word, it is data still
+run applyq ( afn0q [q 42 ] )	42	ERROR:undefined_word	AN APPLICATION CALLS IT: `applyq` marks the function, and the step that meets the mark calls
+run ( afn0q [q 42 ] ) applyq	42	ERROR:undefined_word	from the stack
+run applyq ( afn0q [q 42 ] ) 5	42 5	ERROR:undefined_word	what follows is not its argument
+run dupq ( applyq ( afn0q [q 42 ] ) )	42 42	ERROR:undefined_word	the call's result is the group's value
+run applyq ( applyq ( afn0q [q afn0q [q 42 ] ] ) )	42	ERROR:undefined_word	a function that answers a function, applied twice
+run applyq ( afn0q [q boomq 1 ] )	ERROR:fixture_boom	ERROR:undefined_word	the body's error is the call's
+run applyq ( afn0q [q breakq ] )	ERROR:flow_error	ERROR:undefined_word	a signal with no loop to take it
+run forq 2 [q applyq ( afn0q [q i ] ) ]	0 1	ERROR:undefined_word	in a loop's round: the body reads the index
+run 5 applyq ( afn0q [q addq 1 ] )	ERROR:signature_error	ERROR:undefined_word	THE FRAME IS ITS OWN: the body does not see the caller's stack
+run applyq afn0q [q 42 ]	ERROR:signature_error	ERROR:undefined_word	(a function word after `applyq` is the forward barrier)
+run ; def f ( afn0q [q 42 ] ) ; f	42	ERROR:undefined_word	BOUND TO A NAME, the name calls it — as a name calls any function
+run ; def f ( afn0q [q 42 ] ) ; f f	42 42	ERROR:undefined_word	each time
+run ; def f ( afn0q [q 42 ] ) ; f negq	-42	ERROR:undefined_word	its result is the next word's
+run ; def f ( afn0q [q 42 ] ) ; [ f ]	[42]	ERROR:undefined_word	in a list literal
+run ; def f ( afn0q [q 42 ] ) ; f/v	fn [[][Any][42]]	ERROR:undefined_word	/v is the function, as data
+run ; def f ( afn0q [q 42 ] ) ; dupq f/v	fn [[][Any][42]] fn [[][Any][42]]	ERROR:undefined_word	collected and handed back, each copy is DATA still (NUR417: a named one's copies are called)
+run ; def f ( afn0q [q 42 ] ) ; [ f/v ]	[fn [[][Any][42]]]	ERROR:undefined_word	in a list
+run ; def f ( afn0q [q 42 ] ) ; applyq f/v	42	ERROR:undefined_word	and applied, it is called
+run ; def f ( afn0q [q 42 ] ) ; f/v applyq	42	ERROR:undefined_word	from the stack
+run ; def f ( afn0q [q 1 2 ] ) ; f	ERROR:type_error	ERROR:undefined_word	the return is checked: two values for one declared
+run ; def f ( afn0q [q ] ) ; f	ERROR:type_error	ERROR:undefined_word	none for one
+run def x 9 ; ; def f ( afn0q [q x ] ) ; def x 1 ; f	1	ERROR:undefined_word	a name the body reads is looked up when it runs
+run def g fn( x Any Any [ applyq ( afn0q [q x ] ) ] ) ; g 7	7	ERROR:undefined_word	applied inside the frame that built it, the body reads the frame's parameter
+run def x 9 ; def g fn( x Any Any [ afn0q [q x ] ] ) ; applyq ( g 7 )	9	ERROR:undefined_word	(handed OUT of that frame it has captured nothing, and reads the outer `x`: the frame analysis knows a constructing word by its name, and `afn0q` is not on the list — NUR384's kind)
+run applyq 5	5	ERROR:undefined_word	THE MARK IS FOR AN ANONYMOUS FUNCTION OF NO PARAMETERS: any other value is handed back as it is
+run applyq [q 1 2 ]	[1 2]	ERROR:undefined_word	a list
+run applyq negq/v	fn [[a:Integer][Integer][]]	ERROR:undefined_word	a word's function: handed back, and with nothing to be called on it is a value
+run applyq negq/v 5	-5	ERROR:undefined_word	and with something, it is called as any function value is
+run applyq ( afn n [q n ] )	fn [[n:Any][Any][n]]	ERROR:undefined_word	an anonymous function of ONE parameter is not marked: with nothing beside it, it is data
+run applyq ( afn n [q n ] ) 5	5	ERROR:undefined_word	handed back by the word it is stepped as any function value is — and with an argument after it, called
+run ( fn [q [q ] [q Any ] [q 42 ] ] )	42	ERROR:undefined_word	NUR417: A FUNCTION THE READER MADE is not anonymous — in a group it is CALLED where it lands
+run ; def f ( fn [q [q ] [q Any ] [q 42 ] ] ) ; f/v	42	ERROR:undefined_word	NUR417: so `def f ( fn … )` binds its RESULT, not the function
+run applyq ( fn [q [q ] [q Any ] [q 42 ] ] )	42	ERROR:undefined_word	(and there is nothing left to apply)
+run ; def f ( fn [q [q ] [q Any ] [q 42 ] [q n:Integer ] [q Any ] [q n ] ] ) ; f/v 5	42 5	ERROR:undefined_word	NUR417: with an overload that takes one beside it, the group still calls the one that takes nothing

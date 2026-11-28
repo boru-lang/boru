@@ -175,6 +175,12 @@ inductive Value where
       frame sets it on a list bound to a named parameter, so the body's
       read of the parameter can never re-run it. -/
   | quoted (v : Value)
+  /-- The same value carrying the APPLICATION MARK: a one-shot signal
+      that a call of it was asked for (core/go `MarkApplied`, the `apply`
+      word). The kernel keeps this, too, as a flag on the occurrence. The
+      step that meets the mark spends it: it never reaches a binding or a
+      container. -/
+  | applied (v : Value)
 
 /-- WHAT A MOVE CARRIES. A LOOP ON THE TAPE (core/go `Loop`), in one of
     its two modes — or one of the two things a move does that are no
@@ -349,6 +355,7 @@ def typeOf : Value → TypeId
   | mark _ => "Word/__MK"
   | move _ _ => "Word/__MV"
   | quoted v => typeOf v
+  | applied v => typeOf v
 
 /-- The value under any quoting. -/
 def unquote : Value → Value
@@ -379,6 +386,7 @@ def Value.size : Value → Nat
   | .parenExpr items => 1 + sizeList items
   | .splice v => 1 + v.size
   | .quoted v => 1 + v.size
+  | .applied v => 1 + v.size
   | _ => 1
 def sizeList : List Value → Nat
   | [] => 0

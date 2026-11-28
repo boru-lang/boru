@@ -1494,3 +1494,49 @@ run def inc s( [q addq 1 ] ) ; 5 negq inc	-4	(so the word falls back to the stac
 run def w s( p( addq 1 2 ) ) ; negq w	ERROR:signature_error	a paren-expression payload is code too
 run def w s( p( addq 1 2 ) ) ; w	3	(stepped alone, it runs)
 run def w s( [q bindq y 3 ] ) ; def f fn( n Any Any [ w ; y ] ) ; f 0 y	3 3	a marker spliced in a function's body binds as its words bind: `bindq` is not a word the frame undoes
+
+# --- a function of no parameters ---------------------------------------------------
+# `fn( RTYPE [ body ] )` — the return alone — writes a function that takes
+# nothing. A call of it needs nothing beside it, so wherever such a
+# function VALUE is stepped it is called: at the top level, in a group, in
+# a list literal, handed back by a word. A name bound to one calls it, and
+# `/v` is the function — placed, and not stepped. (An ANONYMOUS function of
+# no parameters is data where it stands instead, until an application is
+# asked for: NUR417, in `divergent.tsv` with the closures it needs.)
+run fn( Any [ 42 ] )	42	A FUNCTION OF NO PARAMETERS IS CALLED WHERE IT IS STEPPED: it needs nothing beside it
+run ( fn( Any [ 42 ] ) )	42	in a group
+run [ fn( Any [ 42 ] ) ]	[42]	in a list literal
+run [q fn( Any [ 42 ] ) ]	[fn [[][Any][42]]]	(in a QUOTED list nothing is stepped: it is a value there)
+run fn( Any [ 42 ] ) 5	42 5	what follows is not its argument
+run 5 fn( Any [ 42 ] )	5 42	nor what stands before
+run fn( Any [ 42 ] ) negq	-42	its result is the next word's operand
+run negq fn( Any [ 42 ] )	ERROR:signature_error	BUT A WORD COLLECTING IT takes the function, not its result: an Integer slot refuses it
+run dupq fn( Any [ 42 ] )	42 42	an Any slot takes it — and each copy handed back is stepped, and called
+run bothq 1 fn( Any [ 42 ] )	42	handed back once, called once
+run def f fn( Any [ 42 ] ) ; f	42	A NAME BOUND TO ONE calls it
+run def f fn( Any [ 42 ] ) ; f f	42 42	each time
+run def f fn( Any [ 42 ] ) ; f negq	-42	its result is the next word's
+run def f fn( Any [ 42 ] ) ; negq ( f )	-42	in a group it is called, and the group's value is the operand
+run def f fn( Any [ 42 ] ) ; negq f	ERROR:signature_error	a function word after a collecting word is the forward barrier, as any is
+run def f fn( Any [ 42 ] ) ; [ f ]	[42]	in a list literal
+run def f fn( Any [ 42 ] ) ; qanyq f	42	a name-capturing slot takes the word; handed back, it calls
+run def f fn( Any [ 42 ] ) ; f/v	fn [[][Any][42]]	/v IS THE FUNCTION: placed, and not stepped — so not called
+run def f fn( Any [ 42 ] ) ; f/v 5	fn [[][Any][42]] 5	whatever follows
+run def f fn( Any [ 42 ] ) ; ( f/v )	fn [[][Any][42]]	in a group: the group is the function
+run def f fn( Any [ 42 ] ) ; [ f/v ]	[fn [[][Any][42]]]	in a list
+run def f fn( Any [ 42 ] ) ; dupq f/v	42 42	collected by a word and handed back, each copy is stepped — and called
+run def f fn( Any [ 42 ] ) ; negq f/v	ERROR:signature_error	an Integer slot refuses the function
+run def f fn( Any [ 42 ] ) ; f/0	42	a forced arity of nothing
+run def f fn( Any [ 42 ] ) ; f/1	ERROR:signature_error	a forced arity of one: there is no such signature
+run def f fn( Any [ 42 ] ) ; f/s	42	stack only: there is nothing to take
+run def f fn( Any [ 42 ] ) ; f/f	42	forward only: the same
+run def f fn( Any [ 42 ] ) ; f/u	42	reversed: there is nothing to reverse
+run def f fn( Any [ 1 2 ] ) ; f	ERROR:type_error	THE RETURN IS CHECKED as any call's: two values for one declared
+run def f fn( Any [ ] ) ; f	ERROR:type_error	none for one
+run def f fn( Integer [ 'a' ] ) ; f	ERROR:type_error	the wrong type
+run def f fn( Any [ depthq ] ) ; 7 8 f	7 8 0	THE FRAME IS ITS OWN: the body sees an empty stack
+run def f fn( Any [ argsq ] ) ; f	[]	and an empty args list
+run def f fn( Any [ 42 ] ) ; def f fn( n Integer Any [ n ] ) ; f	42	BESIDE AN OVERLOAD THAT TAKES ONE: with nothing to take, the one of no parameters answers
+run def f fn( Any [ 42 ] ) ; def f fn( n Integer Any [ n ] ) ; f 5	5	with an argument, the other
+run def f fn( Any [ 42 ] ) ; def f fn( n Integer Any [ n ] ) ; 5 f	5	from the stack too
+run def f fn( Any [ 42 ] ) ; def f fn( n Integer Any [ n ] ) ; f 'a'	42 'a'	an argument the other refuses: the one of no parameters answers, and the argument is left
