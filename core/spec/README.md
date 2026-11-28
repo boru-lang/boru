@@ -293,7 +293,7 @@ than silently re-baselined. Each runner also **fails a row whose `go` and
 belongs in, or this stops being an honest debt list. Shrink-only, exactly as
 `parser/spec/divergent.tsv` is.
 
-It holds **928 rows**. 883 are a mechanism `core/ts` does not have at
+It holds **947 rows**. 902 are a mechanism `core/ts` does not have at
 all: closures (61 rows, the `afn` fixture — and, for an anonymous
 function of no parameters and the application that calls it, the
 `afn0q` and `applyq` fixtures; two of them NUR417, pinned as the kernel
@@ -328,12 +328,12 @@ two of the four raw-capture slots (94 rows, the `rawpq`, `formq` and
 kernel has it); a pattern that reads a container's contents, with
 the evaluation of the pending operand it judges (74 rows, the `mpatq`,
 `lpatq`, `rawmpatq` and `rawlpatq` fixtures — two of them NUR413); and a
-type a program defines (179 rows, the `typeq` fixture: the alias, the
+type a program defines (198 rows, the `typeq` fixture: the alias, the
 union, the singleton and the structural type; a slot and a return of a
 named type; the dispatch order; a name inside a shape; what the
 installer refuses; redefinition and unbinding — one of them NUR418,
-three NUR419, six NUR421, six NUR422 and four NUR424, pinned as the
-kernel has it). Seven are a difference in a mechanism both have:
+three NUR419, six NUR421, six NUR422, four NUR424 and three NUR425,
+pinned as the kernel has it). Seven are a difference in a mechanism both have:
 `core/ts` puts a list argument's quoted BINDING in the args list, where
 the kernel puts the argument (two rows), and hands a waiting word the
 paren expression a name is bound to as code, where the kernel runs it as

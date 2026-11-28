@@ -101,10 +101,11 @@ inductive Value where
       (`mintedPath`). -/
   | named (path : TypeId) (body : Value)
   /-- A TYPE BINDING, as the binding store holds it: the name is bound to
-      a lattice NODE — one minted for it, or an existing one it adopted
+      a lattice NODE — one MINTED for it, or an existing one it adopted
       (an alias). Only the store holds this; read, the binding is its
-      node. -/
-  | typeBind (node : Value)
+      node. The two differ in what the name was DECLARED with: a minted
+      node's content, or — for an alias — the adopted node itself. -/
+  | typeBind (node : Value) (minted : Bool)
   /-- `Node/List`. `eval` is set on a list the PARSER wrote and nothing
       has consumed yet: such a list is a pending program. A list a word
       returned is data. -/
@@ -351,7 +352,7 @@ def typeOf : Value → TypeId
   | none => "None"
   | typeLit t => t
   | named path _ => path
-  | typeBind node => typeOf node
+  | typeBind node _ => typeOf node
   | list _ _ => "Node/List"
   | map _ _ => "Node/Map"
   | typedList _ _ => "Node/List"
@@ -403,7 +404,7 @@ def Value.size : Value → Nat
   | .parenExpr items => 1 + sizeList items
   | .splice v => 1 + v.size
   | .named _ body => 1 + body.size
-  | .typeBind node => 1 + node.size
+  | .typeBind node _ => 1 + node.size
   | .quoted v => 1 + v.size
   | .applied v => 1 + v.size
   | _ => 1

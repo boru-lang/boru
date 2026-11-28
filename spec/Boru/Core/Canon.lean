@@ -66,7 +66,7 @@ def canon : Value → String
   | .typeLit t => leafOf t
   -- a type a program defined renders as its name
   | .named path _ => leafOf path
-  | .typeBind node => canon node
+  | .typeBind node _ => canon node
   | .bigInt n => canonBigInt n
   | .bigDec d => d.canon
   | .int n => toString n

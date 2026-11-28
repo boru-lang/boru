@@ -119,11 +119,11 @@ def install (d : Defs) (name : String) (body : Value) : R Defs := do
       throw ("def_error", "def " ++ name ++ ": a capitalised name declares a type, and a function is a type only as a declared predicate")
     | .typeLit _ | .named _ _ =>
       -- ALIAS: the name adopts the node
-      pure (d.push name (.typeBind body))
+      pure (d.push name (.typeBind body false))
     | _ =>
       -- a new node, under the node the body sits at
       let (ident, d) := d.freshIdent
-      pure (d.push name (.typeBind (.named (mintedPath body.typeOf name ident) body)))
+      pure (d.push name (.typeBind (.named (mintedPath body.typeOf name ident) body) true))
   pure ((name.splitOn "/").foldl registerPart d)
 
 end TypeInstall

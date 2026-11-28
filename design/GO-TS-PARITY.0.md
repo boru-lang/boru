@@ -531,7 +531,7 @@ Three things from it are worth carrying even if the tables are never read:
   and `applyq` fixtures, are on the Go column.
 - **Type installation is not ported** (2026-11-28). core/ts has no
   `InstallType`: no alias, no minted node, no membership rule on a node,
-  no type binding in its definition table. The 179 rows of
+  no type binding in its definition table. The 198 rows of
   `core/spec/divergent.tsv` that pin it — through the `typeq` fixture,
   which only the Go and Lean runners register — are on the Go column, and
   core/ts answers each `undefined_word`. Five more rows are a kernel

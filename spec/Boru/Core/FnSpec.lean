@@ -31,6 +31,7 @@
   `unmodelled` rather than guessed at.
 -/
 import Boru.Core.Engine
+import Boru.Core.TypeInstall
 
 namespace Boru.Core
 namespace FnSpec
@@ -80,6 +81,9 @@ def looksLikeTypeName (name : String) : Bool :=
 def boundType (d : Defs) (name : String) : Option (TypeId × Option Value) :=
   match d.top? name with
   | some (.typeLit t) => some (t, none)
+  -- a VALUE binding that holds a type a program minted names that type
+  -- too: the node, with its membership rule
+  | some (.named path body) => some (path, some (.named path body))
   | some (.disjunct _) | some (.typedList _ _) | some (.typedMap _ _) | some (.fn _ _ _) => some (TAny, none)
   | _ => none
 
@@ -93,6 +97,30 @@ def typeBound (d : Defs) (name : String) : Option (TypeId × Option Value) :=
   | some (.typeLit t) => some (t, none)
   | some (.named path body) => some (path, some (.named path body))
   | _ => none
+
+/-- THE CHILD OF A TYPED CONTAINER IN A DECLARATION (core/go
+    `ResolveSigChildParam`). A child written as a name is resolved when
+    the specification is read: a type binding gives its declared content
+    — but only where that content is itself a TYPE (a bare node, a union,
+    a typed container). A name bound to a SINGLETON or to a list or map
+    literal is left a name, and the pattern then admits nothing the type
+    admits: as the kernel has it (NUR425). Any other name is a builtin's,
+    or an atom; a typed container as the child is read the same way. -/
+def resolveSigChild (d : Defs) : Nat → Value → Value
+  | 0, v => v
+  | fuel + 1, v =>
+    let child (c : Value) : Value :=
+      match c with
+      | .word w =>
+        (match d.typeBody? w.name with
+         | some body => if TypeInstall.isTypeBody body then body else .word w
+         | none => resolveWordsDeep (.word w))
+      | .typedList _ _ | .typedMap _ _ => resolveSigChild d fuel c
+      | c => resolveWordsDeep c
+    match v with
+    | .typedList c elems => .typedList (child c) elems
+    | .typedMap c entries => .typedMap (child c) entries
+    | v => v
 
 /-- WHAT A DECLARATION RESOLVES TO (core/go `ResolveSigType`): the slot's
     type, and a pattern where the declaration says more than a type.
@@ -132,8 +160,8 @@ def resolveSigType (d : Defs) : Value → R (TypeId × Option Value)
   | .int n => pure (TInteger, some (.int n))
   | .bool b => pure (TBoolean, some (.bool b))
   | v@(.list _ _) => pure (TList, some v)
-  | v@(.typedList _ _) => pure (TList, some (resolveInert d v))
-  | v@(.typedMap _ _) => pure (TMap, some (resolveInert d v))
+  | v@(.typedList _ _) => pure (TList, some (resolveSigChild d (v.size + 1) v))
+  | v@(.typedMap _ _) => pure (TMap, some (resolveSigChild d (v.size + 1) v))
   | .map entries ev => pure (TMap, some (.map (entries.map fun (k, v) => (k, resolveWordsDeep v)) ev))
   | .none => pure (TAny, none)
   | _ => unmodelled

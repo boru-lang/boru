@@ -144,6 +144,7 @@ list only by becoming **Resolved** (the record is then deleted) or
 | [NUR422](#nur422) | The meet of two named types depends on their ORDER and on which of them is named: with `def One 1` and `def Foo (Integer tor String)`, `One unify Foo` is `One` and `Foo unify One` is no meet; the same union written in place gives the VALUE `1` either way; and `tand`, documented as the same meet, gives `1` for all four | the Lean specification's model of type installation, against core/go and the shipped words (2026-11-28) |
 | [NUR423](#nur423) | A union met inside a typed container comes back as a ZERO: with `def U (Integer tor String)`, `(quote [U]) unify [:Integer]` is `[0]` — the element's meet is `Integer`, and the kernel hands back the union's payload retagged Integer, which every reader takes for 0 (`['']` under `[:String]`); core/ts and the Lean specification answer `[Integer]` | the Lean specification's differential fuzzer over type installation, against core/go, core/ts and the shipped words (2026-11-28) |
 | [NUR424](#nur424) | `true`, `false` or an unbound name written AFTER a word is not taken at a slot of a named type that admits it: with `def Foo (String tor Boolean) ; def f fn [[n:Foo][Any][n]]`, `f true` is `no signature matches (got Word)` where `true f` and `f (true)` are `true` — and where the same union written in place of the name takes `f true` | the Lean specification's differential fuzzer over type installation, against core/go and the shipped words (2026-11-28) |
+| [NUR425](#nur425) | A typed container over a SINGLETON's name is dead as a parameter's or a return's declaration: with `def One 1`, `def f fn [[m:[:One]][Any][9]] ; f [1]` is `no signature matches` and a return declared `[:One]` rejects `[1]` ("expected [:word(One)]") — though `[1] is [:One]` is `true`, the same list under a name of its own (`def L [:One]`, `m:L`) takes `[1]`, and over a union's name the declaration works | review of the Lean specification's model of type installation (PR #581), checked against core/go and the shipped words (2026-11-28) |
 
 Pending records normally use a compact form (rule / divergence /
 evidence / documentation status, plus a proposed verdict where one is
@@ -2741,5 +2742,47 @@ content-deciding membership rule (`HasConstraintUnify`), the scan asks
 with the VALUE the word literal denotes (`true`/`false` are known at
 plan time; an unbound name is its atom), as it already does for every
 literal token that is not a word.
+
+---
+
+## NUR425 — a typed container over a singleton's name is dead in a declaration {#nur425}
+
+**Status:** Pending · **Recorded:** 2026-11-28 · measured through the shipped words · loud (`no signature matches`, or a `type_error` on a return) but wrong
+
+**Rule:** a name bound to a type is that type wherever a type is read:
+`def One 1 ; [1] is [:One]` is `true`, because `[:One]` is a list of the
+type whose one member is 1.
+
+**Divergence:** a typed container written as a parameter's or a return's
+declaration has its child resolved when the specification is read, by a
+cascade of its own (`core/go/generics_unify.go` `ResolveSigChildParam`):
+a name that is a type binding is replaced by the binding's body **only if
+`IsTypeBody` accepts the body**. A union, a typed container and a bare
+type are type bodies; a literal is not — it is admitted as a type's body
+by the separate `IsLiteralTypeBody` test the installer runs. So over a
+singleton's name, or a list or map literal's, the child is left the WORD,
+and the pattern is a container of an unresolved name:
+
+```
+def One 1 ; [1] is [:One]                                    → true
+def One 1 ; def f fn [[m:[:One]][Any][9]] ; f [1]            → no signature matches (got List; nearest [List])
+def One 1 ; def f fn [[m:{:One}][Any][9]] ; f {a:1}          → no signature matches
+def One 1 ; def f fn [[n:Any][[:One]][n]] ; f [1]            → type_error: return value 1: expected [:word(One)], got List
+def One 1 ; def L [:One] ; def f fn [[m:L][Any][9]] ; f [1]  → 9        (the installer resolves the child)
+def U (Integer tor String) ; def f fn [[m:[:U]][Any][9]] ; f [1]   → 9  (a union's body is a type body)
+def Shp {a:1} ; def f fn [[m:[:Shp]][Any][9]] ; f [{a:1}]    → no signature matches
+```
+
+The return's message prints the unresolved word. Found in review of the
+specification's model, which had resolved the child as a literal's shape
+is resolved everywhere else; the kernel's answers are pinned in
+`core/spec/divergent.tsv` and stated in the Lean specification
+(`FnSpec.lean` `resolveSigChild`; `Theorems/TypeInstall.lean`
+`nur425_a_typed_container_over_a_singletons_name_is_dead_in_a_declaration`).
+
+**Proposed verdict:** resolve by fix — the cascade's test is "is this
+name a type binding", which `TopTypeBody` already answers: substitute the
+body whatever its kind, as the installer's own resolution of `def L
+[:One]` does.
 
 ---

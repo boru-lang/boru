@@ -35,14 +35,14 @@ def stack (d : Defs) (name : String) : List Value := (d.lookup name).getD []
     `DefTable.Top`): a value binding's value, a type binding's node. -/
 def top? (d : Defs) (name : String) : Option Value :=
   match (d.stack name).head? with
-  | some (.typeBind node) => some node
+  | some (.typeBind node _) => some node
   | v => v
 
 /-- Is the active binding of `name` a TYPE binding (core/go
     `DefTable.IsType`). -/
 def isType (d : Defs) (name : String) : Bool :=
   match (d.stack name).head? with
-  | some (.typeBind _) => true
+  | some (.typeBind _ _) => true
   | _ => false
 
 /-- The lattice node a type binding binds (core/go
@@ -50,16 +50,19 @@ def isType (d : Defs) (name : String) : Bool :=
     a type has none: only a type binding names a type. -/
 def typeNode? (d : Defs) (name : String) : Option Value :=
   match (d.stack name).head? with
-  | some (.typeBind node) => some node
+  | some (.typeBind node _) => some node
   | _ => none
 
 /-- What a type binding was DECLARED with (core/go
-    `Registry.TopTypeBody`): the content of a minted node; for an alias,
-    the node it adopted. -/
+    `Registry.TopTypeBody`): the content of the node minted for it; for
+    an ALIAS, the node it adopted — itself, not that node's content. An
+    alias of a union is the union's NAME inside a shape, where the
+    union's own name is its alternatives. -/
 def typeBody? (d : Defs) (name : String) : Option Value :=
-  match d.typeNode? name with
-  | some (.named _ body) => some body
-  | n => n
+  match (d.stack name).head? with
+  | some (.typeBind (.named _ body) true) => some body
+  | some (.typeBind node _) => some node
+  | _ => none
 
 def push (d : Defs) (name : String) (v : Value) : Defs :=
   if (d.lookup name).isSome then

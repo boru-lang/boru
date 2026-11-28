@@ -14,13 +14,14 @@
   union answers both as its alternatives would. Every other type unifies
   a VALUE with its content, and settles a TYPE by the lattice.
 
-  Six things the kernel does that the rule does not say are stated here
+  Seven things the kernel does that the rule does not say are stated here
   as the kernel has them, and marked: NUR418 (a name is never released),
   NUR419 (a named type's pending operand is not evaluated), NUR420 (an
   omitted parameter of a named type is given a base value unasked),
   NUR421 (a singleton passes for a value), NUR422 (the meet of two named
-  types depends on their order) and NUR424 (a word literal written after
-  the word is not claimed by a slot of a named type).
+  types depends on their order), NUR424 (a word literal written after
+  the word is not claimed by a slot of a named type) and NUR425 (a typed
+  container over a singleton's name is dead in a declaration).
 
   Discharged by `native_decide` over the stated domains: the installer
   and the unifier directly, and the machine over the corpus fixture —
@@ -86,7 +87,8 @@ def defF (param ret : String) : List Value :=
 
 /-- AN ALIAS ADOPTS THE NODE. Bound to a bare type, the name IS that type:
     it reads as it, it is a type binding, and nothing was minted. Bound to
-    a type a program minted, it is that same node. -/
+    a type a program minted, it is that same node — and inside a shape the
+    alias is that NODE, where the minted type's own name is its content. -/
 theorem an_alias_adopts_the_node :
     ((builtinTypes.all fun t =>
         let d := installed "Foo" (.typeLit t)
@@ -95,7 +97,10 @@ theorem an_alias_adopts_the_node :
      (allBodies.all fun b =>
         let d := installed "Foo" b
         match TypeInstall.install d "Bar" (nodeIn d "Foo") with
-        | .ok d2 => nodeIn d2 "Bar" == nodeIn d "Foo" && d2.freshIdent.1 == d.freshIdent.1
+        | .ok d2 =>
+          nodeIn d2 "Bar" == nodeIn d "Foo" && d2.freshIdent.1 == d.freshIdent.1
+            && resolveInert d2 (.typedList (w "Bar") []) == .typedList (nodeIn d "Foo") []
+            && resolveInert d2 (.typedList (w "Foo") []) == .typedList b []
         | .error _ => false)) = true := by
   native_decide
 
@@ -252,6 +257,41 @@ theorem inside_a_shape_a_name_is_the_content :
       outWith d [w "Foo"] == "Foo" && outWith d [pend [w "Foo"]] == "[Foo]") = true := by
   native_decide
 
+/-- A VALUE THAT HOLDS A MINTED TYPE NAMES IT, as a return's declaration:
+    a lowercase name bound to the node is read as the node, with its
+    membership rule. It is no TYPE BINDING — so a named parameter's type,
+    which must be one, cannot be written with it. Through the machine: the
+    return reads as the type, hands a member back, and raises on what is
+    none. -/
+theorem a_value_that_holds_a_type_names_it_as_a_return :
+    ((allBodies.all fun b =>
+        let d := installed "Foo" b
+        let n := nodeIn d "Foo"
+        let d := d.push "x" n
+        FnSpec.boundType d "x" == some (n.typeOf, some n) && FnSpec.typeBound d "x" == none) &&
+     (let prog (tail : List Value) :=
+        out (typeq "One" (.int 1) ++ [.endMark, w "def", w "x", w "One"] ++ defF "n:Any" "x" ++ tail)
+      prog [.word { name := "f", forceVal := true }] == "fn [[n:Any][One][n]]" &&
+      prog [w "f", .int 1] == ints [1] &&
+      prog [w "f", .int 2] == "ERROR:type_error")) = true := by
+  native_decide
+
+/-- AN ARGUMENT'S SHAPE IS RESOLVED IN ITS OWN TURN. Arguments are
+    evaluated in order, and a type shape among them is resolved when its
+    turn comes: a LATER argument that rebinds the type it names does not
+    change what it resolved to, and an EARLIER one does. -/
+theorem an_arguments_shape_is_resolved_in_its_own_turn :
+    (let two (ret : String) : List Value :=
+       [.endMark, w "def", w "f", .openParen, w "fn",
+        quot [quot [w "n:Any", w "m:Any"], quot [w "Any"], quot [w ret]], .closeParen, .endMark]
+     let shape : Value := .typedList (w "Foo") []
+     let rebind : Value := pend [w "typeq", w "Foo", .int 2]
+     out (typeq "Foo" (.int 1) ++ two "n" ++ [w "f", shape, rebind])
+       == one (.quoted (.typedList (.int 1) [])) &&
+     out (typeq "Foo" (.int 1) ++ two "m" ++ [w "f", rebind, shape])
+       == one (.quoted (.typedList (.int 2) []))) = true := by
+  native_decide
+
 /-! ## What the installer refuses, and what a name holds -/
 
 /-- WHAT THE INSTALLER REFUSES. A name that does not begin with a capital;
@@ -399,6 +439,33 @@ theorem nur424_a_word_literal_is_not_claimed_by_a_slot_of_a_named_type :
        prog [w b, w "f"] == one v &&
        prog [w "f", .openParen, w b, .closeParen] == one v &&
        prog [w "f", v] == one v) = true := by
+  native_decide
+
+/-- AS THE KERNEL HAS IT (NUR425): A TYPED CONTAINER OVER A SINGLETON'S
+    NAME IS DEAD IN A DECLARATION. The child of a typed container written
+    as a parameter's or a return's declaration is resolved when the
+    specification is read — to the type's content, but only where that
+    content is itself a type: a union, a typed container. A name bound to
+    a literal is left a NAME, and the pattern then admits nothing: a map
+    of the singleton's one member is refused at `{: One }`, though
+    unification, which reads the name as the content, takes the same
+    pair. -/
+theorem nur425_a_typed_container_over_a_singletons_name_is_dead_in_a_declaration :
+    ((bodies.all fun b =>
+        FnSpec.resolveSigChild (installed "Foo" b) 8 (.typedList (w "Foo") [])
+          == (if TypeInstall.isTypeBody b then .typedList b [] else .typedList (w "Foo") [])) &&
+     (unions.all fun alts =>
+        FnSpec.resolveSigChild (installed "Foo" (.disjunct alts)) 8 (.typedMap (w "Foo") [])
+          == .typedMap (.disjunct alts) []) &&
+     (let overMap (name : String) : List Value :=
+        [.endMark, w "def", w "f", .openParen, w "fn",
+         quot [quot [.typedMap (w name) []], quot [w "Any"], quot [.int 9]], .closeParen, .endMark]
+      let member : Value := .map [("a", .int 1)] false
+      out (typeq "One" (.int 1) ++ overMap "One" ++ [w "f", member]) == refused &&
+      out (typeq "Foo" (.disjunct [.typeLit TInteger, .typeLit TString]) ++ overMap "Foo" ++ [w "f", member])
+        == ints [9] &&
+      out (typeq "One" (.int 1) ++ [w "unifyq", quot [.int 1], .typedList (w "One") []])
+        == one (.bool true))) = true := by
   native_decide
 
 end Boru.Core.TypeDef

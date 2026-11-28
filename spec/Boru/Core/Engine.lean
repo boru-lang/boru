@@ -1521,10 +1521,13 @@ def evalArgs (nat : Natives) :
       | some k => pure (k, defs)
       | none => if v.isPendingContainer then autoEval nat fuel defs v else pure (v, defs)
     if defs.flowing then pure ([], defs) else do
-    let (vs', defs) ← evalArgs nat fuel defs vs
     -- a slot with either mode leaves an inert type shape unresolved too,
-    -- whatever the value is
-    pure ((if raw.list || raw.map then v' else resolveInert defs v') :: vs', defs)
+    -- whatever the value is. The shape is resolved HERE, in the
+    -- argument's own turn: a later argument that rebinds a type the
+    -- shape names does not change what this one resolved to
+    let here := if raw.list || raw.map then v' else resolveInert defs v'
+    let (vs', defs) ← evalArgs nat fuel defs vs
+    pure (here :: vs', defs)
 
 /-- Evaluate a pending container. A list's elements run as one program
     and the list of its residuals is the value. A map evaluates member by

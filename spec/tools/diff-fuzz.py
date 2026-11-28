@@ -341,7 +341,8 @@ def type_uses(rng):
                             "{q a: 1 }", "{q a: 'x' }", "{q a: 1 b: 'y' }", "{q }", "[: Integer ]", "[: String ]",
                             "d( Integer String )", "d( 1 2 )", "d( String Boolean )", "[ addq 1 2 ]",
                             "{ a: p( addq 0 1 ) }", "[: Foo ]", "[: One 1 ]", "d( Foo Boolean )", "{ a: One }",
-                            "[q Foo ]", "[q One ]", "( negq -1 )"]
+                            "[q Foo ]", "[q One ]", "( negq -1 )", "[: Al ]", "d( Al Boolean )", "{: One }",
+                            "[: Lst ]", "{: Foo a: 1 }"]
     uses = []
     for _ in range(rng.randint(1, 3)):
         a, b, t = rng.choice(ops).split(), rng.choice(ops).split(), rng.choice(USER_TYPES)
@@ -361,6 +362,19 @@ def type_uses(rng):
             [";", "def", "tf", "(", "fn", "[q", "[q", f"n:{t}", "]", "[q", "Any", "]", "[q", "n", "]", "]", ")", ";",
              "undef", t, ";", "tf"] + a + ["tf/v"],
             ["undef", t, ";", "typeq", t] + b + [";"] + a,
+            # a typed container over the type's name, as a parameter's and as
+            # a return's declaration; a VALUE that holds the type, as a
+            # return's; and an argument that rebinds a type an earlier or a
+            # later argument's shape names
+            [";", "def", "tf", "(", "fn", "[q", "[q"] + rng.choice([["{:", t, "}"], ["[:", t, "]"]]) + ["]",
+             "[q", "Any", "]", "[q", "9", "]", "]", ")", ";", "tf"] + a,
+            [";", "def", "tf", "(", "fn", "[q", "[q", "n:Any", "]", "[q"] + rng.choice([["[:", t, "]"], ["{:", t, "}"]])
+            + ["]", "[q", "n", "]", "]", ")", ";", "tf"] + a,
+            [";", "def", "x", t, ";", "def", "tf", "(", "fn", "[q", "[q", "n:Any", "]", "[q", "x", "]", "[q", "n", "]",
+             "]", ")", ";", "tf"] + a + ["tf/v"],
+            [";", "def", "tf", "(", "fn", "[q", "[q", "n:Any", "m:Any", "]", "[q", "Any", "]", "[q", "n", "m", "]", "]",
+             ")", ";", "tf"] + rng.choice([["[:", t, "]", "[", "typeq", t] + b + ["]"],
+                                           ["[", "typeq", t] + b + ["]", "[:", t, "]"]]),
             ["typeq", rng.choice(["Zed", "Foo/Bar", "Integer", "Lst/Foo", "zed", "Foo"])] + a + [";", "Zed"],
         ]))
     return uses

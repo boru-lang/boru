@@ -133,8 +133,10 @@ for a slot of a named type as it is for the same shape written in place
 value without the type being asked (NUR420); a singleton or structural
 type passes for a value at a slot of the type it sits under, and is read
 as zero (NUR421); the meet of two named types depends on their order
-(NUR422); and `true`, `false` or an unbound name written after a word is
-not claimed by a slot of a named type that admits it (NUR424).
+(NUR422); `true`, `false` or an unbound name written after a word is
+not claimed by a slot of a named type that admits it (NUR424); and a
+typed container over a singleton's name, written as a declaration, keeps
+the name unresolved and admits nothing (NUR425).
 Each is marked where it is modelled and where it is pinned. One more is
 stated in the model as the kernel has it but cannot be written in the
 corpus notation: the value `none` in a declaration constrains nothing
