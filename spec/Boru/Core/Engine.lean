@@ -641,15 +641,12 @@ def dispatchWord (nat : Natives) : Nat → Engine → WordInfo → Except BoruEr
             else pure e
           -- a signal a group let out: the word is abandoned where it stands
           if e.defs.flowing then pure e else
-          let resolved := effectiveResolved e.tape e.ptr
-          let inside := (pendingForwardIdx e.tape e.ptr).isSome
-          let plan :=
-            match planMatch e.tape e.defs sigs w resolved e.ptr inside with
-            | some p => some p
-            | none =>
-              if hasForwardSigs sigs && !w.forceStack && !answersItself sigs w then
-                planMatch e.tape e.defs sigs { w with forceStack := true } resolved e.ptr inside
-              else none
+          -- the plan — after the pending operands its patterns must judge
+          -- have been evaluated, where they stand
+          let (e, plan) ← planEvaluating nat fuel e sigs w
+            (hasForwardSigs sigs && !w.forceStack && !answersItself sigs w)
+          -- a signal an operand let out: the word is abandoned where it stands
+          if e.defs.flowing then pure e else
           match plan with
           | none =>
             if e.voidGroups.contains w.name then
@@ -673,6 +670,52 @@ def dispatchWord (nat : Natives) : Nat → Engine → WordInfo → Except BoruEr
               match sigs[p.sigIdx]? with
               | some s => execMatch nat fuel e w.name s p.positions
               | none => Engine.err "internal_error" "plan names no signature"
+
+/-- THE PLAN OF A DISPATCH (core/go `matchForDispatch`). The signatures
+    are matched as the plan-level matcher matches them — and a pending
+    list or map that a candidate's pattern must judge is EVALUATED first,
+    where it stands on the tape, as the call would evaluate it (NUR235): a
+    pattern reads the value the callee receives, not the tokens it was
+    written as. The evaluation happens once; every later candidate, and
+    the call itself, see the value.
+
+    With no match, a word that may is planned again reading the stack
+    only (`retry`), over the tape as the first attempt left it.
+
+    An error the evaluation raises is the dispatch's. A flow signal it
+    lets out abandons the dispatch: the state comes back with the signal
+    raised and no plan. -/
+def planEvaluating (nat : Natives) :
+    Nat → Engine → List Sig → WordInfo → Bool → Except BoruError (Engine × Option Plan)
+  | 0, _, _, _, _ => Engine.outOfFuel
+  | fuel + 1, e, sigs, w, retry => do
+    let e ← settleOperands nat fuel e sigs w
+    if e.defs.flowing then pure (e, none) else
+    let inside := (pendingForwardIdx e.tape e.ptr).isSome
+    match planMatch e.tape e.defs sigs w (effectiveResolved e.tape e.ptr) e.ptr inside with
+    | some p => pure (e, some p)
+    | none =>
+      if !retry then pure (e, none)
+      else do
+        let ws := { w with forceStack := true }
+        let e ← settleOperands nat fuel e sigs ws
+        if e.defs.flowing then pure (e, none) else
+        pure (e, planMatch e.tape e.defs sigs ws (effectiveResolved e.tape e.ptr) e.ptr inside)
+
+/-- Evaluate, one at a time and in the order the matcher meets them, the
+    pending operands a candidate's pattern must wait for. Each is replaced
+    on the tape by its value, which is no longer pending — so the walk
+    ends. -/
+def settleOperands (nat : Natives) : Nat → Engine → List Sig → WordInfo → Except BoruError Engine
+  | 0, _, _, _ => Engine.outOfFuel
+  | fuel + 1, e, sigs, w =>
+    let inside := (pendingForwardIdx e.tape e.ptr).isSome
+    match planNeed e.tape e.defs sigs w (effectiveResolved e.tape e.ptr) e.ptr inside with
+    | none => pure e
+    | some (idx, val) => do
+      let (v, defs) ← autoEval nat fuel e.defs val
+      if defs.flowing then pure { e with defs := defs }
+      else settleOperands nat fuel { e with tape := setAt e.tape idx v, defs := defs } sigs w
 
 /-- The phase-1 plan walk (core/go/collect_kernel.go `CollectForward`):
     over the union of the viable overloads' barriers, evaluate each paren
@@ -911,15 +954,9 @@ def dispatchFnValue (nat : Natives) : Nat → Engine → String → List Sig →
     let e ←
       if hasForwardSigs sigs && !w.forceStack then collectForward nat fuel e sigs w else pure e
     if e.defs.flowing then pure e else
+    let (e, plan) ← planEvaluating nat fuel e sigs w (hasForwardSigs sigs && !w.forceStack)
+    if e.defs.flowing then pure e else
     let resolved := effectiveResolved e.tape e.ptr
-    let inside := (pendingForwardIdx e.tape e.ptr).isSome
-    let plan :=
-      match planMatch e.tape e.defs sigs w resolved e.ptr inside with
-      | some p => some p
-      | none =>
-        if hasForwardSigs sigs && !w.forceStack then
-          planMatch e.tape e.defs sigs { w with forceStack := true } resolved e.ptr inside
-        else none
     match plan with
     | none =>
       -- what follows, up to a boundary, could have been its arguments

@@ -993,3 +993,98 @@ run ; def f ( fn [q [q 7 ] [q Any ] [q 'seven' ] [q Integer ] [q Any ] [q 'int' 
 run ; def f ( fn [q [q Integer ] [q Any ] [q 'int' ] [q 7 ] [q Any ] [q 'seven' ] ] ) ; f 7	'seven'	ERROR:undefined_word	written the other way round, the same: the order is the signatures', not the text's
 run ; def f ( fn [q [q Integer ] [q Any ] [q 'int' ] [q 7 ] [q Any ] [q 'seven' ] ] ) ; f 8	'int'	ERROR:undefined_word	and for the value the pattern declines
 run ; def f ( fn [q [q n:Integer ] [q Any ] [q 'int' ] [q 7 ] [q Any ] [q 'seven' ] ] ) ; f/v	fn [[:Integer][Any]['seven'] [n:Integer][Any]['int']]	ERROR:undefined_word	the function reads back with the patterned signature first
+
+# --- a pattern that reads a container's contents, and the pending operand it judges ---
+# A slot's PATTERN may read what a container holds: `mpatq` takes a map
+# that holds a:1 (an open match — more may stand beside it), `lpatq` a list
+# of Integers. Such a pattern judges the value the callee RECEIVES. A
+# pending list or map standing at the slot is not that value yet, so the
+# dispatch EVALUATES it first, where it stands, as the call would — once:
+# every later overload, and the call itself, see the value (core/go
+# `patternOperand`, `evalPatternOperand`). A slot that takes its operand
+# RAW is exempt: `rawmpatq` and `rawlpatq` carry the same patterns on
+# no-evaluation slots, and judge what was written. Each word hands back
+# what it was handed. core/ts's patterns are scalar only — a payload is
+# compared by identity — so the four fixtures are the Go runner's and the
+# Lean runner's, and the `ts` column is the missing word.
+run mpatq {q a: 1 }	{a:1}	ERROR:undefined_word	A MAP PATTERN admits a map that holds what it names
+run mpatq { a: 1 b: 2 }	{a:1 b:2}	ERROR:undefined_word	the match is OPEN: more may stand beside it
+run mpatq { a: 2 }	ERROR:signature_error	ERROR:undefined_word	and declines one that holds something else there
+run mpatq { }	ERROR:signature_error	ERROR:undefined_word	or nothing
+run mpatq 5	ERROR:signature_error	ERROR:undefined_word	or is no map
+run mpatq { a: p( addq 0 1 ) }	{a:1}	ERROR:undefined_word	A PENDING MAP IS EVALUATED BEFORE THE PATTERN READS IT: the member's expression runs, and the value is judged
+run mpatq { a: p( addq 1 1 ) }	ERROR:signature_error	ERROR:undefined_word	and declined, if that is what the value says
+run { a: p( addq 0 1 ) } mpatq	{a:1}	ERROR:undefined_word	from the stack
+run { a: p( addq 0 1 ) } mpatq/s	{a:1}	ERROR:undefined_word	stack only
+run mpatq/f { a: p( addq 0 1 ) }	{a:1}	ERROR:undefined_word	forward only
+run mpatq/1 { a: p( addq 0 1 ) }	{a:1}	ERROR:undefined_word	a forced arity
+run def x 1 ; mpatq { a: x }	{a:1}	ERROR:undefined_word	a bound word in the map is its value by then
+run mpatq {q a: p( addq 0 1 ) }	ERROR:signature_error	ERROR:undefined_word	A QUOTED MAP IS NOT PENDING: it is judged as it stands, and its member is code, not 1
+run mpatq { a: [ addq 0 1 ] }	ERROR:signature_error	ERROR:undefined_word	the value judged is the one the callee would get: a list member evaluates to a list, which is not 1
+run mpatq { a: p( boomq 1 ) }	ERROR:fixture_boom	ERROR:undefined_word	THE EVALUATION IS THE DISPATCH'S: an error it raises is the call's error — not `no signature`
+run mpatq { a: 1 b: p( boomq 1 ) }	ERROR:fixture_boom	ERROR:undefined_word	the WHOLE map is evaluated, not the member the pattern names
+run mpatq { a: p( breakq ) }	ERROR:flow_error	ERROR:undefined_word	a signal it lets out with no loop to take it
+run forq 2 [q mpatq { a: p( breakq ) } 7 ]		ERROR:undefined_word	and with one: the loop takes it, and the call is abandoned
+run mpatq { a: p( bindq z 5 1 ) } z	{a:1} 5	ERROR:undefined_word	WHAT THE EVALUATION DID STAYS DONE: the member's binding outlives the call
+run mpatq { a: p( bindq z 5 2 ) } ; z	ERROR:signature_error	ERROR:undefined_word	and a value the pattern then DECLINES refuses the call (that the member ran all the same is in the overload rows below)
+run def x { a: p( addq 0 1 ) } ; mpatq x	{a:1}	ERROR:undefined_word	A NAME bound to a pending map: its binding is evaluated for the pattern
+run def x { a: p( addq 0 1 ) } ; x mpatq	{a:1}	ERROR:undefined_word	from the stack
+run def x { a: p( addq 0 1 ) } ; mpatq x/v	{a:1}	ERROR:undefined_word	as /v
+run ( mpatq { a: p( addq 0 1 ) } )	{a:1}	ERROR:undefined_word	in a group
+run mpatq ( { a: p( addq 0 1 ) } )	{a:1}	ERROR:undefined_word	the operand in a group of its own
+run [ mpatq { a: p( addq 0 1 ) } ]	[{a:1}]	ERROR:undefined_word	in a list literal
+run bothq 1 ( mpatq { a: p( addq 0 1 ) } )	{a:1}	ERROR:undefined_word	as another word's operand
+run eachq [q 1 ] [q mpatq { a: p( addq 0 1 ) } ]	[1 {a:1}]	ERROR:undefined_word	in a loop's region
+run callq 1 [q mpatq { a: p( addq 0 1 ) } ]	1 {a:1}	ERROR:undefined_word	in a call region
+run def f fn( n Any Any [ mpatq { a: n } ] ) ; f 1	{a:1}	ERROR:undefined_word	in a function's body: the parameter is read when the map is evaluated
+run def f fn( n Any Any [ mpatq { a: n } ] ) ; f 2	ERROR:signature_error	ERROR:undefined_word	and the pattern declines what it reads
+run mpatq/v { a: p( addq 0 1 ) }	fn [[x:Map][Any][]] {a:1}	ERROR:undefined_word	(the function as a value takes nothing: the map is evaluated by the end of the run instead)
+run ; def g mpatq/v ; g { a: p( addq 0 1 ) }	{a:1}	ERROR:undefined_word	called through another name, the same rule
+run mpatq/u { a: p( addq 0 1 ) }	{a:1}	ERROR:undefined_word	and reversed
+run lpatq [q 1 2 ]	[1 2]	ERROR:undefined_word	A TYPED-LIST PATTERN admits a list of that type
+run lpatq [ ]	[]	ERROR:undefined_word	the empty list
+run lpatq [ 'a' ]	ERROR:signature_error	ERROR:undefined_word	and declines a list holding anything else
+run lpatq { a: 1 }	ERROR:signature_error	ERROR:undefined_word	or what is no list
+run lpatq [ addq 0 1 ]	[1]	ERROR:undefined_word	A PENDING LIST IS EVALUATED BEFORE THE PATTERN READS IT
+run [ addq 0 1 ] lpatq	[1]	ERROR:undefined_word	from the stack
+run lpatq [ dupq 1 ]	[1 1]	ERROR:undefined_word	every value the program leaves is an element
+run lpatq [ addq 0 1 'a' ]	ERROR:signature_error	ERROR:undefined_word	and every one is judged
+run def x 1 ; lpatq [ x ]	[1]	ERROR:undefined_word	a bound word is its value by then
+run lpatq [q addq 0 1 ]	ERROR:signature_error	ERROR:undefined_word	a quoted list is judged as it stands: its elements are a word and two Integers
+run lpatq [ [ addq 0 1 ] ]	ERROR:signature_error	ERROR:undefined_word	a nested list evaluates to a list, which is no Integer
+run lpatq [ boomq 1 ]	ERROR:fixture_boom	ERROR:undefined_word	an error the evaluation raises is the call's
+run lpatq [ breakq ]	ERROR:flow_error	ERROR:undefined_word	a signal with no loop to take it
+run lpatq [ bindq z 5 1 ] z	[1] 5	ERROR:undefined_word	what the evaluation did stays done
+run def x [ addq 0 1 ] ; lpatq x	[1]	ERROR:undefined_word	a name bound to a pending list
+run lpatq ( [ addq 0 1 ] )	[1]	ERROR:undefined_word	the operand in a group of its own
+run lpatq [: Integer 1 ]	[:Integer 1]	ERROR:undefined_word	a typed list of the same type is admitted as it is
+run lpatq [: String 'a' ]	ERROR:signature_error	ERROR:undefined_word	one of another type is not
+run def f fn( n Any Any [ lpatq [ n ] ] ) ; f 1	[1]	ERROR:undefined_word	in a function's body
+run lpatq/u [ addq 0 1 ]	[1]	ERROR:undefined_word	reversed
+
+# --- a raw slot is exempt: its pattern judges what was written ---------------------
+run rawmpatq { a: 1 }	{a:1}	ERROR:undefined_word	A MAP-RAW SLOT with the same pattern: a map of literals reads the same either way
+run rawmpatq { a: p( addq 0 1 ) }	ERROR:signature_error	ERROR:undefined_word	but a member that is an EXPRESSION is judged as the expression — which is not 1 — where `mpatq` evaluates it and admits it
+run { a: p( addq 0 1 ) } rawmpatq	ERROR:signature_error	ERROR:undefined_word	from the stack
+run rawmpatq { a: 2 }	ERROR:signature_error	ERROR:undefined_word	a literal that differs
+run def x 1 ; rawmpatq { a: x }	ERROR:signature_error	ERROR:undefined_word	a bound word is the word, not its value
+run rawmpatq { a: 1 b: p( nosuch ) }	{a:1 b:(nosuch)}	ERROR:undefined_word	NOTHING IS RUN: what stands beside the named member is handed over as written
+run rawmpatq { a: p( nosuch ) }	ERROR:signature_error	ERROR:undefined_word	and no error can come of judging it — only a refusal
+run rawmpatq { a: p( bindq z 5 1 ) } ; z	ERROR:signature_error	ERROR:undefined_word	nor a binding
+run def f fn( n Any Any [ rawmpatq { a: n } ] ) ; f 1	ERROR:signature_error	ERROR:undefined_word	in a function's body: the parameter is not read
+run rawlpatq [ 1 2 ]	[1 2]	ERROR:undefined_word	A LIST-RAW SLOT with the typed-list pattern: a list of literals
+run rawlpatq [ addq 0 1 ]	ERROR:signature_error	ERROR:undefined_word	but a list that is a PROGRAM is judged as its tokens — a word is no Integer — where `lpatq` runs it
+run [ addq 0 1 ] rawlpatq	ERROR:signature_error	ERROR:undefined_word	from the stack
+run rawlpatq [ nosuch ]	ERROR:signature_error	ERROR:undefined_word	nothing is run, so nothing is undefined
+run def x 1 ; rawlpatq [ x ]	ERROR:signature_error	ERROR:undefined_word	a bound word is the word
+run rawmpatq/u { a: p( addq 0 1 ) }	{a:1}	ERROR:undefined_word	NUR413: `/u` drops the raw mode, and the wrapper — which carries the pattern — evaluates the map and admits it
+run rawlpatq/u [ addq 0 1 ]	[1]	ERROR:undefined_word	NUR413: the list too
+
+# --- which overload's pattern makes the evaluation happen --------------------------
+# The matcher tries the overloads in dispatch order and stops at its first
+# match. A pending operand is evaluated when the first pattern that must
+# read it is reached — and stays evaluated for every overload after it.
+run ; def f ( fn [q [q {q a: 1 } ] [q Any ] [q 'one' ] [q {q a: 7 } ] [q Any ] [q 'seven' ] ] ) ; f { a: p( bindq z 5 7 ) } z	'seven' 5	ERROR:undefined_word	THE VALUE STAYS: the first overload's pattern has the map evaluated and declines it; the second judges the value it left — and the member's binding is there, though the overload that had it made was refused
+run ; def f ( fn [q [q {q a: 1 } ] [q Any ] [q 'one' ] [q Map ] [q Any ] [q 'map' ] ] ) ; f { a: p( bindq z 5 7 ) } z	'map' 5	ERROR:undefined_word	an overload with no pattern takes the value the declined pattern left
+run ; def f ( fn [q [q {q a: 1 } Integer ] [q Any ] [q 'one' ] [q Map String ] [q Any ] [q 'ms' ] ] ) ; f { a: p( bindq z 5 1 ) } 'x' z	'ms' 5	ERROR:undefined_word	an overload a TYPE rules out never reads its pattern — the map is evaluated by the call that takes it, not by the match
+run ; def f ( fn [q [q {q a: 1 } {q b: 2 } ] [q Any ] [q 'one' ] [q Map Map ] [q Any ] [q 'mm' ] ] ) ; f { a: p( bindq z 5 9 ) } { b: p( bindq y 6 2 ) } z y	'mm' 5 6	ERROR:undefined_word	two patterned slots: the first declines, and the second operand is evaluated by the call that takes both

@@ -624,6 +624,12 @@ function fixtureRegistry(): Registry {
       },
     ],
   });
+  // (mpatq, rawmpatq, lpatq and rawlpatq — a pattern that reads a
+  // container's CONTENTS, a map shape or a typed list, and the evaluation
+  // of the pending operand it judges — are not registered here: core/ts's
+  // patterns compare a payload by identity, so they are scalar patterns
+  // only, and a container pattern would admit nothing. Their rows are the
+  // divergence ledger's.)
   // tpatq carries a TYPE-LITERAL pattern (rather than patq's concrete
   // scalar one) on a STACK slot — the shape that reaches the pattern
   // matcher's type arm, since a type pattern is enforced only on stack

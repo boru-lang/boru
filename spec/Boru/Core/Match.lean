@@ -310,6 +310,57 @@ def patternsOk (tape : List Value) (defs : Defs) (s : Sig) (positions : List Nat
       else unifies val pat
     | _, _ => true
 
+/-- Does a pattern's verdict read a container operand's CONTENTS — a map
+    shape, a list, a typed map or list (core/go `patternReadsContents`). -/
+def patternReadsContents : Value → Bool
+  | .map _ _ | .list _ _ | .typedList _ _ | .typedMap _ _ => true
+  | .quoted (.map _ _) | .quoted (.list _ _) => true
+  | _ => false
+
+/-- THE OPERAND A PATTERN MUST WAIT FOR (core/go `patternOperand`,
+    NUR235). A pending list or map whose evaluation would change it is not
+    yet the value the callee receives, and a pattern that reads contents
+    judges THAT value: the dispatch evaluates the literal first, in place.
+    `patternNeed` walks the patterned slots as `patternsOk` does and
+    answers the first operand that must be evaluated before the check can
+    go on — its tape index, and the value to evaluate (a forward word's
+    binding, where the slot holds a bound word) — or `none`: because no
+    slot needs it, or because an earlier slot already fails.
+
+    A slot that takes its operand RAW does not wait: a list at a list-raw
+    slot, a map at a map-raw slot, is judged as it was written. -/
+def patternNeed (tape : List Value) (defs : Defs) (s : Sig) (positions : List Nat) (fwd : Nat) :
+    Option (Nat × Value) :=
+  let waits (idx : Nat) (val : Value) : Bool :=
+    val.isPendingActive && !(match val with
+      | .map _ _ => (s.raw idx).map
+      | _ => (s.raw idx).list)
+  let rec go (fuel idx : Nat) : Option (Nat × Value) :=
+    match fuel with
+    | 0 => none
+    | fuel + 1 =>
+      if idx ≥ s.arity then none
+      else match s.pattern? idx, positions[idx]? with
+        | some pat, some p =>
+          let isForward := idx < fwd
+          let val := tape.getD p .none
+          let val := match val with
+            | .word w => if isForward then (defs.top? w.name).getD val else val
+            | _ => val
+          if pat.isPlainMap && val.isPlainMap then
+            if isForward then go fuel (idx + 1)
+            else if waits idx val then some (p, val)
+            else if (match pat, val with
+                | .map pe _, .map ce _ => openUnifyEntries (2 * (pat.size + val.size) + 8) pe ce
+                | _, _ => true) then go fuel (idx + 1)
+            else none
+          else if isForward && !pat.isConcrete then go fuel (idx + 1)
+          else if patternReadsContents pat && waits idx val then some (p, val)
+          else if unifies val pat then go fuel (idx + 1)
+          else none
+        | _, _ => go fuel (idx + 1)
+  go (s.arity + 1) 0
+
 /-! ## The value stack a word sees
 
 The tape left of the pointer, back to the enclosing open paren, is the
@@ -436,9 +487,11 @@ structure Plan where
   positions : List Nat
   deriving Repr, BEq
 
-/-- Try one signature at the word at `ptr`. -/
-def planSig (tape : List Value) (defs : Defs) (w : WordInfo) (resolved : List Value)
-    (ptr : Nat) (insideForward : Bool) (s : Sig) : Option (List Nat) :=
+/-- Where one signature's arguments stand for the word at `ptr`: the tape
+    index of each, in signature order, and how many of them are forward —
+    before any pattern is consulted. -/
+def planPositions (tape : List Value) (defs : Defs) (w : WordInfo) (resolved : List Value)
+    (ptr : Nat) (insideForward : Bool) (s : Sig) : Option (List Nat × Nat) :=
   let n := s.arity
   let fwdPos := candidateScan tape defs s (s.forwardLimit w) (tape.length + 1) 0 (ptr + 1)
   let fwd := fwdPos.length
@@ -446,15 +499,14 @@ def planSig (tape : List Value) (defs : Defs) (w : WordInfo) (resolved : List Va
   let rtop (j : Nat) : Option Value := resolved[resolved.length - 1 - j]?
   let itop (j : Nat) : Option Nat := resolvedIdx[resolvedIdx.length - 1 - j]?
   let remaining := n - fwd
-  if fwd == n then
-    if patternsOk tape defs s fwdPos fwd then some fwdPos else none
+  if fwd == n then some (fwdPos, fwd)
   else if insideForward && fwd > 0 then
     -- inside another word's pending collection: forward first, the rest
     -- only if the stack already satisfies it
     if resolved.length ≥ remaining
         && (List.range remaining).all (fun j => (rtop j).any (sigArgMatches s (fwd + j))) then
       let positions := fwdPos ++ (List.range remaining).filterMap itop
-      if positions.length == n && patternsOk tape defs s positions fwd then some positions else none
+      if positions.length == n then some (positions, fwd) else none
     else none
   else if w.forceForward then none
   else if resolved.length < remaining then none
@@ -468,7 +520,39 @@ def planSig (tape : List Value) (defs : Defs) (w : WordInfo) (resolved : List Va
     if !ok then none
     else
       let positions := fwdPos ++ (List.range remaining).filterMap itop
-      if positions.length == n && patternsOk tape defs s positions fwd then some positions else none
+      if positions.length == n then some (positions, fwd) else none
+
+/-- Try one signature at the word at `ptr`: its positions, if its
+    patterns admit what stands there. -/
+def planSig (tape : List Value) (defs : Defs) (w : WordInfo) (resolved : List Value)
+    (ptr : Nat) (insideForward : Bool) (s : Sig) : Option (List Nat) :=
+  match planPositions tape defs w resolved ptr insideForward s with
+  | some (positions, fwd) => if patternsOk tape defs s positions fwd then some positions else none
+  | none => none
+
+/-- THE FIRST OPERAND THE MATCH MUST EVALUATE (core/go `matchForDispatch`
+    over `patternsOk`): the signatures are tried in dispatch order, and
+    the first pending operand a candidate's pattern has to wait for is
+    answered — if the matcher gets that far. It stops at its first match,
+    so a candidate behind it never has its patterns read; unless the next
+    token is a WORD and the match does not capture a name, for then the
+    matcher looks on for one that does. -/
+def planNeed (tape : List Value) (defs : Defs) (sigs : List Sig) (w : WordInfo)
+    (resolved : List Value) (ptr : Nat) (insideForward : Bool) : Option (Nat × Value) :=
+  let preferWordSig := (tape[ptr + 1]?).any Value.isWord
+  let rec go : List Sig → Option (Nat × Value)
+    | [] => none
+    | s :: rest =>
+      if s.arity == 0 || w.argCount.any (· != s.arity) then go rest
+      else match planPositions tape defs w resolved ptr insideForward s with
+        | none => go rest
+        | some (positions, fwd) =>
+          match patternNeed tape defs s positions fwd with
+          | some need => some need
+          | none =>
+            if patternsOk tape defs s positions fwd && !(preferWordSig && !s.isQuote 0) then none
+            else go rest
+  go sigs
 
 /-- The plan-level matcher: signatures are tried in dispatch order and
     the first match wins — except that when the next token is a WORD, an

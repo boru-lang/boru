@@ -381,4 +381,27 @@ def sizeEntries : List (String × Value) → Nat
   | (_, v) :: es => v.size + sizeEntries es
 end
 
+mutual
+/-- Does the value hold a token an evaluation CHANGES — a word, a paren
+    expression, or a list or map holding one at any depth (core/go
+    `BearsActiveTokens`). A list of literals is its own evaluation. -/
+def Value.bearsActive : Value → Bool
+  | .word _ => true
+  | .parenExpr _ => true
+  | .list elems _ => bearsActiveList elems
+  | .map entries _ => bearsActiveEntries entries
+  | .quoted v => v.bearsActive
+  | _ => false
+def bearsActiveList : List Value → Bool
+  | [] => false
+  | v :: vs => v.bearsActive || bearsActiveList vs
+def bearsActiveEntries : List (String × Value) → Bool
+  | [] => false
+  | (_, v) :: es => v.bearsActive || bearsActiveEntries es
+end
+
+/-- A pending list or map whose evaluation would change it (core/go
+    `IsPendingActiveContainer`): not yet its own data. -/
+def Value.isPendingActive (v : Value) : Bool := v.isPendingContainer && v.bearsActive
+
 end Boru.Core
