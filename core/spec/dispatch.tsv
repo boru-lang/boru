@@ -1282,8 +1282,10 @@ run 1 ; undef ( )	ERROR:no_value_error	and where there is none to take, the word
 # --- a name bound to a binding word's function -----------------------------------
 # `def mydef def/v` binds the FUNCTION, and the name then calls as the word
 # does. Whether a frame records its entry state is asked of the bindings: an
-# INSTALLED function — a `fn(` of the row — was asked when it was made, before
-# any alias the program binds. (A function VALUE is asked at each call, and
-# finds the alias: `divergent.tsv`, with the `afn` it needs.)
+# INSTALLED function was asked when it was installed — a function a leading
+# clause binds, before the program ran and before any alias it binds. (A
+# function the program's own `def` binds is installed THEN, and a function
+# VALUE is asked at each call: both find the alias, and both are in
+# `divergent.tsv`.)
 run 0 def mydef def/v ; mydef y 3 ; y	0 3	a name bound to a word's FUNCTION calls as the word does
-run def y 1 ; 0 def mydef def/v ; def f fn( n Any Any [ mydef y 3 ; y ] ) ; f 5 y	0 3 3	AN INSTALLED FUNCTION WAS ASKED WHEN IT WAS MADE — before the program ran, and before the alias was bound: its frame records nothing
+run def y 1 ; def f fn( n Any Any [ mydef y 3 ; y ] ) ; 0 def mydef def/v ; f 5 y	0 3 3	AN INSTALLED FUNCTION WAS ASKED WHEN IT WAS MADE — a function the row's leading clause binds was made before the program ran, and before the alias was bound: its frame records nothing

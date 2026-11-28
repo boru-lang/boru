@@ -697,3 +697,4 @@ run def y 1 ; 0 def myun undef/v ; afn n [q bindq y 3 ; myun z n ] 5 y	0 5 1	ERR
 run def y 1 ; 0 def n def/v ; afn n [q bindq y 3 ; n ] 5 y	0 5 1	ERROR:undefined_word	asked BEFORE the frame binds its parameter: the parameter's name still means the alias
 run def y 1 ; 0 def mybind bindq/v ; afn n [q mybind y 3 ; n ] 5 y	0 5 3	ERROR:undefined_word	an alias of a word that is NOT a binding word is not one
 run 0 def mk afn/v ; bothq 0 ( afn x [q mk n [q addq n x ] ] 10 ) 5	0 15	ERROR:undefined_word	an alias of `afn` in a function value's body: the frame keeps a baseline, and the function it builds captures
+run def y 1 ; 0 def mydef def/v ; def f fn( n Any Any [ mydef y 3 ; y ] ) ; f 5 y	0 3 1	0 3 3	the same function bound by the program's own `def`, after the alias: it is INSTALLED at the def and asked then, so its frame records (core/ts has no install: a binding is a binding)

@@ -234,8 +234,8 @@ theorem an_alias_of_a_binding_word_is_one :
       outWith (d "bindq") (call "al") == vals [v, v] &&
       -- asked when it was made: `some false` is what an installed function
       -- answered before the alias existed
-      outWith ((d "def").push "f" (.fn "f" [.mk [.mk "n" TAny none false false] [TAny] 1
-          (.boru [w "al", w "y", v, .endMark, w "y"] [] false (some false)) false] 9209))
+      outWith ((d "def").push "f" (.fn "f" [.mk [.mk "n" TAny none false false false] [TAny] 1
+          (.boru [w "al", w "y", v, .endMark, w "y"] [] false (some false) []) false] 9209))
         [w "f", .int 5, w "y"] == vals [v, v]) = true := by
   native_decide
 

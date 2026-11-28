@@ -9,6 +9,7 @@ import Boru.Core.Unify
 import Boru.Core.Match
 import Boru.Core.Truth
 import Boru.Core.Engine
+import Boru.Core.FnSpec
 import Boru.Core.Theorems.Lattice
 import Boru.Core.Theorems.ArgumentRule
 import Boru.Core.Theorems.UnifyOrder

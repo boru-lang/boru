@@ -610,7 +610,12 @@ func coreSpecRegistry(t *testing.T) *Registry {
 			if err != nil {
 				return nil, err
 			}
-			reg.Defs.Push(n, a[1])
+			// The kernel's own definition install: a plain value is
+			// pushed; a function is compiled under the name — its optional
+			// parameters expanded, its body given the frame runner — and
+			// an older definition of the name whose parameter types it
+			// repeats is taken off first.
+			InstallDef(reg, n, a[1])
 			return nil, nil
 		}),
 		BarrierPos: 2,

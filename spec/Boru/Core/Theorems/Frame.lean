@@ -41,8 +41,8 @@ open Boru.Core.Counted (w ws outWith ints forq)
 /-- A boru-bodied function of the named parameters — `""` is an unnamed
     one — all of them `Any`, every one collectable forward, one return. -/
 def fnv (name : String) (params : List String) (body : List Value) (ident : Nat) : Value :=
-  .fn name [.mk (params.map fun p => .mk p TAny none false false) [TAny] params.length
-    (.boru body [] false none) false] ident
+  .fn name [.mk (params.map fun p => .mk p TAny none false false false) [TAny] params.length
+    (.boru body [] false none []) false] ident
 
 /-- The fixture with `f` bound. -/
 def withF (params : List String) (body : List Value) : Defs :=
