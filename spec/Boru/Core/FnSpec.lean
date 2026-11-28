@@ -70,6 +70,19 @@ def looksLikeTypeName (name : String) : Bool :=
     | c :: _ => c.isUpper
     | [] => false
 
+/-- A NAME BOUND TO A TYPE (core/go `LookupDefType`, `ResolveDefType`).
+    Bound to a bare type, the name is that type. Bound to any other type
+    body — a union, a typed container, a function — it is `Any` with NO
+    pattern: the binding is accepted as a declaration and enforces
+    nothing (NUR411, as the kernel has it; the same union written in
+    place is enforced). Bound to a value that is no type, or not bound,
+    it names nothing. -/
+def boundType (d : Defs) (name : String) : Option (TypeId × Option Value) :=
+  match d.top? name with
+  | some (.typeLit t) => some (t, none)
+  | some (.disjunct _) | some (.typedList _ _) | some (.typedMap _ _) | some (.fn _ _ _) => some (TAny, none)
+  | _ => none
+
 /-- WHAT A DECLARATION RESOLVES TO (core/go `ResolveSigType`): the slot's
     type, and a pattern where the declaration says more than a type.
 
@@ -84,18 +97,16 @@ def resolveSigType (d : Defs) : Value → R (TypeId × Option Value)
     match resolveTypeName? w.name with
     | some t => pure (t, none)
     | none =>
-      match d.top? w.name with
-      | some (.typeLit t) => pure (t, none)
-      | some _ => unmodelled
+      match boundType d w.name with
+      | some r => pure r
       -- a word is always a NAME: one that names no type is an error
       | none => throw s!"unknown type {w.name}"
   | .str s =>
     match resolveTypeName? s with
     | some t => pure (t, none)
     | none =>
-      match d.top? s with
-      | some (.typeLit t) => pure (t, none)
-      | some _ => unmodelled
+      match boundType d s with
+      | some r => pure r
       | none =>
         if looksLikeTypeName s then throw s!"unknown type {s}"
         else pure (TString, some (.str s))

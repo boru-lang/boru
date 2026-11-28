@@ -817,3 +817,11 @@ run def f 0 ; ; def f ( fn [q [q n:Integer ] [q Any ] [q 1 ] ] ) ; def f ( fn [q
 run ; def f ( fn [q [q n:Integer ] [q Any ] [q 1 ] ] ) ; def f ( fn [q [q n:String ] [q Any ] [q 2 ] ] ) ; f 5 f 'a' undef f f 5	1 2 1	ERROR:undefined_word	OTHER parameter types: the two stack, and unbinding the newer leaves the older
 run ; def f fn( n Integer Any [ 1 ] ) ; def f fn( n Integer Any [ 2 ] ) ; f 5 undef f f 5	ERROR:undefined_word	2 1	the same of a `fn(` function the program binds
 run ; def f ( fn [q [q n:Integer ] [q Any ] [q 1 ] ] ) ; def f 7 ; f undef f f 5	7 1	ERROR:undefined_word	a value over a function
+
+# --- a NAME bound to a type, as a declaration (NUR411, as the kernel has it) -----------------
+# A name bound to a bare type is that type (the rows above, `t`). Bound to any
+# other type body it is `Any` with no pattern: accepted, and a wildcard.
+run def x d( Integer String ) ; ; def f ( fn [q [q n:Any ] [q x ] [q n ] ] ) ; f true	true	ERROR:undefined_word	NUR411: a name bound to a UNION is accepted as the declared return and enforces nothing — the same union written in place refuses `true`
+run def x [: Integer ] ; ; def f ( fn [q [q n:Any ] [q x ] [q n ] ] ) ; f [q 'a' ]	(quote ['a'])	ERROR:undefined_word	NUR411: a name bound to a typed list, the same
+run def x fn( n Any Any [ n ] ) ; ; def f ( fn [q [q n:Any ] [q x ] [q n ] ] ) ; f 5	5	ERROR:undefined_word	NUR411: and a name bound to a function
+run def x 5 ; ; def f ( fn [q [q n:Any ] [q x ] [q n ] ] ) ; f 5	ERROR:fn_invalid_spec	ERROR:undefined_word	a name bound to a value that is no type names no type

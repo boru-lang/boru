@@ -143,6 +143,27 @@ theorem the_value_none_constrains_nothing :
       | .error _ => false)) = true := by
   native_decide
 
+/-- NUR411, AS THE KERNEL HAS IT — recorded, not the rule. A NAME BOUND
+    TO A TYPE BODY THAT IS NOT A BARE TYPE IS A WILDCARD. Bound to a bare
+    type the name is that type; bound to a union — which constrains when
+    it is written in place — it is `Any` with no pattern; bound to a
+    value that is no type it names nothing. -/
+theorem a_name_bound_to_a_union_constrains_nothing :
+    (let union := Value.disjunct [.typeLit TInteger, .typeLit TString]
+     let r (bound : Value) : Option (TypeId × Bool) :=
+       match FnSpec.resolveSigType (Boru.Corespec.fixtureDefs.push "x" bound) (w "x") with
+       | .ok (t, p) => some (t, p.isSome)
+       | .error _ => none
+     r (.typeLit TInteger) == some (TInteger, false) &&
+     r union == some (TAny, false) &&
+     r (.typedList (.typeLit TInteger) []) == some (TAny, false) &&
+     r (.int 5) == none &&
+     -- written in place, the union is the pattern
+     (match FnSpec.resolveSigType Boru.Corespec.fixtureDefs union with
+      | .ok (t, p) => t == TAny && p.isSome
+      | .error _ => false)) = true := by
+  native_decide
+
 /-! ## What the signatures do -/
 
 /-- A VALUE WRITTEN AS A PARAMETER ADMITS EXACTLY THAT VALUE. -/

@@ -130,6 +130,7 @@ list only by becoming **Resolved** (the record is then deleted) or
 | [NUR408](#nur408) | A parameter or a return declared as the VALUE `none` is no constraint at all: `def f fn [[x:none][Integer][7]]` takes `5` and `"a"`, and `fn [[x:Any][none][x]]` returns anything, where `x:7` takes only `7` and a return `[7]` only `7` | the Lean specification's model of the function-spec reader, against core/go and the shipped words (2026-11-28) |
 | [NUR409](#nur409) | A parameter written WITHOUT a name takes fewer declarations than one written with a name: `[1.5]`, `[(Integer tor String)]`, `[none]`, `[[1 2]]` and a lowercase name bound to a type are each `function spec: invalid parameter` (or `unknown type`), where `x:1.5`, `x:(Integer tor String)`, `x:none`, `x:[1 2]` and `x:t` are read | the Lean specification's model of the function-spec reader, against core/go and the shipped words (2026-11-28) |
 | [NUR410](#nur410) | `?` on a parameter whose type has no base value does nothing, silently: `def f fn [[n?:Any][Any][n]]` is defined without complaint and `f` is `no signature matches`; the same for `Function`, a union, and a literal the base value is not (`n?:7`) | the Lean specification's model of the definition install, against core/go and the shipped words (2026-11-28) |
+| [NUR411](#nur411) | A lowercase name bound to a union or a typed list is accepted as a parameter's or a return's declaration and constrains nothing: with `def u (Integer tor String)`, `fn [[n:Any][u][n]]` returns `true` and `fn [[n:u][Any][n]]` takes it, where the union written in place, and a capitalised `def U`, both refuse it | the Lean specification's model of the function-spec reader, against core/go and the shipped words (2026-11-28) |
 
 Pending records normally use a compact form (rule / divergence /
 evidence / documentation status, plus a proposed verdict where one is
@@ -2055,5 +2056,46 @@ the Lean specification reproduces the skip (`FnSpec.lean`
 is an error where the function is defined ("parameter `n` cannot be
 optional: `Any` has no base value"), so the mark either works or is
 refused.
+
+---
+
+## NUR411 — a lowercase name bound to a union or typed list is a wildcard declaration {#nur411}
+
+**Status:** Pending · **Recorded:** 2026-11-28 · measured through the shipped words · silent (a declared constraint is not enforced)
+
+**Rule:** a declared parameter type selects, and a declared return is
+checked: `def f fn [[n:Any][(Integer tor String)][n]] ; f true` is a
+`type_error`, and so is the same function over `def U (Integer tor
+String)` — "expected U, got Boolean".
+
+**Divergence:** a name that is not a registered type name is looked up on
+the def stack (`core/go/fn_params.go` `LookupDefType`), and what it is
+bound to is turned into a slot by `ResolveDefType`. That function knows
+records, options and bare type nodes; every other type body — a union, a
+typed list, a typed map, a function — falls to its last line,
+`return TAny, nil, nil`. The inline spelling of the same bodies goes
+through `ResolveSigType`, whose comments record this exact degradation
+being closed there ("a silent wildcard that dispatched EVERYTHING").
+
+```
+def f fn [[n:Any][(Integer tor String)][n]] ; f true              → type_error
+def U (Integer tor String) ; def f fn [[n:Any][U][n]] ; f true    → type_error: expected U, got Boolean
+def u (Integer tor String) ; def f fn [[n:Any][u][n]] ; f true    → true
+def u (Integer tor String) ; def f fn [[n:u][Any][n]] ; f true    → true
+def f fn [[n:[:Integer]][Any][n]] ; f ["a"]                       → signature_error
+def u [:Integer] ; def f fn [[n:u][Any][n]] ; f ["a"]             → ['a']
+def u Integer ; def f fn [[n:u][Any][n]] ; f "a"                  → signature_error   (a bare type IS enforced)
+def u 7 ; def f fn [[n:u][Any][n]] ; f 8                          → error at the definition: `u` is no type
+```
+
+`core/spec/divergent.tsv` pins three rows at the kernel's level, through
+a declared return, and the Lean specification reproduces the arm
+(`FnSpec.lean` `boundType`).
+
+**Proposed verdict:** resolve by fix — `ResolveDefType` hands a type body
+it does not itself know to `ResolveSigType`, so a name bound to a union
+means the union. (If a lowercase name is not meant to name a type at
+all, the fix is the error `def u 7` already gets; either way the
+wildcard goes.)
 
 ---

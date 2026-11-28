@@ -92,7 +92,7 @@ them because the kernel had them, and each was recorded in
 the records closed: the model now states the rule, and the rows that pin
 each fix are in `core/spec` under the record's number.
 
-Fourteen more are open, and the model reproduces them until they are ruled
+Fifteen more are open, and the model reproduces them until they are ruled
 on: a `/uv` value is not collected by a waiting word as a `/v` value is
 (NUR390); a word with more than one definition is not equal to itself
 (NUR391); an unmatched `(` is refused at the top level and in a
@@ -114,8 +114,10 @@ names off by count, so a body that unbound its parameter unbinds the
 caller's binding of that name (NUR406); and a frame whose body names no
 binding word records nothing to undo, so what it binds by another route
 outlives the call (NUR384); a parameter written without a name is read by
-a shorter list of forms than a named one (NUR409); and `?` on a parameter
-whose type has no base value adds no signature and says nothing (NUR410).
+a shorter list of forms than a named one (NUR409); `?` on a parameter
+whose type has no base value adds no signature and says nothing (NUR410);
+and a name bound to a union or a typed container, used as a declaration,
+constrains nothing (NUR411).
 Each is marked where it is modelled and where it is pinned. One more is
 stated in the model as the kernel has it but cannot be written in the
 corpus notation: the value `none` in a declaration constrains nothing
