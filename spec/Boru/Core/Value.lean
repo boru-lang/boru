@@ -119,6 +119,17 @@ inductive Value where
   /-- `Word/__IN/__DC` — a call frame's cleanup marker: the parameter
       names to unbind when the frame closes. -/
   | defCleanup (names : List String)
+       /- whether the pending containers the body left are evaluated HERE,
+          in the frame, before anything is unbound (core/go
+          `ResidualEvalsInFrame`) -/
+       (evalResidual : Bool)
+       /- the frame's ENTRY SNAPSHOT: how many bindings every name held
+          once the frame had bound its captures and parameters. Closing
+          the frame unbinds every name down to it — what the body bound
+          for itself ends with the call. `none` in a LEAF frame, whose
+          body names no binding word: nothing is recorded, and nothing
+          is undone -/
+       (snapshot : Option (List (String × Nat)))
   /-- `Word/__RC` — a call frame's return check: the declared return
       types the frame's residual must satisfy. -/
   | returnCheck (returns : List TypeId)
@@ -178,6 +189,19 @@ inductive Impl where
       CLOSURE also carries the bindings it captured where it was built;
       its frame installs them beneath its parameters. -/
   | boru (body : List Value) (captured : List (String × Value))
+         /- an ANONYMOUS function — one built where it is written, with no
+            name of its own (core/go `FnSig.Anonymous`). It differs from a
+            named one in a single thing: how its body's residual is
+            evaluated -/
+         (anonymous : Bool)
+         /- whether a call of it RECORDS the frame's entry state — the
+            baseline a closure is measured against and the snapshot the
+            close goes back to. An INSTALLED function is asked once, when
+            it is made, against the bindings of that moment (`some`); a
+            function value that was never installed is asked at every
+            call (`none`). core/go: `buildFnBodyHandler` against
+            `execFnDefSig` -/
+         (frameState : Option Bool)
   /-- A usurp wrapper (`/u`): re-dispatch `orig` — the function as it was
       bound — with the collected arguments in reverse; `barrier` is the
       barrier of the signature this one wraps. -/
@@ -279,7 +303,7 @@ def typeOf : Value → TypeId
   | dispatchMod _ => "Word/__DM"
   | forward _ _ => "Word/__FW"
   | fn _ _ _ => "Type/Function"
-  | defCleanup _ => "Word/__IN/__DC"
+  | defCleanup _ _ _ => "Word/__IN/__DC"
   | returnCheck _ _ => "Word/__RC"
   | mark _ => "Word/__MK"
   | move _ _ => "Word/__MV"
@@ -292,7 +316,7 @@ def unquote : Value → Value
 
 /-- A marker the step loop reads structurally: it is never an operand. -/
 def isStructural : Value → Bool
-  | forward _ _ | defCleanup _ | returnCheck _ _ | mark _ | move _ _ => true
+  | forward _ _ | defCleanup _ _ _ | returnCheck _ _ | mark _ | move _ _ => true
   | _ => false
 
 /-- A pending container: one the parser wrote that nothing has evaluated. -/

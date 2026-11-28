@@ -597,3 +597,103 @@ run def g fn( m Any Any [ breakq ] ) ; def f fn( n Any Any [ forq 2 [q g i ] arg
 # --- `__pa` in a body, where the other mechanisms are needed to see it --------------
 run def f fn( x Any Any [ __pa afn n [q addq n x ] ] ) ; bothq 0 ( f 10 ) 5	ERROR:signature_error	ERROR:undefined_word	the frame's BASELINE goes with its arguments, so a function built after it captures nothing
 run def g fn( m Any Any [ __pa m ] ) ; def f fn( n Any Any [ g n ] ) ; forq 2 [q f i ]	0 1	ERROR:undefined_word	in a loop's rounds
+
+# --- a body's own definitions END WITH THE CALL -------------------------------------
+# core/go records, as a frame is entered, how many bindings every name holds,
+# and its close unbinds every name down to that. core/ts has no such record:
+# what a body binds stays bound, as in the kernel's leaf frame. The rows from
+# the closure on need a mechanism core/ts does not have as well.
+run def f fn( n Any Any [ def y 3 ; addq y n ] ) ; f 5 y	ERROR:undefined_word	8 3	WHAT A BODY BINDS ENDS WITH THE CALL
+run def y 1 ; def f fn( n Any Any [ def y 3 ; addq y n ] ) ; f 5 y	8 1	8 3	and an outer binding it shadowed is read again
+run def n 1 ; def f fn( n Any Any [ def n 9 ; n ] ) ; f 5 n	9 1	9 5	a local over the parameter: both end, and the caller's `n` is read again
+run def f fn( n Any Any [ def y 3 ; def y 4 ; y ] ) ; f 5 y	ERROR:undefined_word	4 4	every binding of the name the body made
+run def y 1 ; def f fn( n Any Any [ def y 3 ; def y 4 ; y ] ) ; f 5 y	4 1	4 4	down to the depth at entry
+run def f fn( n Any Any [ def g fn( m Any Any [ addq m 1 ] ) ; g n ] ) ; f 5 g 1	ERROR:undefined_word	6 2	a local function ends with the call
+run def f fn( n Any Any [ def f 3 ; f ] ) ; f 5 f 6	3 3	3 3 6	a local over the function's own name: the function is there for the next call
+run def g fn( m Any Any [ def z m ; z ] ) ; def f fn( n Any Any [ g n z ] ) ; f 5	ERROR:undefined_word	ERROR:type_error	a function the body called has closed: its local is gone in the caller
+run def g fn( m Any Any [ addq y m ] ) ; def f fn( n Any Any [ def y 3 ; g n ] ) ; f 5 y	ERROR:undefined_word	8 3	read by the callee while the frame was open, gone after
+run def f fn( n Any Any [ ( def y 3 ; ) y ] ) ; f 5 y	ERROR:undefined_word	3 3	bound in a group in the body
+run def f fn( n Any Any [ def y n ; { a: y } ] ) ; f 5 y	ERROR:undefined_word	{a:5} 5	the residual map was evaluated first, and then the local went
+run def x 1 ; def f fn( n Any Any [ undef x def x 2 ; def x 3 ; n ] ) ; f 5 x	5 2	5 3	unbound once and bound twice: one binding is above the depth at entry, and goes
+run def f fn( n Any Any [ bindq y 3 ; undef z addq y n ] ) ; f 5 y	ERROR:undefined_word	8 3	the leaf rule turns on the WORDS THE BODY NAMES: beside `undef` — of anything — the same binding is the frame's to undo
+run def g fn( m Any Any [ bindq z m ; z ] ) ; def f fn( n Any Any [ def w 1 ; g n ] ) ; f 5 z	ERROR:undefined_word	5 5	what a leaf callee left bound, a caller that records undoes
+run def f fn( _ Any Any [ def y ; y ] ) ; f 5	5	ERROR:signature_error	an unnamed argument bound by the body, from the frame's stack
+run def f fn( _ Any Any [ def y ; y ] ) ; f 5 y	ERROR:undefined_word	ERROR:signature_error	and unbound with the frame
+run def f fn( n Integer Any [ def y n ; ifq [q n ] [q ( addq n -1 ) f/s y addq/s ] [q 0 ] ] ) ; f 3	6	ERROR:undefined_word	RECURSION: each call's local is its own, and is read again when the inner call has closed
+run def f fn( n Any Any [ def y 3 ; afn m [q addq m y ] ] ) ; bothq 0 ( f 5 ) 7	10	ERROR:undefined_word	a closure built in the body CAPTURES the local, and keeps it when the frame has closed
+run def y 1 ; def f fn( n Any Any [ def y 3 ; afn m [q addq m y ] ] ) ; bothq 0 ( f 5 ) 7 y	10 1	ERROR:undefined_word	which is unbound all the same: the outer `y` is read after
+run def f fn( n Any Any [ forq 2 [q def y i ; ] y ] ) ; f 5	1	ERROR:undefined_word	bound in a loop's round in the body: the last round's binding is read after the loop
+run def y 9 ; def f fn( n Any Any [ forq 2 [q def y i ; ] n ] ) ; f 5 y	5 9	ERROR:undefined_word	and ends with the call
+run def f fn( n Any Any [ callq 4 [q def y ] y ] ) ; f 5	4	ERROR:undefined_word	bound in a call region in the body
+run def y 9 ; def f fn( n Any Any [ callq 4 [q def y ] n ] ) ; f 5 y	5 9	ERROR:undefined_word	and ends with the call
+run def y 9 ; def f fn( n Any Any [ eachq [q 1 2 ] [q def y ] ] ) ; f 5 y	[] 9	ERROR:undefined_word	in a driven loop in the body
+run def f fn( n Any Any [ ifq [q true ] [q def y 3 ; ] [q 0 ] y ] ) ; f 5	3	ERROR:undefined_word	in a branch in the body
+run def y 1 ; def f fn( n Any Any [ def y 3 ; breakq ] ) ; forq 2 [q f i ] y	1	ERROR:undefined_word	a BREAK out of the frame undoes what its body bound
+run def y 1 ; def f fn( n Any Any [ def y 3 ; contq ] ) ; forq 2 [q f i ] y	1	ERROR:undefined_word	continue, the same
+run def f fn( n Any Any [ def i 7 ; n ] ) ; forq 2 [q f i i ]	0 0 1 1	ERROR:undefined_word	a local named like the caller's loop index: the index is read again after each call
+
+# --- outside a function nothing is undone ---------------------------------------------
+# A loop's round, a region and a branch are not frames: what one binds is
+# read after it. (core/ts has none of the four.)
+run 1 ; forq 2 [q def y i ; ] y	1 1	ERROR:undefined_word	OUTSIDE a function nothing is undone: a round's binding is read after the loop
+run 1 ; eachq [q 1 2 ] [q def y ] y	1 [] 2	ERROR:undefined_word	a driven region's
+run 1 ; callq 4 [q def y ] y	1 4	ERROR:undefined_word	a call region's
+run 1 ; ifq [q true ] [q def y 3 ; ] [q 0 ] y	1 3	ERROR:undefined_word	a branch's
+
+# --- tail calls through a branch: a function that calls itself last ----------------
+# The chain needs the `if` continuation, which core/ts does not have; the
+# first row needs only the entry snapshot.
+run def y 9 ; def g fn( n Any Any [ y ] ) ; def f fn( n Any Any [ def y 3 ; g n ] ) ; f 5 y	3 9	3 3	the caller's local is read by the inner call, and undone after it
+run def f fn( n Integer Any [ ifq [q n ] [q ( addq n -1 ) f/s ] [q 0 ] ] ) ; f 3	0	ERROR:undefined_word	a function that calls ITSELF last, through a branch: the count runs down
+run def f fn( n Integer Any [ ifq [q n ] [q ( addq n -1 ) f/s ] [q argsq ] ] ) ; f 3	[0]	ERROR:undefined_word	the last call's own arguments
+run def f fn( n Integer Any [ ifq [q n ] [q ( addq n -1 ) f/s ] [q depthq ] ] ) ; 8 9 f 3	8 9 0	ERROR:undefined_word	its own stack, and the caller's beneath
+run def f fn( n Integer Any [ def y n ; ifq [q n ] [q ( addq n -1 ) f/s ] [q y ] ] ) ; f 3	0	ERROR:undefined_word	with a local in every frame
+run def y 9 ; def f fn( n Integer Any [ def y n ; ifq [q n ] [q ( addq n -1 ) f/s ] [q y ] ] ) ; f 3 y	0 9	ERROR:undefined_word	every one of them undone
+run def n 9 ; def f fn( n Integer Any [ ifq [q n ] [q ( addq n -1 ) f/s ] [q n ] ] ) ; f 3 n	0 9	ERROR:undefined_word	and every parameter
+run def f fn( n Integer Integer [ ifq [q n ] [q ( addq n -1 ) f/s ] [q 'x' ] ] ) ; f 3	ERROR:type_error	ERROR:undefined_word	the return is checked at the end of the chain
+run def f fn( n Integer Any [ ifq [q n ] [q ( addq n -1 ) f/s ] [q breakq ] ] ) ; forq 2 [q i f 2 ] 7	7	ERROR:undefined_word	a break from the end of the chain reaches the loop outside it
+run def f fn( n Integer Any [ ifq [q n ] [q ( addq n -1 ) f/s ] [q argsq breakq ] ] ) ; forq 2 [q i f 2 ] argsq	ERROR:fixture_no_args	ERROR:undefined_word	and leaves no arguments behind
+run def ev fn( n Integer Any [ ifq [q n ] [q ( addq n -1 ) od/s ] [q true ] ] ) ; def od fn( n Integer Any [ ifq [q n ] [q ( addq n -1 ) ev/s ] [q false ] ] ) ; ev 4 ev 3	true false	ERROR:undefined_word	TWO functions that call each other last
+run def f fn( n Integer Any [ ifq [q n ] [q ( addq n -1 ) f/s ] [q 0 ] ] ) ; f 300	0	ERROR:undefined_word	three hundred deep
+run def f fn( n Integer Any [ n ifq [q n ] [q ( addq n -1 ) f/s sumq ] [q 0 ] ] ) ; f 4	ERROR:type_error	ERROR:undefined_word	NOT last: each frame adds its own `n` when the inner call returns
+
+# --- NUR407: tail-call elision changes an answer (the SPECIFICATION is the ts column)
+# The only rows in this file where the Lean specification agrees with core/ts
+# and not with core/go. A nested call that unbinds its own parameter reads
+# the caller's binding of the name; core/go has unbound the caller's already.
+# With elision switched off core/go answers as the ts column does, and
+# TestCoreSpecTailCallsUnobservable holds these two rows to exactly that.
+run def g fn( n Any Any [ undef n n ] ) ; def f fn( n Any Any [ g 7 ] ) ; f 5	ERROR:undefined_word	5	NUR407: the inner call unbinds its parameter and reads the CALLER's — which the kernel has already unbound, because the call is the last thing the caller does
+run def n 8 ; def g fn( n Any Any [ undef n n ] ) ; def f fn( n Any Any [ g 7 ] ) ; f 5	8	5	NUR407 with a binding beneath: the kernel reads it, where the caller's 5 is what a nested call reads
+
+# --- the DEFERRED RESIDUAL: an anonymous function's one bare container ---------------
+# The residual rule (core/go `ResidualEvalsInFrame`, NUR153's ruling): a
+# body's pending containers are evaluated in the frame — unless the function
+# is anonymous and its body is ONE bare token. That container leaves the
+# frame as written and is evaluated by what consumes it, where neither the
+# parameter nor a capture is bound. The last two rows are a diagnostic
+# core/ts does not have: the kernel knows the word named `def`.
+run def n 9 ; afn n [q [ n ] ] 5	[9]	ERROR:undefined_word	THE DEFERRED RESIDUAL: an ANONYMOUS function whose body is one bare list leaves it unevaluated, and it is evaluated where the parameter is no longer bound
+run def n 9 ; afn n [q { a: n } ] 5	{a:9}	ERROR:undefined_word	a map
+run def n 9 ; ( afn n [q [ n ] ] 5 )	[9]	ERROR:undefined_word	evaluated by the group that holds the call
+run def n 9 ; [ afn n [q [ n ] ] 5 ]	[[9]]	ERROR:undefined_word	by the list literal
+run def n 9 ; afn n [q p( n ) ] 5	5	ERROR:undefined_word	a paren expression is a COMPUTATION: evaluated in the frame
+run def n 9 ; afn n [q ( [ n ] ) ] 5	[5]	ERROR:undefined_word	and so is a body of more than one token
+run def n 9 ; afn n [q [ n ] ; ] 5	[5]	ERROR:undefined_word	a statement end is a second token
+run def n 9 ; afn n [q [q n ] ] 5	[n]	ERROR:undefined_word	a quoted list is nobody's to evaluate
+run def n 9 ; def f fn( x Any Any [ afn n [q [ addq n x ] ] ] ) ; bothq 0 ( f 10 ) 5	ERROR:signature_error	ERROR:undefined_word	a CAPTURE is no more bound than the parameter when the list is evaluated
+run 1 ; def ( ) 3	ERROR:def_error	ERROR:no_value_error	a void argument of the word named `def` is reported under that word's own code
+run def f fn( n Any Any [ def y ( ) ; n ] ) ; f 5	ERROR:def_error	ERROR:no_value_error	in a body
+
+# --- an ALIAS of a binding word is one, to a function asked at the call ---------------
+# core/go `fnValueIsBindingWord`: a body word bound to the function of `def`,
+# `undef`, `afn` or another of the kernel's list makes the frame record its
+# entry state, as the word itself would. An `afn`-built function is a value,
+# never installed, so it is asked at every call — against the bindings of
+# that moment, and before the frame binds its own parameter.
+run def y 1 ; 0 def mydef def/v ; afn n [q mydef y 3 ; y ] 5 y	0 3 1	ERROR:undefined_word	AN ALIAS OF A BINDING WORD IS ONE: a function value is asked at the call whether its frame records, and the name is bound to `def`'s function by then
+run def y 1 ; 0 def d2 def/v ; def d3 d2/v ; afn n [q d3 y 3 ; y ] 5 y	0 3 1	ERROR:undefined_word	an alias of an alias: the same function, under whatever name
+run def y 1 ; 0 def myun undef/v ; afn n [q bindq y 3 ; myun z n ] 5 y	0 5 1	ERROR:undefined_word	an alias of `undef` makes the frame record, as `undef` does
+run def y 1 ; 0 def n def/v ; afn n [q bindq y 3 ; n ] 5 y	0 5 1	ERROR:undefined_word	asked BEFORE the frame binds its parameter: the parameter's name still means the alias
+run def y 1 ; 0 def mybind bindq/v ; afn n [q mybind y 3 ; n ] 5 y	0 5 3	ERROR:undefined_word	an alias of a word that is NOT a binding word is not one
+run 0 def mk afn/v ; bothq 0 ( afn x [q mk n [q addq n x ] ] 10 ) 5	0 15	ERROR:undefined_word	an alias of `afn` in a function value's body: the frame keeps a baseline, and the function it builds captures

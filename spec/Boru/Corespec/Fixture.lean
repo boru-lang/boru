@@ -39,6 +39,11 @@ def fixtureDefs : Defs :=
     word "__pa" [] [] 0,
     -- `/q` over an Atom slot: the written word is captured as a name
     word "undef" [p "n" TAtom (quote := true)] [] 1,
+    -- binds a name AT RUN TIME, so a function's body can make a
+    -- definition of its own; and the same binding under a name the frame
+    -- analysis does not know as a binding word
+    word "def" [p "n" TAtom (quote := true), p "v" TAny] [] 2,
+    word "bindq" [p "n" TAtom (quote := true), p "v" TAny] [] 2,
     -- `/q` over an Any slot: the raw word already fills the slot
     word "qanyq" [p "n" TAny (quote := true)] [TAny] 1,
     word "bothq" [p "a" TAny, p "b" TAny] [TAny] 2,
@@ -123,6 +128,14 @@ def fixtureNatives : Natives :=
       match a.getD 0 .none with
       | .atom n => pure ([], d.pop n)
       | _ => throw { code := "type_error", detail := "undef: not an atom" }),
+    ("def", .plain fun a d =>
+      match a.getD 0 .none with
+      | .atom n => pure ([], d.push n (a.getD 1 .none))
+      | _ => throw { code := "type_error", detail := "def: not an atom" }),
+    ("bindq", .plain fun a d =>
+      match a.getD 0 .none with
+      | .atom n => pure ([], d.push n (a.getD 1 .none))
+      | _ => throw { code := "type_error", detail := "bindq: not an atom" }),
     ("qanyq", .plain fun a d => pure ([a.getD 0 .none], d)),
     ("bothq", .plain fun a d => pure ([a.getD 1 .none], d)),
     ("tyq", .plain fun a d => pure ([a.getD 0 .none], d)),
@@ -185,7 +198,7 @@ def fixtureNatives : Natives :=
         -- enclosing frame has bound
         let (ident, d) := d.freshIdent
         let sig := Sig.mk [.mk name TAny none false false] [TAny] 1
-          (.boru body (computeCaptures d [name] body)) false
+          (.boru body (computeCaptures d [name] body) true none) false
         pure ([.fn "" [sig] ident], d)
       | _ => throw { code := "type_error", detail := "afn: the parameter is a name" }),
     ("depthq", .fullStack fun _ stack => pure (stack ++ [.int stack.length]))

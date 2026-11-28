@@ -593,6 +593,47 @@ func coreSpecRegistry(t *testing.T) *Registry {
 		}),
 		BarrierPos: 1,
 	})
+	// def binds a name AT RUN TIME — `def name value` — which is what a
+	// function's body needs to make a definition of its OWN: the leading
+	// `def NAME item ;` clauses of a row bind before the program starts, so
+	// they can never be inside a frame. The mechanism is core's
+	// (DefTable.Push, and the frame's truncation of what its body pushed);
+	// the word is basic's, and it carries basic's NAME on purpose, as afn
+	// and undef do: the kernel's frame analysis decides by name whether a
+	// body can bind (frameStateWords), and a body that cannot gets a frame
+	// with no snapshot to truncate to.
+	r.Register("def", Signature{
+		Params:  []FnParam{{Name: "n", Type: TAtom, Quote: true}, {Name: "v", Type: TAny}},
+		Returns: []*Type{},
+		Impl: Go(func(a []Value, _ map[string]Value, _ []Value, reg *Registry) ([]Value, error) {
+			n, err := AsAtom(a[0])
+			if err != nil {
+				return nil, err
+			}
+			reg.Defs.Push(n, a[1])
+			return nil, nil
+		}),
+		BarrierPos: 2,
+	})
+	// bindq is def under a name the frame analysis does NOT know. A body
+	// that names no binding word is a LEAF — its frame takes no snapshot —
+	// so what bindq binds there is not the frame's to truncate, and stays
+	// bound after the call. It stands for every word that binds from the
+	// host without being on the kernel's list (lang's `unpack` is the
+	// shipped one; NUR384).
+	r.Register("bindq", Signature{
+		Params:  []FnParam{{Name: "n", Type: TAtom, Quote: true}, {Name: "v", Type: TAny}},
+		Returns: []*Type{},
+		Impl: Go(func(a []Value, _ map[string]Value, _ []Value, reg *Registry) ([]Value, error) {
+			n, err := AsAtom(a[0])
+			if err != nil {
+				return nil, err
+			}
+			reg.Defs.Push(n, a[1])
+			return nil, nil
+		}),
+		BarrierPos: 2,
+	})
 	// afn is the door onto CLOSURES: it builds an anonymous one-parameter
 	// function AT RUN TIME — `afn n [q body… ]` — so the kernel's capture
 	// analysis runs where a function is constructed (ComputeCaptures,
@@ -1147,6 +1188,83 @@ func TestCoreSpecDivergent(t *testing.T) {
 		}
 	}
 	t.Logf("core/spec divergent: %d rows", len(rows))
+}
+
+// TestCoreSpecTailCallsUnobservable holds the kernel's tail-call elision to
+// its contract: it changes what a deep chain of calls COSTS, never what a
+// program answers. Every corpus row is evaluated a second time with elision
+// switched off (Registry.TCO.Disable, the diagnostic switch) and must give
+// the answer the row records — the answer of plain nesting, which is also
+// what the Lean specification computes: its machine nests every call and
+// has no elision to get wrong.
+//
+// The second assertion keeps the first from going vacuous: the corpus must
+// actually reach both forms of elision — the full replacement of a clean
+// frame and the shell variant that keeps the caller's parens and return
+// check — or the comparison is between two runs that nested alike.
+//
+// NUR407 is where the contract does not hold today: a callee that unbinds
+// its own parameter reads the caller's binding of that name under nesting,
+// and the caller's is already gone under elision. The ledger pins those
+// rows with the nested answer in its ts column (core/ts only nests), and
+// this test holds them to exactly that — elided, the go column; nested,
+// the ts column — and to their number, so the fix has to take them out.
+const coreSpecNUR407Rows = 2
+
+func TestCoreSpecTailCallsUnobservable(t *testing.T) {
+	entries, err := os.ReadDir(coreSpecDir)
+	if err != nil {
+		t.Fatalf("read %s: %v", coreSpecDir, err)
+	}
+	var detected, elided, replaced int64
+	total, observable := 0, 0
+	for _, e := range entries {
+		if !strings.HasSuffix(e.Name(), ".tsv") {
+			continue
+		}
+		ledger := e.Name() == coreSpecDivergentFile
+		// parseCoreSpec puts column 2 in expected: the contract in a shared
+		// file, the go column in the ledger — where column 3, its note
+		// field, is the ts column.
+		for _, row := range parseCoreSpec(t, filepath.Join(coreSpecDir, e.Name())) {
+			total++
+			on := coreSpecRegistry(t)
+			if got := evalCoreSpec(t, on, row.expr); got != row.expected {
+				// TestCoreSpec and TestCoreSpecDivergent report this row;
+				// here it would only be noise
+				continue
+			}
+			detected += on.TCO.Detected
+			elided += on.TCO.Elided
+			replaced += on.TCO.Replaced
+			off := coreSpecRegistry(t)
+			off.TCO.Disable = true
+			if got := evalCoreSpec(t, off, row.expr); got != row.expected {
+				if ledger && got == row.note {
+					// NUR407: nested, the row answers as its ts column
+					observable++
+				} else {
+					t.Errorf("%s:%d  %s\n  with elision    %s\n  without elision %s",
+						row.file, row.line, row.expr, row.expected, got)
+				}
+			}
+			if off.TCO.Elided+off.TCO.Replaced != 0 {
+				t.Errorf("%s:%d  %s: elision ran with the switch off", row.file, row.line, row.expr)
+			}
+		}
+	}
+	if total == 0 {
+		t.Fatal("core/spec produced no rows — the corpus is not being read")
+	}
+	if observable != coreSpecNUR407Rows {
+		t.Errorf("elision changes the answer of %d ledger rows, want %d (NUR407): a row it no longer changes leaves %s, and a new one is a new defect",
+			observable, coreSpecNUR407Rows, coreSpecDivergentFile)
+	}
+	if elided == 0 || replaced == 0 {
+		t.Errorf("the corpus no longer reaches both forms of elision (shell %d, full replacement %d, of %d tail calls detected): the comparison above proves nothing",
+			elided, replaced, detected)
+	}
+	t.Logf("core/spec: %d rows; %d tail calls detected, %d elided to a shell, %d replaced", total, detected, elided, replaced)
 }
 
 // ptrTypeLit is the addressable type literal FnParam.Pattern wants.

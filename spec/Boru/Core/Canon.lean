@@ -82,7 +82,7 @@ def canon : Value → String
   | .disjunct alts => " tor ".intercalate (canonAlts alts)
   | .fn _ sigs _ => "fn [" ++ " ".intercalate (canonSigs sigs) ++ "]"
   | .forward info _ => "__FW(" ++ info.funcName ++ ")"
-  | .defCleanup _ => "__DC"
+  | .defCleanup _ _ _ => "__DC"
   | .returnCheck _ _ => "__RC"
   | .mark _ => "__MK"
   | .move _ _ => "__MV"
@@ -148,7 +148,7 @@ def canonParams : List Param → List String
 def canonImpl : Impl → List String
   | .native _ => []
   | .usurp _ _ => []
-  | .boru body _ => canonSeq body
+  | .boru body _ _ _ => canonSeq body
 
 end
 

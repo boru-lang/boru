@@ -138,7 +138,7 @@ theorem a_signal_passes_through :
 theorem an_escaped_frame_is_closed :
     ([Step.break, Step.continue].all fun s => [Value.int 50, .str "a", .bool true].all fun v =>
       let f : Value := .fn "f" [.mk [.mk "n" TAny none false false] [TAny] 1
-        (.boru [w "n", if s == .break then w "breakq" else w "contq"] []) false] 9001
+        (.boru [w "n", if s == .break then w "breakq" else w "contq"] [] false none) false] 9001
       let defs := (Boru.Corespec.fixtureDefs.push "n" v).push "f" f
       outWith defs (forq 2 [w "f", w "i"] ++ [w "n"]) == canon v) = true := by
   native_decide

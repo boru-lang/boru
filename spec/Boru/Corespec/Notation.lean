@@ -151,7 +151,9 @@ partial def item : List String → Except String (Value × List String)
       | .list elems _, ")" :: rest =>
         -- a function written here is ONE function: its identity is the
         -- place it was written
-        pure (.fn "__corespec_fn" [.mk ps [rt] ps.length (.boru elems []) false]
+        -- its frame-state question is answered when the row is read
+        -- (`install`, below): the item itself does not know the bindings
+        pure (.fn "__corespec_fn" [.mk ps [rt] ps.length (.boru elems [] false none) false]
                 (1000 + rest.length), rest)
       | _, _ => throw "fn( body must be a list closed by )"
     | none => throw "fn( types must be corpus-known type names"
@@ -187,12 +189,36 @@ partial def assemble (toks : List String) : Except String (List Value) :=
     let vs ← assemble rest
     pure (v :: vs)
 
+mutual
+/-- INSTALL the functions a row writes with `fn(`. Such a function is made
+    — as the kernel's `InstallFnDef` makes it — when the row is read,
+    before the program runs, and is asked THEN whether its frames record
+    their entry state: against the bindings the row has made so far, and
+    none the program will make. Every `fn(` in the item is installed,
+    whatever holds it. -/
+partial def install (defs : Defs) : Value → Value
+  | .fn name sigs ident => .fn name (sigs.map (installSig defs)) ident
+  | .list elems ev => .list (elems.map (install defs)) ev
+  | .quoted v => .quoted (install defs v)
+  | .map entries ev => .map (entries.map fun (k, v) => (k, install defs v)) ev
+  | .parenExpr items => .parenExpr (items.map (install defs))
+  | .disjunct alts => .disjunct (alts.map (install defs))
+  | .typedList child elems => .typedList (install defs child) (elems.map (install defs))
+  | .typedMap child entries => .typedMap (install defs child) (entries.map fun (k, v) => (k, install defs v))
+  | v => v
+partial def installSig (defs : Defs) : Sig → Sig
+  | .mk ps rs b (.boru body captured anonymous none) full =>
+    let body := body.map (install defs)
+    .mk ps rs b (.boru body captured anonymous (some (bodyNeedsFrameState defs body))) full
+  | s => s
+end
+
 /-- Leading `def NAME <item> ;` clauses bind names before the program. -/
 partial def defClauses (defs : Defs) : List String → Except String (Defs × List String)
   | "def" :: name :: rest => do
     let (v, rest) ← item rest
     match rest with
-    | ";" :: rest => defClauses (defs.push name v) rest
+    | ";" :: rest => defClauses (defs.push name (install defs v)) rest
     | _ => throw s!"def clause for {name} must end with ';'"
   | toks => pure (defs, toks)
 
@@ -243,7 +269,8 @@ def eval (expr : String) : Except String String :=
   | "run" => do
     let (defs, toks) ← defClauses fixtureDefs (fields arg)
     let program ← assemble toks
-    pure (renderResult (run fixtureNatives defs program))
+    -- the program's own `fn(` functions are made before it runs too
+    pure (renderResult (run fixtureNatives defs (program.map (install defs))))
   | k => throw s!"unknown expression kind {k}"
 
 end Boru.Corespec

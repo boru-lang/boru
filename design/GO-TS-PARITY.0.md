@@ -440,6 +440,24 @@ Three things from it are worth carrying even if the tables are never read:
   argument, so a list argument read back through the list is
   `(quote [1 2])` and `[1 2]` (two rows; `eng/ts`'s `args` fixture reads
   the same list). The `argsq` fixture is in all three runners.
+- **A body's own definitions do not end with the call** (2026-11-27).
+  core/go records, as a frame is entered, how many bindings every name
+  holds, and the frame's close unbinds every name down to that
+  (`truncateFrameDefs`); core/ts has no such record, so
+  `def f fn( n Any Any [ def y 3 ; addq y n ] ) ; f 5 y` is
+  `undefined_word` in Go and `8 3` here — and an outer `y` the body
+  shadowed stays shadowed (28 rows in `core/spec/divergent.tsv`). It is the
+  kernel's LEAF frame everywhere (NUR384), which is why the rows that pin
+  the leaf rule are ones the three runners share. The fixtures `def` and
+  `bindq` are in all three runners. Two rows beside them are a diagnostic:
+  core/go reports a void argument of the word named `def` as `def_error`,
+  core/ts as the general `no_value_error`.
+- **Where core/ts is right and core/go is not** (2026-11-27): NUR407. A
+  callee that unbinds its own parameter reads the caller's binding of the
+  name; core/go, having closed the caller's frame first because the call
+  was its last act, reads what was beneath that. core/ts only nests, and
+  gives the nested answer — which is the Lean specification's. Two ledger
+  rows; they leave with the kernel fix.
 - NUR059: canon still renders sugar tags, `/r` and `/N` word modifiers,
   and paren groups in debug spelling. Both engines agree, so it is render
   quality rather than parity — pinned by corpus rows so a one-sided fix

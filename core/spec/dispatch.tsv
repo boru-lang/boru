@@ -1177,3 +1177,113 @@ run def f fn( n Any Any [ __pa ] ) ; f 5	ERROR:type_error	it answers nothing
 run def g fn( m Any Any [ __pa m ] ) ; def f fn( n Any Any [ g 9 argsq ] ) ; f 5	ERROR:fixture_no_args	the frame's own close pops AGAIN: the outer call's arguments go with the inner's
 run def g fn( m Any Any [ __pa m ] ) ; def f fn( n Any Any [ g 9 ] ) ; f 5 f 6	9 9	and the calls after are whole
 run def f fn( n Any Any [ __pa __pa n ] ) ; f 5 ; argsq	ERROR:fixture_no_args	twice
+
+# --- `def`: a name bound while the program runs --------------------------------
+# A row's LEADING `def NAME item ;` clauses bind before the program starts,
+# and bind the item as written. `def` after anything else is the WORD: it
+# collects a name and a value — evaluated, as any argument is — and binds
+# them when it is stepped.
+run 1 ; def y 3 ; y	1 3	a name bound while the program runs
+run 1 ; def y 3 ; def y 4 ; y undef y y	1 4 3	bindings of one name stack: the newest is read, and unbinding it shows the one beneath
+run 7 def y ; y	7	the value from the stack
+run 1 ; def y		and taken from it
+run 1 ; def y 3 4 y	1 4 3	the name and one value, no more
+run 1 ; def 5 3	ERROR:signature_error	a name is wanted, not a value
+run 1 ; ( def y 3 ; ) y	1 3	a group is no scope: what it binds stays bound
+run 1 ; def y [ addq 1 2 ] ; y	1 [3]	the value is evaluated before it is bound
+run 1 ; def y [q addq 1 2 ] ; y	1 [addq 1 2]	a quoted list is bound as it is
+run 1 ; def g fn( m Any Any [ addq m 1 ] ) ; g 5	1 6	a function bound at run time is called by its name
+run 1 ; def y 3 ; def f fn( n Any Any [ addq y n ] ) ; f 5	1 8	a function reads what is bound when it RUNS
+
+# --- a BODY's own definitions --------------------------------------------------
+# What a body binds it reads, a function it calls reads, and a container it
+# leaves is evaluated while it is still bound. (That it ENDS with the call
+# is what core/ts does not do — it has no entry snapshot to go back to — so
+# every row that reads the name afterwards is in `divergent.tsv`.)
+run def f fn( n Any Any [ def y 3 ; addq y n ] ) ; f 5	8	a body binds a name of its own and reads it
+run def f fn( n Any Any [ def y 3 ; def y 4 ; y ] ) ; f 5	4	twice: the newest
+run def f fn( n Any Any [ def n 9 ; n ] ) ; f 5	9	over its own parameter
+run def f fn( n Any Any [ def f 3 ; f ] ) ; f 5	3	over its own name
+run def f fn( n Any Any [ ( def y 3 ; ) y ] ) ; f 5	3	in a group in the body
+run def f fn( n Any Any [ def y n ; { a: y } ] ) ; f 5	{a:5}	a map the body leaves is evaluated IN the frame, while the local is bound
+run def f fn( n Any Any [ def y n ; [ y ] ] ) ; f 5	[5]	a list
+run def f fn( n Any Any [ def y n ; p( y ) ] ) ; f 5	5	a paren expression
+run def f fn( n Any Any [ def y [ addq n 1 ] ; y ] ) ; f 5	[6]	a list bound and read back
+run def f fn( n Any Any [ def g fn( m Any Any [ addq m 1 ] ) ; g n ] ) ; f 5	6	a local function
+run def g fn( m Any Any [ y ] ) ; def f fn( n Any Any [ def y 3 ; g n ] ) ; f 5	3	a function the body CALLS reads the caller's local: the frame is still open
+run def f fn( n Any Any [ def n 3 ; ] ) ; f 5	ERROR:type_error	a body that only binds returns nothing
+run def f fn( n Any Any [ def y 3 ; boomq 1 ] ) ; f 5	ERROR:fixture_boom	an error after the binding
+run def f fn( n Any Any [ def/s ] ) ; 3 f 5	ERROR:signature_error	the frame's stack is its own: no name on it
+
+# --- unbinding in a body: the close undoes nothing below the depth at entry -----
+# The frame's close unbinds every name DOWN to the depth it had when the
+# body began, and then takes one binding of each of the frame's own names.
+# It never binds: a name the body unbound stays unbound, and a parameter
+# the body unbound costs the CALLER a binding (NUR406, as the kernel has it).
+run def x 1 ; def f fn( n Any Any [ undef x n ] ) ; f 5 x	ERROR:undefined_word	a body that UNBINDS an outer name: it stays unbound
+run def x 1 ; def f fn( n Any Any [ undef x def x 2 ; n ] ) ; f 5 x	5 2	unbound and bound again in the body: the frame's depth is what it was, and the new binding stays
+run def x 1 ; def x 2 ; def f fn( n Any Any [ undef x undef x def x 7 ; n ] ) ; f 5 x	5 7	two unbound and one bound: below the depth at entry, nothing is undone
+run def n 1 ; def f fn( n Any Any [ undef n 7 ] ) ; f 5 n	ERROR:undefined_word	NUR406: the body unbinds its own PARAMETER, and the frame's close unbinds the caller's `n` in its place
+run def n 1 ; def f fn( n Any Any [ undef n n ] ) ; f 5 n	ERROR:undefined_word	NUR406: inside, the caller's `n` is read; after, it is gone
+run def n 1 ; def n 2 ; def f fn( n Any Any [ undef n undef n n ] ) ; f 5 n	ERROR:undefined_word	NUR406 twice over: three bindings gone for one parameter
+run def n 1 ; def f fn( n Any Any [ undef n def n 9 ; n ] ) ; f 5 n	9 1	unbound and bound again: one binding for the close to take, and the caller's is left
+run def x 1 ; def f fn( n Any Any [ def x 2 ; undef x undef x n ] ) ; f 5 x	ERROR:undefined_word	bound once and unbound twice: the outer binding is gone, and the close has nothing to undo
+
+# --- a LEAF frame records nothing (NUR384's rule, as the kernel has it) ----------
+# Whether a frame records the depth at entry is decided by the WORDS ITS BODY
+# NAMES: `def`, `undef`, `afn` and the rest of the kernel's list. `bindq`
+# binds exactly as `def` does and is not on it, so a body that binds only
+# through it has a frame with nothing to go back to.
+run def f fn( n Any Any [ bindq y 3 ; addq y n ] ) ; f 5 y	8 3	NUR384's rule: a body that names no binding word has a frame with nothing recorded, and what it binds stays bound
+run def y 1 ; def f fn( n Any Any [ bindq y 3 ; addq y n ] ) ; f 5 y	8 3	over an outer binding, which stays shadowed
+run def f fn( n Any Any [ bindq n 9 ; n ] ) ; f 5 n	9 5	over its own parameter: the close takes ONE binding of the name, and the parameter outlives the call
+run def n 1 ; def f fn( n Any Any [ bindq n 9 ; n ] ) ; f 5 n	9 5	with the caller's `n` beneath both
+run def g fn( m Any Any [ bindq z m ; z ] ) ; def f fn( n Any Any [ g n ] ) ; f 5 z	5 5	through two leaf frames
+
+# --- TAIL CALLS: a call that is the last thing a body does ----------------------
+# core/go does not nest such a call: it closes the caller's frame FIRST and
+# lets the inner call's frame take its place, so a long chain costs no tape.
+# That is the kernel's economy and not the language's meaning: every row here
+# answers what the nested call answers — both frames' return checks, the
+# arguments, the locals, the stack — and core/ts, which only nests, agrees.
+# (The one place the economy shows is NUR407, in `divergent.tsv`.)
+run def g fn( n Any Any [ n ] ) ; def f fn( n Any Any [ g n ] ) ; f 5	5	a call that is the LAST thing a body does: the answer is the inner call's
+run def g fn( n Any Any [ addq n 1 ] ) ; def f fn( n Any Any [ g ( addq n 10 ) ] ) ; f 5	16	its argument is computed in the caller's frame
+run def n 9 ; def g fn( n Any Any [ addq n 1 ] ) ; def f fn( n Any Any [ g n ] ) ; f 5 n	6 9	both frames' parameters are unbound after, and the outer `n` is read
+run def g fn( m Any Any [ addq m 1 ] ) ; def f fn( n Any Any [ g n ] ) ; f 5	6	under other parameter names
+run def g fn( n Any Integer [ n ] ) ; def f fn( n Any String [ g n ] ) ; f 5	ERROR:type_error	THE CALLER'S RETURN IS STILL CHECKED: the inner call's Integer is not the String the outer one declares
+run def g fn( n Any Any [ n ] ) ; def f fn( n Any Integer [ g n ] ) ; f 'x'	ERROR:type_error	whatever the inner one declares
+run def g fn( n Any Integer [ n ] ) ; def f fn( n Any Any [ g n ] ) ; f 'x'	ERROR:type_error	and the inner one's own check
+run def g fn( n Any Any [ n n ] ) ; def f fn( n Any Any [ g n ] ) ; f 5	ERROR:type_error	the inner call's count
+run def g fn( n Any Any [ argsq ] ) ; def f fn( n Any Any [ g ( addq n 1 ) ] ) ; f 5	[6]	the inner call has its own args list
+run def g fn( n Any Any [ n ] ) ; def f fn( n Any Any [ g n ] ) ; f 5 argsq	ERROR:fixture_no_args	and none is left behind
+run def g fn( n Any Any [ depthq ] ) ; def f fn( n Any Any [ g n ] ) ; 8 9 f 5	8 9 0	the inner frame's stack is its own
+run def g fn( n Any Any [ boomq 1 ] ) ; def f fn( n Any Any [ g n ] ) ; f 5	ERROR:fixture_boom	an error in the inner call
+run def h fn( n Any Any [ addq n 100 ] ) ; def g fn( n Any Any [ h ( addq n 10 ) ] ) ; def f fn( n Any Any [ g ( addq n 1 ) ] ) ; f 5	116	three deep
+run def g fn( n Any Any [ addq n 1 ] ) ; def f fn( n Any Any [ g n ] ) ; f ( f 5 )	7	a chain of chains
+run def g fn( n Any Any [ n ] ) ; def f fn( n Any Any [ g n ; ] ) ; f 5	5	a statement end after it
+run def g fn( n Any Any [ n ] ) ; def f fn( n Any Any [ ( g n ) ] ) ; f 5	5	in a group
+run def g fn( n Any Any [ n ] ) ; def f fn( n Any Any [ 7 g n ] ) ; f 5	ERROR:type_error	a value beneath the call is one too many, as it would be nested
+run def g fn( n Any Any [ n ] ) ; def f fn( _ Any n Any Any [ g n ] ) ; f 1 5	5	an unnamed argument beneath the call is dropped beneath its answer, as it would be nested
+run def g fn( n Any Any [ y ] ) ; def f fn( n Any Any [ def y 3 ; g n ] ) ; f 5	3	a LOCAL of the caller is still bound while the inner call runs
+run def g fn( n Any Any [ n ] ) ; def f fn( n Any Any [ n g/s ] ) ; f 5	5	the argument from the caller's frame stack
+run def n 8 ; def g fn( n Any Any [ undef n n ] ) ; def f fn( n Any Any [ ( g 7 ) negq/s ] ) ; f 5	-5	the same call NOT last in the caller reads the caller's parameter (NUR407 is the case where it is last)
+
+# --- what a body LEAVES is evaluated in its frame; a void argument ----------------
+# A list or map a named function's body leaves is evaluated before the frame
+# closes, so it reads the parameters. (An ANONYMOUS function whose body is
+# one bare container is the exception — the deferred residual, in
+# `divergent.tsv` with the closures it needs.)
+run def n 9 ; def f fn( n Any Any [ [ n ] ] ) ; f 5	[5]	a NAMED function's body of one bare list: the list is evaluated in the frame, where the parameter is bound
+run def n 9 ; def f fn( n Any Any [ { a: n } ] ) ; f 5	{a:5}	a map
+run 1 ; def y ( )		a group that leaves nothing is no argument: the value is taken from the stack
+run 1 ; undef ( )	ERROR:no_value_error	and where there is none to take, the word has no value to work on
+
+# --- a name bound to a binding word's function -----------------------------------
+# `def mydef def/v` binds the FUNCTION, and the name then calls as the word
+# does. Whether a frame records its entry state is asked of the bindings: an
+# INSTALLED function — a `fn(` of the row — was asked when it was made, before
+# any alias the program binds. (A function VALUE is asked at each call, and
+# finds the alias: `divergent.tsv`, with the `afn` it needs.)
+run 0 def mydef def/v ; mydef y 3 ; y	0 3	a name bound to a word's FUNCTION calls as the word does
+run def y 1 ; 0 def mydef def/v ; def f fn( n Any Any [ mydef y 3 ; y ] ) ; f 5 y	0 3 3	AN INSTALLED FUNCTION WAS ASKED WHEN IT WAS MADE — before the program ran, and before the alias was bound: its frame records nothing

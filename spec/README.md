@@ -91,7 +91,7 @@ them because the kernel had them, and each was recorded in
 the records closed: the model now states the rule, and the rows that pin
 each fix are in `core/spec` under the record's number.
 
-Ten more are open, and the model reproduces them until they are ruled
+Twelve more are open, and the model reproduces them until they are ruled
 on: a `/uv` value is not collected by a waiting word as a `/v` value is
 (NUR390); a word with more than one definition is not equal to itself
 (NUR391); an unmatched `(` is refused at the top level and in a
@@ -108,8 +108,19 @@ Integer range, so an exhausted range starts over from the other end
 beneath its returns are counted, not identified, so a value its body
 computed is dropped in a consumed argument's place (NUR404); and the
 retired frame-pop word `__pa`, still registered, pops a frame's state a
-second time when a body calls it (NUR405). Each is marked where it is
-modelled and where it is pinned.
+second time when a body calls it (NUR405); a frame's close takes its own
+names off by count, so a body that unbound its parameter unbinds the
+caller's binding of that name (NUR406); and a frame whose body names no
+binding word records nothing to undo, so what it binds by another route
+outlives the call (NUR384). Each is marked where it is modelled and where
+it is pinned.
+
+One the model deliberately does NOT reproduce, though it is a rule it
+could state: tail-call elision changes the answer of a callee that unbinds
+its own parameter (NUR407). The kernel's own contract is that elision
+never shows, and the specification is that contract — its machine nests
+every call. The two ledger rows that pin it are the only ones where the
+specification sides with `core/ts`.
 
 Two the model never had, and found by disagreeing with the kernel. A
 loop's inert inputs — and a call frame's unnamed arguments — were stepped

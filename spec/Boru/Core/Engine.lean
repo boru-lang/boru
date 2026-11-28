@@ -170,7 +170,7 @@ def pendingCollecting (tape : List Value) (defs : Defs) (ptr : Nat) : Bool :=
 
 /-- A token no forward scan walks past. -/
 def scanBoundary : Value → Bool
-  | .forward _ _ | .defCleanup _ | .returnCheck _ _ | .endMark | .closeParen
+  | .forward _ _ | .defCleanup _ _ _ | .returnCheck _ _ | .endMark | .closeParen
   | .mark _ | .move _ _ => true
   | _ => false
 
@@ -247,7 +247,7 @@ def commitBarrierForward (e : Engine) : Option Engine :=
 def answersItself (sigs : List Sig) (w : WordInfo) : Bool :=
   w.argCount.isNone && sigs.any fun s =>
     match s.impl with
-    | .boru (_ :: _) _ => true
+    | .boru (_ :: _) _ _ _ => true
     | _ => false
 
 /-- ARITY WIDENING (core/go `fnValueWouldWiden`). A function VALUE whose
@@ -303,9 +303,15 @@ def resolveInert : Value → Value
   | .disjunct alts => resolveWordsDeep (.disjunct alts)
   | v => v
 
-/-- A frame's cleanup: unbind its names, newest first, and drop the
-    baseline it was entered with. -/
-def popNames (defs : Defs) (names : List String) : Defs :=
+/-- A FRAME'S CLEANUP (core/go `stepDefCleanup`). What the body bound for
+    itself goes first: every name is unbound down to the frame's entry
+    snapshot — in a frame that took one. Then the args list and the
+    baseline the frame was entered with, and last the frame's own names,
+    newest first: ONE binding of each, whatever the body did to them. -/
+def popNames (defs : Defs) (names : List String) (snapshot : Option (List (String × Nat))) : Defs :=
+  let defs := match snapshot with
+    | some snap => defs.truncateTo snap
+    | none => defs
   (names.reverse.foldl Defs.pop defs).popArgs.popBaseline
 
 /-- Close the call frames a discarded stretch of tape leaves open: each
@@ -313,7 +319,7 @@ def popNames (defs : Defs) (names : List String) : Defs :=
     innermost first, as its own tail would have (core/go/fn_frame.go
     `unwindLiveFrames`). -/
 def unwindFrames (defs : Defs) (ahead : List Value) : Defs :=
-  ahead.foldl (fun d v => match v with | .defCleanup names => popNames d names | _ => d) defs
+  ahead.foldl (fun d v => match v with | .defCleanup names _ snap => popNames d names snap | _ => d) defs
 
 /-- RESOLVE A FLOW SIGNAL ON THIS TAPE (core/go/engine.go
     `handleLoopBreak`, `handleLoopContinue`). The loop that takes it is
@@ -391,10 +397,33 @@ def frameStateWords : List String :=
   ["def", "undef", "fn", "afn", "do", "call", "eval", "var", "word", "module", "import", "export",
    "usurp", "behave"]
 
-/-- A body that names none of them is a LEAF: its frame is entered with
-    no baseline (`bodyNeedsFrameState`). -/
-def bodyNeedsFrameState (body : List Value) : Bool :=
-  (bodyWordsList body).any frameStateWords.contains
+/-- A COMPUTING body (core/go `BodyEvalsResidual`): more than one token,
+    or one paren expression. A body of one bare token is not one. -/
+def bodyEvalsResidual (body : List Value) : Bool :=
+  body.length > 1 || (match body with | [.parenExpr _] => true | _ => false)
+
+/-- A name STANDS FOR a binding word when it is bound to that word's own
+    function (core/go `fnValueIsBindingWord`): `def mydef def/v` makes
+    `mydef` one. The function is known by the word's name, or — reached
+    through another reference, under another name — by BEING the function
+    a binding word is bound to: a host function of the same identity. -/
+def standsForBindingWord (d : Defs) (name : String) : Bool :=
+  match d.top? name with
+  | some (.fn fname sigs ident) =>
+    frameStateWords.contains fname ||
+    (!sigs.isEmpty && sigs.all (fun s => match s with | .mk _ _ _ (.native _) _ => true | _ => false) &&
+      frameStateWords.any fun fw =>
+        match d.top? fw with
+        | some (.fn _ _ i) => i == ident
+        | _ => false)
+  | _ => false
+
+/-- A body NEEDS FRAME STATE when it names a binding word, or a name that
+    stands for one in the bindings it is asked against. A body that names
+    none is a LEAF: its frame is entered with no baseline and records no
+    snapshot (`bodyNeedsFrameState`). -/
+def bodyNeedsFrameState (d : Defs) (body : List Value) : Bool :=
+  (bodyWordsList body).any fun n => frameStateWords.contains n || standsForBindingWord d n
 
 mutual
 /-- The names a body binds for itself — `def NAME` at any depth outside a
@@ -472,15 +501,15 @@ def stepToken (nat : Natives) : Nat → Engine → Except BoruError Engine
     | some (.returnCheck _ _) => pure { e with ptr := e.ptr + 1 }
     | some (.mark _) => pure { e with ptr := e.ptr + 1 }
     | some (.move to loop) => stepMove nat fuel e to loop
-    | some (.defCleanup names) => do
+    | some (.defCleanup names evalResidual snap) => do
       -- the frame's cleanup runs ONCE: stepped, the marker is spent and
       -- leaves the tape, so the frame's close finds nothing to run again
       -- (run twice, it unbound an outer binding a parameter had shadowed)
-      let e ← evalFrameResidual nat fuel e e.ptr
+      let e ← if evalResidual then evalFrameResidual nat fuel e e.ptr else pure e
       -- a signal a residual literal let out: the frame is still open, and
       -- the resolution closes it — the marker is left unspent for that
       if e.defs.flowing then pure e
-      else pure { e with defs := popNames e.defs names, tape := removeAt e.tape e.ptr }
+      else pure { e with defs := popNames e.defs names snap, tape := removeAt e.tape e.ptr }
     | some _ => stepLiteral nat fuel e
 
 /-- Step a word: a bound value substitutes; a function word dispatches. -/
@@ -586,7 +615,10 @@ def dispatchWord (nat : Natives) : Nat → Engine → WordInfo → Except BoruEr
           match plan with
           | none =>
             if e.voidGroups.contains w.name then
-              Engine.err "no_value_error" ("argument expression produced no value for " ++ w.name)
+              -- the word named `def` has the error under its own code
+              -- (core/go `voidArgErrorFor`: the kernel knows that one name)
+              Engine.err (if w.name == "def" then "def_error" else "no_value_error")
+                ("argument expression produced no value for " ++ w.name)
             else Engine.err "signature_error" ("no matching signature for " ++ w.name)
           | some p =>
             let fwdCount := (p.positions.filter (· > e.ptr)).length
@@ -700,7 +732,7 @@ def groupLoop (nat : Natives) : Nat → Engine → Nat → Nat → Except BoruEr
         else do
           let e ← stepCloseParen nat fuel e
           groupFlow nat fuel e scanIdx (depth - 1)
-      | some (.defCleanup _) =>
+      | some (.defCleanup _ _ _) =>
         if (frameOpenBefore e.tape e.ptr).any (· < scanIdx) then pure e
         else do
           let e ← stepToken nat fuel e
@@ -1098,14 +1130,14 @@ def closeFrame (nat : Natives) : Nat → Engine → Nat → Nat → Except BoruE
   | 0, _, _, _ => Engine.outOfFuel
   | fuel + 1, e, openIdx, closeIdx =>
     let cleanupAt := (List.range closeIdx).find? fun i =>
-      i > openIdx && (match e.tape[i]? with | some (.defCleanup _) => true | _ => false)
+      i > openIdx && (match e.tape[i]? with | some (.defCleanup _ _ _) => true | _ => false)
     match cleanupAt with
     | some i =>
       match e.tok? i with
-      | some (.defCleanup names) => do
-        let e ← evalFrameResidual nat fuel e i
+      | some (.defCleanup names evalResidual snap) => do
+        let e ← if evalResidual then evalFrameResidual nat fuel e i else pure e
         if e.defs.flowing then pure e else
-        closeFrame nat fuel { e with defs := popNames e.defs names, tape := removeAt e.tape i } openIdx (closeIdx - 1)
+        closeFrame nat fuel { e with defs := popNames e.defs names snap, tape := removeAt e.tape i } openIdx (closeIdx - 1)
       | _ => pure e
     | none =>
       let checkAt := (List.range closeIdx).find? fun i =>
@@ -1187,7 +1219,7 @@ def execMatch (nat : Natives) :
           let results ← f args stack
           pure { e with tape := splice e.tape base (e.ptr + 1 - base) results, ptr := base }
         | _ => Engine.err "internal_error" ("no full-stack handler for " ++ name)
-      | .boru _ _ => Engine.err "internal_error" "a boru body is not a full-stack handler"
+      | .boru _ _ _ _ => Engine.err "internal_error" "a boru body is not a full-stack handler"
       | .usurp _ _ => Engine.err "internal_error" "a usurp wrapper is not a full-stack handler"
     else do
       let (results, defs) ←
@@ -1205,7 +1237,7 @@ def execMatch (nat : Natives) :
           -- takes from the stack before it, what it takes forward after
           let k := args.length - min b args.length
           pure (.openParen :: args.take k ++ [orig] ++ (args.drop k).reverse ++ [.closeParen], e.defs)
-        | .boru body captured =>
+        | .boru body captured anonymous frameState =>
           -- a call frame: bind the named parameters, splice the body in
           -- a paren group closed by the cleanup marker and return check
           -- a NAMED parameter binds its argument; an UNNAMED one's argument
@@ -1218,14 +1250,30 @@ def execMatch (nat : Natives) :
           -- the baseline is recorded BEFORE the frame binds anything, so
           -- what it binds is what a function built in its body captures;
           -- and the call's arguments, all of them, go on the args stack
-          let defs := (e.defs.pushBaseline (bodyNeedsFrameState body)).pushArgs args
+          -- WHEN the frame is asked whether it records its entry state: an
+          -- installed function was asked when it was made; a function
+          -- value is asked now, against the bindings of the call —
+          -- before it binds anything of its own
+          let needsState := frameState.getD (bodyNeedsFrameState e.defs body)
+          let defs := (e.defs.pushBaseline needsState).pushArgs args
           -- a closure's captures go in first: a parameter of the same
           -- name shadows one
           let defs := captured.foldl (fun d (nm, v) => d.push nm v) defs
           -- a list argument is bound QUOTED: the body reads it as data
           let bind (a : Value) : Value := if a.isListShape && !a.isQuoted then .quoted a else a
           let defs := named.foldl (fun d (p, a) => d.push p.name (bind a)) defs
-          let tail := Value.defCleanup (captured.map (·.1) ++ names)
+          -- THE ENTRY SNAPSHOT, taken once the captures and parameters
+          -- are bound: what the body binds above it ends with the frame.
+          -- A leaf frame takes none (the same test as its baseline)
+          let snap := if needsState then some defs.depths else none
+          -- THE RESIDUAL RULE (core/go `ResidualEvalsInFrame`): the pending
+          -- containers a body leaves are evaluated in the frame, while its
+          -- bindings are live — unless the function is ANONYMOUS and its
+          -- body is one bare token: that container leaves the frame as it
+          -- is, and is evaluated by whatever consumes it, where the
+          -- frame's names are no longer bound
+          let evalResidual := !anonymous || bodyEvalsResidual body
+          let tail := Value.defCleanup (captured.map (·.1) ++ names) evalResidual snap
             :: (if s.returns.isEmpty then [] else [.returnCheck s.returns unnamed.length])
           pure (.frameOpen unnamed.length :: unnamed ++ body ++ tail ++ [.closeParen], defs)
       let e := { e with defs := defs }
