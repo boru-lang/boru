@@ -615,6 +615,41 @@ func coreSpecRegistry(t *testing.T) *Registry {
 		}),
 		BarrierPos: 2,
 	})
+	// fn is the door onto THE FUNCTION-SPEC READER (ParseFnDef and the
+	// readers beneath it): `fn [q [q params ] [q returns ] [q body ] … ]`
+	// answers the function the specification describes — triples, one per
+	// overload. The value is as the reader leaves it: a function VALUE,
+	// applied where it stands. Named as the shipped word is, for the frame
+	// analysis (a body that builds a function needs the baseline).
+	//
+	// IN PROGRESS: this is the Go half only. No corpus row calls it yet;
+	// the Lean model of the reader, the TypeScript runner's word, and the
+	// rows come with the increment that specifies it. Binding one of these
+	// values by name needs the kernel's definition INSTALL (InstallDef,
+	// which compiles a function under its name), and `def` above is still
+	// the plain push — routing it through the install changes what a
+	// `def`-bound `fn(` function answers (it is asked about its frame at
+	// the def, not when the row was read), so that moves with the model.
+	r.Register("fn", Signature{
+		Params:  []FnParam{{Name: "spec", Type: TList}},
+		Returns: []*Type{TFunction},
+		Impl: Go(func(a []Value, _ map[string]Value, _ []Value, reg *Registry) ([]Value, error) {
+			l, err := AsList(a[0])
+			if err != nil {
+				return nil, coreSpecNotAList("fn", a[0])
+			}
+			elems := l.Slice()
+			if len(elems) == 0 || len(elems)%3 != 0 {
+				return nil, &BoruError{Code: "fn_invalid_spec", Detail: "fn: list length must be a non-zero multiple of 3"}
+			}
+			info, err := ParseFnDef(reg, elems)
+			if err != nil {
+				return nil, &BoruError{Code: "fn_invalid_spec", Detail: err.Error()}
+			}
+			return []Value{NewFunction(info)}, nil
+		}),
+		BarrierPos: 1,
+	})
 	// bindq is def under a name the frame analysis does NOT know. A body
 	// that names no binding word is a LEAF — its frame takes no snapshot —
 	// so what bindq binds there is not the frame's to truncate, and stays
