@@ -996,6 +996,43 @@ func coreSpecRegistry(t *testing.T) *Registry {
 		}),
 		BarrierPos: 2,
 	})
+	// THE PATTERN'S PENDING OPERAND (NUR235): a pattern that reads a
+	// container's contents — a map shape, a typed list — judges the value
+	// the callee receives, so a pending list or map standing at its slot is
+	// EVALUATED by the dispatch before the pattern reads it. mpatq (a map
+	// that must hold a:1) and lpatq (a list of Integers) are that rule;
+	// rawmpatq and rawlpatq put the same patterns on slots that take their
+	// operand RAW, which are exempt — the pattern judges what was written.
+	// Each returns what it was handed.
+	for _, fx := range []struct {
+		name    string
+		typ     *Type
+		pattern Value
+		rawList bool
+		rawMap  bool
+	}{
+		{"mpatq", TMap, mapA1Pattern(), false, false},
+		{"rawmpatq", TMap, mapA1Pattern(), false, true},
+		{"lpatq", TList, NewTypedList(NewTypeLiteral(TInteger)), false, false},
+		{"rawlpatq", TList, NewTypedList(NewTypeLiteral(TInteger)), true, false},
+	} {
+		pattern := fx.pattern
+		sig := Signature{
+			Params:  []FnParam{{Name: "x", Type: fx.typ, Pattern: &pattern}},
+			Returns: []*Type{TAny},
+			Impl: Go(func(a []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Value, error) {
+				return []Value{a[0]}, nil
+			}),
+			BarrierPos: 1,
+		}
+		if fx.rawList {
+			sig.NoEvalArgs = map[int]bool{0: true}
+		}
+		if fx.rawMap {
+			sig.NoEvalMapArgs = map[int]bool{0: true}
+		}
+		r.Register(fx.name, sig)
+	}
 	// tpatq carries a TYPE-LITERAL pattern (rather than patq's concrete
 	// scalar one) on a STACK slot. The distinction is load-bearing: a
 	// type pattern is enforced only at stack positions, so this is the
@@ -1183,6 +1220,14 @@ const coreSpecDivergentFile = "divergent.tsv"
 func patqPattern() *Value {
 	v := NewInteger(7)
 	return &v
+}
+
+// mapA1Pattern is the map pattern {a:1}: a map that holds a:1 (and, the
+// match being open, anything else beside it).
+func mapA1Pattern() Value {
+	m := NewOrderedMap()
+	m.Set("a", NewInteger(1))
+	return NewMap(m)
 }
 
 func TestCoreSpec(t *testing.T) {

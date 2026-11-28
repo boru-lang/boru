@@ -147,6 +147,20 @@ belongs to. core/ts has the list and map modes: `rawlq`, `rawmq` and
 `raw2q` are in all three runners, the other three in the Go runner and
 the Lean model.
 
+### A pattern that reads a container
+
+`patq` and `tpatq` carry a scalar pattern and a type pattern. Four more
+words carry a pattern that reads what a container HOLDS: `mpatq` takes a
+map that holds a:1 (an open match), `lpatq` a list of Integers. Such a
+pattern judges the value the callee receives, so the kernel EVALUATES a
+pending list or map standing at the slot before the pattern reads it —
+where it stands, once (`patternOperand`). `rawmpatq` and `rawlpatq`
+carry the same two patterns on slots that take a map, a list,
+unevaluated: a raw slot is exempt, and its pattern judges what was
+written. Each word answers what it was handed. core/ts's patterns
+compare a payload by identity and so are scalar only: the four are in
+the Go runner and the Lean model.
+
 ### A call's arguments
 
 Two words reach what a call keeps of its arguments beside the bindings.
@@ -241,7 +255,7 @@ than silently re-baselined. Each runner also **fails a row whose `go` and
 belongs in, or this stops being an honest debt list. Shrink-only, exactly as
 `parser/spec/divergent.tsv` is.
 
-It holds **612 rows**. 579 are a mechanism `core/ts` does not have at
+It holds **686 rows**. 653 are a mechanism `core/ts` does not have at
 all: closures (26 rows, the `afn` fixture); driven loops (35 rows, the
 `eachq` fixture — eight of them the same loop out of a group and inside one
 a waiting word evaluates, where the kernel once stepped the loop's inert
@@ -266,9 +280,11 @@ function value (6 rows); and the function-spec reader and the definition
 install (101 rows, the `fn` fixture and `def` over a function — five of
 them the dispatch order of a pattern against a bare type, two of
 them NUR409, two NUR410 and three NUR411, pinned as the kernel has it);
-and two of the four raw-capture slots (92 rows, the `rawpq`, `formq` and
+two of the four raw-capture slots (92 rows, the `rawpq`, `formq` and
 `form2q` fixtures — three of them NUR413 and three NUR414, pinned as the
-kernel has it). Three are a difference in a mechanism both have:
+kernel has it); and a pattern that reads a container's contents, with
+the evaluation of the pending operand it judges (74 rows, the `mpatq`,
+`lpatq`, `rawmpatq` and `rawlpatq` fixtures — two of them NUR413). Three are a difference in a mechanism both have:
 `core/ts` puts a list argument's quoted BINDING in the args list, where
 the kernel puts the argument (two rows), and hands a waiting word the
 paren expression a name is bound to as code, where the kernel runs it as

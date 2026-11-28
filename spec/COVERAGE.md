@@ -47,6 +47,7 @@ theorem, or by the differential search.
 | The return check's patterns: a returned value must be of the declared type and unify with the declared pattern | `engine.go` `validateReturnTypesIn`; `value.go` `ReturnCheckInfo.ReturnPatterns` | `Value.lean` `Impl.boru` (`returnPatterns`), `returnCheck`; `Engine.lean` `closeFrame` | `Theorems/FnSpec.lean` (`a_return_pattern_is_checked`); `divergent.tsv` (Go column); search |
 | The definition install: a plain value is bound; a function is compiled under the name — an older definition of the name whose parameter types it repeats is taken off (a redefinition replaces, other types stack) unless it is a host word's, whose signatures are locked, every optional parameter is expanded into signatures whose bodies call the function by name with the type's base value (none where the type has no base value or the parameter's pattern refuses it — NUR410, as the kernel has it), and each body is asked then whether its frames record | `core_helpers.go` `InstallDef`, `installFnDef`, `compileFnSigs`, `ExpandOptionalSigs`, `omittedDefaultValue`, `BaseValue`, `FnDefsOverlap`, `hasLockedSig` | `FnSpec.lean` `install`, `expandOptional`, `baseValue`, `overlap` | `Theorems/FnSpec.lean`; `dispatch.tsv`; `divergent.tsv` (Go column); search |
 | The raw-capture slots — four independent ways a slot takes its operand as it was WRITTEN: a pending list handed over unevaluated, a pending map, a paren expression written after the word captured as code, any form captured as it stands (a word stays a word, bound or not; `/v` is read first, as at a `/q` slot). Each mode is one slot's, whichever side fills it; the list and map modes are separate, and the form mode keeps neither a list nor a map unevaluated; what is handed over is data from then on. As the kernel has it: the usurp wrapper drops the list and map modes and keeps the paren and form modes at the original's positions (NUR413), and a paren expression that arrives at a waiting word is kept by the mode of its signature, not of the slot (NUR414) | `value.go` `FnSig.NoEvalArgs`, `NoEvalMapArgs`, `RawParens`, `FormArgs`; `engine.go` `execMatch`, `pendingForwardWantsRawParen`, `hasPendingForwardFormArg`, `sigRawSlot`; `collect_kernel.go` `CollectForward`, `CollectCandidateScan`; `core_ref.go` `usurpOver` | `Value.lean` `Raw`; `Match.lean` `isRawSlot`, `keepsParen`, `wantsRawParen`, `scanAdmits`; `Engine.lean` `evalArgs`, `collectWalk`, `stepLiteral`, `pendingFormSlot`, `pendingWantsRawParen`, `usurpOver` | `Theorems/Raw.lean`; `dispatch.tsv` (the list and map modes, 66 rows, through `rawlq`, `rawmq` and `raw2q`); `divergent.tsv` (the paren and form modes, through `rawpq`, `formq`, `form2q`); search |
+| The operand a pattern judges: a pattern that reads a container's contents — a map shape, a typed list — judges the value the callee receives, so a pending list or map at its slot is evaluated by the dispatch first, where it stands and once; the value stays for the overloads tried after and for the call. The matcher asks in dispatch order and stops at its first match, so an overload a type rules out, or one behind the match, never has its pattern read. The evaluation's error is the call's, a signal it lets out abandons the call, and what it bound stays bound also when the pattern then declines. A slot that takes its operand raw is exempt: its pattern judges what was written | `match.go` `patternsOk`, `patternOperand`, `patternReadsContents`; `engine.go` `matchForDispatch`, `evalPatternOperand`; `value_classify.go` `IsPendingActiveContainer` | `Value.lean` `bearsActive`, `isPendingActive`; `Match.lean` `patternNeed`, `planPositions`, `planNeed`; `Engine.lean` `planEvaluating`, `settleOperands` | `Theorems/PatternOperand.lean`; `divergent.tsv` (74 rows, through `mpatq`, `lpatq`, `rawmpatq`, `rawlpatq` and the `fn` fixture); search |
 | A failed plan: retried with every argument from the stack — for a native word, a function literal and a forced arity, and NOT for a word defined in boru, whose synthetic fallback answers it (NUR398, as the kernel has it) | `engine.go` `matchForDispatch`, `registry.go` `fnFallbackSig` | `Engine.lean` `answersItself`, `dispatchWord` | `dispatch.tsv`; `divergent.tsv` (Go column); search |
 | The stack-form probe | `signature.go` `MatchSignature` | `Match.lean` | search |
 | The step loop: literals and arrival, word resolution, word literals, undefined words | `engine.go` | `Engine.lean` | corpus; search |
@@ -108,13 +109,17 @@ extending the notation and its fixture in all three runners first.
 - of the raw-capture slots: two overloads of one word that mark a
   position differently (the plan walk keeps a paren expression when ANY
   overload marks it; no fixture word has two signatures); a reach or a
-  sugar marker at a raw slot; a pattern on a raw slot, and the evaluation
-  the raw slots are exempt from there — the kernel evaluates a pending
-  container a pattern must judge AT THE MATCH (`patternOperand`), and the
-  model has neither that evaluation nor the exemption; and the exemption
-  of an inert type shape from resolution at a no-evaluation slot, which
-  the model states and no row can show (the residual sweep resolves the
-  shape whatever the slot did);
+  sugar marker at a raw slot; and the exemption of an inert type shape
+  from resolution at a no-evaluation slot, which the model states and no
+  row can show (the residual sweep resolves the shape whatever the slot
+  did);
+- of the operand a pattern judges: the model evaluates one operand and
+  then matches again from the first overload, where the kernel goes on
+  from the overload that asked — the same answer unless the evaluation
+  rebinds something an EARLIER overload's verdict read; `make`'s
+  construction-body rule for a map evaluated there; and the patterns the
+  fixture cannot write — a negation, a record or options shape, a
+  keyword slot beside a contents-reading one;
 - the step budget's accounting, the tape growth ceiling, tracing.
 
 **Types and values**

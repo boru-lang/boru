@@ -498,6 +498,17 @@ Three things from it are worth carrying even if the tables are never read:
   is a difference in a mechanism both have: a name bound to a paren
   expression, collected by a waiting word, is run as a group in core/go
   and handed over as code in core/ts.
+- **No pattern that reads a container** (2026-11-28). A core/go slot's
+  pattern may be a map shape or a typed list, and judges the value the
+  callee receives: the dispatch evaluates a pending list or map standing
+  at the slot before the pattern reads it (`patternOperand`,
+  `evalPatternOperand`; NUR235's fix). core/ts's `patternsOk` compares a
+  pattern's payload by identity, which is equality for the scalar
+  payloads and never true of a container — so a container pattern admits
+  nothing there, and there is no operand to evaluate for it. The 74 rows
+  that specify the rule are on the Go column of `core/spec/divergent.tsv`,
+  and the fixtures `mpatq`, `lpatq`, `rawmpatq` and `rawlpatq` are the Go
+  runner's and the Lean runner's only.
 - NUR059: canon still renders sugar tags, `/r` and `/N` word modifiers,
   and paren groups in debug spelling. Both engines agree, so it is render
   quality rather than parity — pinned by corpus rows so a one-sided fix

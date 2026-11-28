@@ -33,8 +33,9 @@ REPO = os.path.dirname(SPEC)
 WORDS = ["addq", "negq", "pairq", "sumq", "boomq", "patq", "dupq", "__pa", "undef",
          "qanyq", "bothq", "tyq", "tpatq", "unifyq", "meetq", "meetq", "depthq", "afn", "eachq",
          "forq", "forq", "rangeq", "whileq", "breakq", "contq", "ifq", "ifq", "replayq", "callq", "callq",
-         "argsq", "def", "bindq", "rawlq", "rawmq", "rawpq", "formq", "raw2q", "form2q"]
-RAW = ("rawlq", "rawmq", "rawpq", "formq", "raw2q", "form2q")
+         "argsq", "def", "bindq", "rawlq", "rawmq", "rawpq", "formq", "raw2q", "form2q",
+         "mpatq", "rawmpatq", "lpatq", "rawlpatq"]
+RAW = ("rawlq", "rawmq", "rawpq", "formq", "raw2q", "form2q", "mpatq", "rawmpatq", "lpatq", "rawlpatq")
 LITS = ["0", "1", "2", "5", "7", "-3", "'a'", "'x'", "true", "false", "none", "null"]
 TYPES = ["Integer", "String", "Any", "None", "List", "Map", "Boolean", "Word", "Scalar/String"]
 NAMES = ["x", "y", "n", "nosuchword"]
@@ -192,7 +193,13 @@ def gen_item(rng, depth):
                                    "[ x ]", "p( x )", "{ a: [ x ] }", "5", "negq", "[q addq 1 2 ]", "x/v",
                                    "( addq 1 2 )", "[ breakq ]", "p( breakq )", "[: Integer 1 ]", "negq/v",
                                    "inc", "p( )", "[ ]", "nosuchword/2", "c", "i", "n", "[ n ]",
-                                   "fn( n Integer Integer [ n ] )", "rawlq", "formq", ";"]).split()
+                                   "fn( n Integer Integer [ n ] )", "rawlq", "formq", ";",
+                                   # operands a contents-reading pattern judges: pending,
+                                   # and evaluated at the match unless the slot is raw
+                                   "{ a: 1 }", "{ a: p( addq 0 1 ) }", "{ a: x }", "{ a: 1 b: p( nosuchword ) }",
+                                   "{ a: p( bindq y 1 1 ) }", "{ a: p( breakq ) }", "{ a: 2 }", "{q a: 1 }",
+                                   "[ 1 2 ]", "[ addq 0 1 ]", "[ 'a' ]", "[ bindq y 1 1 ]", "[q 1 2 ]",
+                                   "{ a: [ addq 0 1 ] }", "[ 1 addq 0 1 ]", "{ a: n }", "y"]).split()
             mod = rng.choice(["", "", "", "", "/u", "/u", "/s", "/f", "/1", "/2", "/v", "/uv"])
             before = sum((operand() for _ in range(rng.choice([0, 0, 0, 1, 2]))), [])
             after = sum((operand() for _ in range(rng.choice([0, 1, 1, 1, 2, 2, 3]))), [])

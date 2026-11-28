@@ -61,6 +61,13 @@ def fixtureDefs : Defs :=
     word "formq" [p "x" TAny (raw := { form := true })] [TList] 1,
     word "raw2q" [p "a" TAny, p "b" TAny (raw := { list := true })] [TList] 2,
     word "form2q" [p "a" TAny, p "b" TAny (raw := { form := true })] [TList] 2,
+    -- THE PATTERN'S PENDING OPERAND: a pattern that reads contents — a
+    -- map that must hold a:1, a list of Integers — on an ordinary slot,
+    -- and on a slot that takes its operand raw
+    word "mpatq" [p "x" TMap (pattern := some (.map [("a", .int 1)] false))] [TAny] 1,
+    word "rawmpatq" [p "x" TMap (pattern := some (.map [("a", .int 1)] false)) (raw := { map := true })] [TAny] 1,
+    word "lpatq" [p "x" TList (pattern := some (.typedList (.typeLit TInteger) []))] [TAny] 1,
+    word "rawlpatq" [p "x" TList (pattern := some (.typedList (.typeLit TInteger) [])) (raw := { list := true })] [TAny] 1,
     -- a TYPE-LITERAL pattern on a stack slot
     word "tpatq" [p "v" TAny (pattern := some (.typeLit TInteger))] [TInteger] 0,
     word "unifyq" [p "a" TAny, p "b" TAny] [TBoolean] 2,
@@ -166,6 +173,10 @@ def fixtureNatives : Natives :=
     -- the raw-capture words hand back what they were handed: a list or a
     -- map as it is, a captured paren or form inside a one-element list —
     -- bare, it would re-enter the tape and run
+    ("mpatq", .plain fun a d => pure ([a.getD 0 .none], d)),
+    ("rawmpatq", .plain fun a d => pure ([a.getD 0 .none], d)),
+    ("lpatq", .plain fun a d => pure ([a.getD 0 .none], d)),
+    ("rawlpatq", .plain fun a d => pure ([a.getD 0 .none], d)),
     ("rawlq", .plain fun a d => pure ([a.getD 0 .none], d)),
     ("rawmq", .plain fun a d => pure ([a.getD 0 .none], d)),
     ("rawpq", .plain fun a d => pure ([.list [a.getD 0 .none] false], d)),
