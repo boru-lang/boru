@@ -1172,3 +1172,268 @@ run ( fn [q [q ] [q Any ] [q 42 ] ] )	42	ERROR:undefined_word	NUR417: A FUNCTION
 run ; def f ( fn [q [q ] [q Any ] [q 42 ] ] ) ; f/v	42	ERROR:undefined_word	NUR417: so `def f ( fn … )` binds its RESULT, not the function
 run applyq ( fn [q [q ] [q Any ] [q 42 ] ] )	42	ERROR:undefined_word	(and there is nothing left to apply)
 run ; def f ( fn [q [q ] [q Any ] [q 42 ] [q n:Integer ] [q Any ] [q n ] ] ) ; f/v 5	42 5	ERROR:undefined_word	NUR417: with an overload that takes one beside it, the group still calls the one that takes nothing
+
+# --- a type a program defines (core/ts has no type installation) -------------------
+# `typeq Name body` is the kernel's type installer (`InstallType`) as a word: what a
+# capitalised `def` is in the language above the core. The body decides what the
+# name becomes: a bare type makes an ALIAS; a union, a literal or a typed container
+# MINTS a new lattice node. core/ts installs no types, and answers every row here
+# `undefined_word`.
+#
+# AN ALIAS adopts the node it names: no new type exists.
+run ; typeq Foo Integer ; Foo	Integer	ERROR:undefined_word	AN ALIAS IS THE TYPE IT NAMES: the name has no node of its own, and reads as the other
+run ; typeq Foo Integer ; unifyq 5 Foo	true	ERROR:undefined_word	so it admits what that type admits
+run ; typeq Foo Integer ; unifyq 'a' Foo	false	ERROR:undefined_word	and nothing else
+run ; typeq Foo Integer ; tyq Foo	Integer	ERROR:undefined_word	it is a type: a type-arg slot takes it
+run ; typeq Foo Integer ; addq Foo 1	ERROR:signature_error	ERROR:undefined_word	and a type is not a value of itself: an Integer slot refuses it, as it refuses `Integer`
+run ; typeq Foo Integer ; ; def f ( fn [q [q n:Foo ] [q Any ] [q n ] ] ) ; f/v	fn [[n:Integer][Any][n]]	ERROR:undefined_word	a slot declared as the alias IS a slot of the type: the function reads `n:Integer`
+run ; typeq Foo Integer ; ; def f ( fn [q [q n:Foo ] [q Any ] [q n ] ] ) ; f 5	5	ERROR:undefined_word	and takes an Integer
+run ; typeq Foo Integer ; ; def f ( fn [q [q n:Foo ] [q Any ] [q n ] ] ) ; f 'a'	ERROR:signature_error	ERROR:undefined_word	and refuses a String
+run ; typeq Foo Integer ; ; typeq Bar Foo ; Bar	Integer	ERROR:undefined_word	an alias of an alias is the same node again
+run ; typeq Foo Any ; Foo	Any	ERROR:undefined_word	any bare type can be adopted: the top
+run ; typeq Foo None ; unifyq none Foo	true	ERROR:undefined_word	and `None`, whose one value it then admits
+run ; typeq Foo d( Integer String ) ; ; typeq Bar Foo ; Bar	Foo	ERROR:undefined_word	AN ALIAS OF A MINTED TYPE is that type: it reads as the type's own name
+run ; typeq One 1 ; ; typeq Uno One ; meetq One Uno	One	ERROR:undefined_word	and unifies with it as one type does with itself
+
+# --- a union mints a node ----------------------------------------------------------
+run ; typeq Foo d( Integer String ) ; Foo	Foo	ERROR:undefined_word	A UNION MINTS A NEW TYPE: the name is a node of its own, and reads as its name
+run ; typeq Foo d( Integer String ) ; tyq Foo	Foo	ERROR:undefined_word	a type-arg slot takes it
+run ; typeq Foo d( Integer String ) ; dupq Foo	Foo Foo	ERROR:undefined_word	an Any slot takes it, as it takes any type
+run ; typeq Foo d( Integer String ) ; unifyq 5 Foo	true	ERROR:undefined_word	ITS MEMBERS ARE WHAT ITS ALTERNATIVES ADMIT: an Integer
+run ; typeq Foo d( Integer String ) ; unifyq 'a' Foo	true	ERROR:undefined_word	a String
+run ; typeq Foo d( Integer String ) ; unifyq true Foo	false	ERROR:undefined_word	not a Boolean
+run ; typeq Foo d( Integer String ) ; meetq 5 Foo	5	ERROR:undefined_word	the meet with a member is the member
+run ; typeq Foo d( Integer String ) ; meetq Foo 5	5	ERROR:undefined_word	from either side
+run ; typeq Foo d( Integer String ) ; meetq Foo Foo	Foo	ERROR:undefined_word	WITH ITSELF it is itself, by name
+run ; typeq Foo d( Integer String ) ; meetq Foo Integer	Integer	ERROR:undefined_word	AGAINST ANOTHER TYPE the alternatives answer, as the union written in place would: one survives
+run ; typeq Foo d( Integer String ) ; meetq Foo Number	Integer	ERROR:undefined_word	an alternative under the type survives, narrowed to itself
+run ; typeq Foo d( Integer String ) ; meetq Foo Scalar	Integer tor String	ERROR:undefined_word	both survive: the answer is the alternatives — the name is gone
+run ; typeq Foo d( Integer String ) ; meetq Scalar Foo	Integer tor String	ERROR:undefined_word	from either side
+run ; typeq Foo d( Integer String ) ; meetq Foo Any	Integer tor String	ERROR:undefined_word	against the top too: the alternatives, not the name
+run ; typeq Foo d( Integer String ) ; meetq Foo Boolean	ERROR:fixture_no_meet	ERROR:undefined_word	no alternative meets it: no meet
+run ; typeq Foo d( Integer String ) ; meetq Foo d( Integer Boolean )	Integer	ERROR:undefined_word	against a union written in place: alternative by alternative
+run ; typeq Foo d( Integer String ) ; meetq Foo d( Integer String )	Integer tor String	ERROR:undefined_word	the same union written in place is not the name: the answer is the alternatives
+run ; typeq Foo d( Integer String ) ; meetq Foo None	ERROR:fixture_no_meet	ERROR:undefined_word	`None` is no alternative here
+run ; typeq Foo d( Integer None ) ; meetq Foo None	None	ERROR:undefined_word	where it IS one, the type literal `None` is admitted
+run ; typeq Foo d( Integer None ) ; meetq none Foo	none	ERROR:undefined_word	and so is the value
+run ; typeq Foo d( Integer String ) ; ; typeq Bar d( String Boolean ) ; meetq Foo Bar	String	ERROR:undefined_word	TWO NAMED UNIONS meet by their alternatives
+run ; typeq Foo d( Integer String ) ; ; typeq Bar d( Integer String ) ; meetq Foo Bar	Integer tor String	ERROR:undefined_word	TWO TYPES OF THE SAME ALTERNATIVES ARE TWO TYPES: their meet is the alternatives, and neither name
+run ; typeq Foo d( Integer String ) ; ; typeq Bar d( Boolean None ) ; unifyq Foo Bar	false	ERROR:undefined_word	with nothing in common, no meet
+run ; typeq Foo d( 1 2 ) ; unifyq 3 Foo	false	ERROR:undefined_word	a union of literals admits those literals
+run ; typeq Foo d( 1 2 ) ; meetq Foo Integer	1 tor 2	ERROR:undefined_word	and against their type stands whole — as alternatives
+run ; typeq Foo d( ) ; Foo	Foo	ERROR:undefined_word	THE EMPTY UNION is a type too
+run ; typeq Foo d( ) ; unifyq 5 Foo	false	ERROR:undefined_word	with no members
+run ; typeq Foo d( ) ; meetq Foo Never	Never	ERROR:undefined_word	it is `Never` by another name
+
+# --- a literal or a typed container mints a node under its own type ----------------
+run ; typeq One 1 ; One	One	ERROR:undefined_word	A LITERAL IS A SINGLETON TYPE: a new node, under the node the literal sits at
+run ; typeq One 1 ; unifyq 1 One	true	ERROR:undefined_word	its one member
+run ; typeq One 1 ; unifyq 2 One	false	ERROR:undefined_word	and no other Integer
+run ; typeq One 1 ; meetq 1 One	1	ERROR:undefined_word	THE MEET WITH A MEMBER IS THE VALUE, never the type
+run ; typeq One 1 ; meetq One 1	1	ERROR:undefined_word	from either side
+run ; typeq One 1 ; meetq One Integer	One	ERROR:undefined_word	AGAINST A TYPE THE LATTICE ANSWERS: the singleton sits under Integer, and is the narrower
+run ; typeq One 1 ; meetq One Number	One	ERROR:undefined_word	under Number
+run ; typeq One 1 ; meetq One Any	One	ERROR:undefined_word	under the top
+run ; typeq One 1 ; meetq One Float	ERROR:fixture_no_meet	ERROR:undefined_word	and not under Float
+run ; typeq One 1 ; unifyq One String	false	ERROR:undefined_word	nor String
+run ; typeq One 1 ; unifyq One One	true	ERROR:undefined_word	with itself it is itself
+run ; typeq One 1 ; ; typeq Uno 1 ; unifyq One Uno	false	ERROR:undefined_word	TWO TYPES OF THE SAME CONTENT ARE TWO TYPES: neither is under the other, and they do not unify
+run ; typeq Emp '' ; meetq Emp String	Emp	ERROR:undefined_word	the empty string sits at its own node, EmptyString, under String
+run ; typeq Emp '' ; meetq Emp Scalar/String/ProperString	ERROR:fixture_no_meet	ERROR:undefined_word	and not under ProperString
+run ; typeq Tru true ; meetq true Tru	true	ERROR:undefined_word	a Boolean
+run ; typeq Non none ; meetq none Non	none	ERROR:undefined_word	`none`: a singleton under `None`
+run ; typeq Lst [: Integer ] ; Lst	Lst	ERROR:undefined_word	A TYPED LIST: a node under List
+run ; typeq Lst [: Integer ] ; unifyq [q 1 2 ] Lst	true	ERROR:undefined_word	its members are the lists the typed list admits
+run ; typeq Lst [: Integer ] ; unifyq [q 1 'a' ] Lst	false	ERROR:undefined_word	every element
+run ; typeq Lst [: Integer ] ; unifyq [q ] Lst	true	ERROR:undefined_word	the empty list among them
+run ; typeq Lst [: Integer ] ; meetq [q 1 ] Lst	[1]	ERROR:undefined_word	the meet is the list
+run ; typeq Lst [: Integer ] ; meetq Lst List	Lst	ERROR:undefined_word	against List, the lattice: the named type is the narrower
+run ; typeq Lst [: Integer ] ; unifyq Lst Map	false	ERROR:undefined_word	and not under Map
+run ; typeq Lst [: Integer ] ; meetq [: Number ] Lst	[:Integer]	ERROR:undefined_word	A TYPED CONTAINER IS A VALUE to the rule — it carries content — so it is unified with the body: the narrower child
+run ; typeq Lst [: Integer ] ; meetq [: String ] Lst	ERROR:fixture_no_meet	ERROR:undefined_word	or nothing
+run ; typeq Lst [q 1 2 ] ; unifyq [q 1 2 ] Lst	true	ERROR:undefined_word	A LIST LITERAL is the singleton of that list
+run ; typeq Lst [q 1 2 ] ; unifyq [q 1 ] Lst	false	ERROR:undefined_word	and of no other
+run ; typeq Shp {q a: Integer } ; unifyq {q a: 1 } Shp	true	ERROR:undefined_word	A MAP SHAPE: the maps that unify with it
+run ; typeq Shp {q a: Integer } ; unifyq {q a: 'x' } Shp	false	ERROR:undefined_word	member by member
+run ; typeq Shp {q a: Integer } ; unifyq {q a: 1 b: 2 } Shp	false	ERROR:undefined_word	A NAMED MAP SHAPE IS CLOSED: a key it does not name is refused
+run ; typeq Shp {q a: Integer } ; unifyq {q } Shp	false	ERROR:undefined_word	and a key it names is required
+run ; typeq Shp {q a: Integer } ; meetq {q a: 1 } Shp	{a:1}	ERROR:undefined_word	the meet is the map
+run ; typeq Shp {q a: Integer } ; unifyq Shp Map	true	ERROR:undefined_word	under Map
+
+# --- a slot of a named type asks the type ------------------------------------------
+# A slot declared `n:Foo` has the minted node for its type. Nothing is ever TAGGED
+# with that node — a member keeps its own type — so the slot does not walk the
+# lattice: it asks the node whether the value is a member.
+run ; typeq Foo d( Integer String ) ; ; def f ( fn [q [q n:Foo ] [q Any ] [q n ] ] ) ; f/v	fn [[n:Foo][Any][n]]	ERROR:undefined_word	the slot reads as the type's name
+run ; typeq Foo d( Integer String ) ; ; def f ( fn [q [q n:Foo ] [q Any ] [q n ] ] ) ; f 5	5	ERROR:undefined_word	A MEMBER IS TAKEN: an Integer
+run ; typeq Foo d( Integer String ) ; ; def f ( fn [q [q n:Foo ] [q Any ] [q n ] ] ) ; f 'a'	'a'	ERROR:undefined_word	a String
+run ; typeq Foo d( Integer String ) ; ; def f ( fn [q [q n:Foo ] [q Any ] [q n ] ] ) ; f true	ERROR:signature_error	ERROR:undefined_word	a value that is no member is refused
+run ; typeq Foo d( Integer String ) ; ; def f ( fn [q [q n:Foo ] [q Any ] [q n ] ] ) ; 5 f	5	ERROR:undefined_word	from the stack
+run ; typeq Foo d( Integer String ) ; ; def f ( fn [q [q n:Foo ] [q Any ] [q n ] ] ) ; f ( addq 1 2 )	3	ERROR:undefined_word	a group's value
+run ; typeq Foo d( Integer String ) ; ; def f ( fn [q [q n:Foo ] [q Any ] [q n ] ] ) ; def x 5 ; f x	5	ERROR:undefined_word	a bound name's
+run ; typeq Foo d( Integer String ) ; ; def f ( fn [q [q n:Foo ] [q Any ] [q n ] ] ) ; f Integer	ERROR:signature_error	ERROR:undefined_word	A TYPE IS NOT A MEMBER: an alternative is not a value of the union
+run ; typeq Foo d( Integer String ) ; ; def f ( fn [q [q n:Foo ] [q Any ] [q n ] ] ) ; f Foo	Foo	ERROR:undefined_word	the type ITSELF is taken — it is under itself in the lattice, the one thing that is
+run ; typeq Foo d( Integer String ) ; ; def f ( fn [q [q n:Foo ] [q Any ] [q n ] ] ) ; none f	ERROR:signature_error	ERROR:undefined_word	`none` is no alternative
+run ; typeq Foo d( Integer None ) ; ; def f ( fn [q [q n:Foo ] [q Any ] [q n ] ] ) ; none f	none	ERROR:undefined_word	where it is one, the value is taken (from the stack: written after the word, `none` is still a name when the plan reads it)
+run ; typeq Foo d( Integer None ) ; ; def f ( fn [q [q n:Foo ] [q Any ] [q n ] ] ) ; f None	None	ERROR:undefined_word	and so is the literal `None`: what a missing member reads as
+run ; typeq One 1 ; ; def f ( fn [q [q n:One ] [q Any ] [q n ] ] ) ; f 1	1	ERROR:undefined_word	THE SINGLETON's slot takes its one member
+run ; typeq One 1 ; ; def f ( fn [q [q n:One ] [q Any ] [q n ] ] ) ; f 2	ERROR:signature_error	ERROR:undefined_word	and refuses every other
+run ; typeq Lst [: Integer ] ; ; def f ( fn [q [q n:Lst ] [q Any ] [q n ] ] ) ; f [q 1 2 ]	(quote [1 2])	ERROR:undefined_word	a list type's slot takes a member list
+run ; typeq Lst [: Integer ] ; ; def f ( fn [q [q n:Lst ] [q Any ] [q n ] ] ) ; f [ 1 2 ]	(quote [1 2])	ERROR:undefined_word	written pending
+run ; typeq Lst [: Integer ] ; ; def f ( fn [q [q n:Lst ] [q Any ] [q n ] ] ) ; f [q 1 'a' ]	ERROR:signature_error	ERROR:undefined_word	and refuses a list that is no member
+run ; typeq Lst [: Integer ] ; ; def f ( fn [q [q n:Lst ] [q Any ] [q n ] ] ) ; f [: Integer ]	(quote [:Integer])	ERROR:undefined_word	the typed list itself is a member: it unifies with the body
+run ; typeq Shp {q a: Integer } ; ; def f ( fn [q [q n:Shp ] [q Any ] [q n ] ] ) ; f {q a: 1 }	{a:1}	ERROR:undefined_word	a map shape's slot takes a member map
+run ; typeq Shp {q a: Integer } ; ; def f ( fn [q [q n:Shp ] [q Any ] [q n ] ] ) ; f {q a: 1 b: 2 }	ERROR:signature_error	ERROR:undefined_word	closed: an extra key is refused
+run ; typeq Lst [: Integer ] ; ; def f ( fn [q [q n:Lst ] [q Any ] [q n ] ] ) ; f [ addq 1 2 ]	ERROR:signature_error	ERROR:undefined_word	NUR419: A PENDING OPERAND IS NOT EVALUATED FOR A NAMED TYPE — the same typed list written in place has it evaluated first (`lpatq [ addq 1 2 ]` is `[3]`); here its tokens are judged, and refused
+run ; typeq Shp {q a: Integer } ; ; def f ( fn [q [q n:Shp ] [q Any ] [q n ] ] ) ; f { a: p( addq 0 1 ) }	ERROR:signature_error	ERROR:undefined_word	NUR419: nor a pending map
+run ; typeq Foo d( [: Integer ] String ) ; ; def f ( fn [q [q n:Foo ] [q Any ] [q n ] ] ) ; f [ addq 1 2 ]	ERROR:signature_error	ERROR:undefined_word	NUR419: nor for a union that has a container among its alternatives
+run ; typeq Foo d( Integer String ) ; ; def f ( fn [q [q n:Any ] [q Foo ] [q n ] ] ) ; f/v	fn [[n:Any][Foo][n]]	ERROR:undefined_word	A RETURN declared as a named type reads as the name
+run ; typeq Foo d( Integer String ) ; ; def f ( fn [q [q n:Any ] [q Foo ] [q n ] ] ) ; f 5	5	ERROR:undefined_word	and is checked by membership: a member passes
+run ; typeq Foo d( Integer String ) ; ; def f ( fn [q [q n:Any ] [q Foo ] [q n ] ] ) ; f true	ERROR:type_error	ERROR:undefined_word	what is no member is the call's error
+run ; typeq One 1 ; ; def f ( fn [q [q n:Any ] [q One ] [q n ] ] ) ; f 2	ERROR:type_error	ERROR:undefined_word	for a singleton too
+
+# --- the dispatch order with named types -------------------------------------------
+# A named type is a bare type to the order of signatures, in the EXTERNAL BAND of
+# its branch: above every builtin of the branch. So an overload of a named type is
+# tried before one of a builtin, whichever was written first.
+run ; typeq One 1 ; ; def f ( fn [q [q n:Integer ] [q Any ] [q 'int' ] [q n:One ] [q Any ] [q 'one' ] ] ) ; f 1	'one'	ERROR:undefined_word	A NAMED TYPE IS TRIED BEFORE THE BUILTIN it sits under, though written after it
+run ; typeq One 1 ; ; def f ( fn [q [q n:Integer ] [q Any ] [q 'int' ] [q n:One ] [q Any ] [q 'one' ] ] ) ; f 2	'int'	ERROR:undefined_word	what it refuses falls to the builtin
+run ; typeq One 1 ; ; def f ( fn [q [q n:Any ] [q Any ] [q 'any' ] [q n:One ] [q Any ] [q 'one' ] ] ) ; f 1	'one'	ERROR:undefined_word	before `Any`
+run ; typeq Foo d( Integer String ) ; ; def f ( fn [q [q n:Integer ] [q Any ] [q 'int' ] [q n:Foo ] [q Any ] [q 'union' ] ] ) ; f 5	'union'	ERROR:undefined_word	a union's node is in the Type branch's band: before every Scalar
+run ; typeq Foo d( Integer String ) ; ; def f ( fn [q [q n:Foo ] [q Any ] [q 'union' ] [q n:Integer ] [q Any ] [q 'int' ] ] ) ; f 5	'union'	ERROR:undefined_word	in either written order
+run ; typeq One 1 ; ; typeq Foo d( 1 2 ) ; def f ( fn [q [q n:One ] [q Any ] [q 'one' ] [q n:Foo ] [q Any ] [q 'union' ] ] ) ; f 1	'union'	ERROR:undefined_word	two named types of different branches: by the branch's band
+run ; typeq One 1 ; ; typeq Two 1 ; def f ( fn [q [q n:One ] [q Any ] [q 'one' ] [q n:Two ] [q Any ] [q 'two' ] ] ) ; f 1	'two'	ERROR:undefined_word	TWO NAMED TYPES OF ONE BRANCH AND DEPTH are ordered by NAME: the later name first
+run ; typeq One 1 ; ; typeq Two 1 ; def f ( fn [q [q n:Two ] [q Any ] [q 'two' ] [q n:One ] [q Any ] [q 'one' ] ] ) ; f 1	'two'	ERROR:undefined_word	in either written order
+run ; typeq One 1 ; ; def f ( fn [q [q n:One ] [q Any ] [q 'one' ] [q 1 ] [q Any ] [q 'lit' ] ] ) ; f 1	'lit'	ERROR:undefined_word	A LITERAL PATTERN is still tried before any bare type, a named one included
+
+# --- a type's name inside a shape, and stepped -------------------------------------
+run ; typeq Foo d( Integer String ) ; [ Foo ]	[Foo]	ERROR:undefined_word	STEPPED, the name is the type: in a list
+run ; typeq Foo d( Integer String ) ; { a: Foo }	{a:Foo}	ERROR:undefined_word	as a map's member
+run ; typeq Foo d( Integer String ) ; [q Foo ]	[Foo]	ERROR:undefined_word	in a quoted list nothing is stepped: the word stays
+run ; typeq Foo d( Integer String ) ; [: Foo 1 'a' ]	[:(Integer tor String) 1 'a']	ERROR:undefined_word	INSIDE A TYPE SHAPE the name is the type's CONTENT: a typed list's child is the union
+run ; typeq Foo d( Integer String ) ; {: Foo a: 1 }	{:(Integer tor String) a:1}	ERROR:undefined_word	a typed map's child
+run ; typeq One 1 ; [: One 1 ]	[:1 1]	ERROR:undefined_word	a singleton's content is its literal
+run ; typeq Al Integer ; [: Al 1 ]	[:Integer 1]	ERROR:undefined_word	an alias's is the type it adopted
+run ; typeq Foo d( Integer String ) ; d( Foo Boolean )	Boolean tor Integer tor String	ERROR:undefined_word	among a union's alternatives: the content
+run ; typeq Foo d( Integer String ) ; unifyq [q 5 ] [q Foo ]	true	ERROR:undefined_word	UNIFICATION reads a name inside a shape as the content too
+run ; typeq Foo d( Integer String ) ; unifyq [q true ] [q Foo ]	false	ERROR:undefined_word	and so refuses what the content refuses
+run ; typeq Foo d( Integer String ) ; unifyq {q a: 'x' } {q a: Foo }	true	ERROR:undefined_word	in a map
+run ; typeq Foo d( Integer String ) ; ; typeq Lst [: Foo ] ; unifyq [q 1 'a' ] Lst	true	ERROR:undefined_word	A TYPE DEFINED OVER ANOTHER holds the other's content: a list of the union
+run ; typeq Foo d( Integer String ) ; ; typeq Lst [: Foo ] ; unifyq [q 1 true ] Lst	false	ERROR:undefined_word	and refuses what the union refuses
+run ; typeq Foo d( Integer String ) ; ; typeq Bar d( Foo Boolean ) ; unifyq 5 Bar	true	ERROR:undefined_word	a union over a union admits the inner one's members
+run ; typeq Foo d( Integer String ) ; ; typeq Bar d( Foo Boolean ) ; meetq Bar Any	Boolean tor Integer tor String	ERROR:undefined_word	and its alternatives are the inner alternatives and its own
+
+# --- what the installer refuses ----------------------------------------------------
+run ; typeq foo 1	ERROR:type_error	ERROR:undefined_word	A TYPE NAME BEGINS WITH A CAPITAL
+run ; typeq Number 1	ERROR:type_error	ERROR:undefined_word	IT IS NO BUILTIN'S NAME
+run ; typeq Enum 1	ERROR:type_error	ERROR:undefined_word	nor any PART of a builtin's path: `Enum` is `Type/Disjunct/Enum`
+run def Zed fn( n Integer Integer [ n ] ) ; ; typeq Zed 1	ERROR:type_error	ERROR:undefined_word	IT IS NO FUNCTION'S NAME
+run def Zed 5 ; ; typeq Zed 1	ERROR:type_error	ERROR:undefined_word	NOR A VALUE'S
+run ; typeq Foo negq/v	ERROR:def_error	ERROR:undefined_word	A FUNCTION IS NOT A TYPE BODY: a capitalised name declares a type, and a function is one only as a declared predicate
+run ; typeq Foo ( afn n [q n ] )	ERROR:def_error	ERROR:undefined_word	an anonymous one neither
+run ; typeq foo negq/v	ERROR:type_error	ERROR:undefined_word	the name is checked before the body's kind
+run ; typeq Foo s( 5 )	ERROR:type_error	ERROR:undefined_word	A BODY IS A TYPE OR A LITERAL: a splice marker is neither
+run ; typeq Foo [q x ] ; unifyq [q x ] Foo	true	ERROR:undefined_word	(a list holding a name is a literal: the name is an atom there)
+
+# --- redefinition, unbinding, and the name's reservation ---------------------------
+run ; typeq Foo 1 ; ; typeq Foo 2 ; unifyq 2 Foo	true	ERROR:undefined_word	A REDEFINITION STACKS: the newest binding is the name's
+run ; typeq Foo 1 ; ; typeq Foo 2 ; unifyq 1 Foo	false	ERROR:undefined_word	and the older type is not consulted
+run ; typeq Foo 1 ; ; typeq Foo 2 ; undef Foo ; unifyq 1 Foo	true	ERROR:undefined_word	unbinding shows the older again
+run ; typeq Foo Integer ; ; typeq Foo String ; Foo	String	ERROR:undefined_word	an alias is rebound the same way
+run ; typeq Foo Integer ; ; typeq Foo String ; undef Foo ; Foo	Integer	ERROR:undefined_word	and shown again
+run ; typeq Foo 1 ; ; def f ( fn [q [q n:Foo ] [q Any ] [q n ] ] ) ; typeq Foo 2 ; f 1	1	ERROR:undefined_word	A SLOT KEEPS THE NODE IT WAS DECLARED WITH: the function still takes the older type's member
+run ; typeq Foo 1 ; ; def f ( fn [q [q n:Foo ] [q Any ] [q n ] ] ) ; typeq Foo 2 ; f 2	ERROR:signature_error	ERROR:undefined_word	and not the newer's
+run ; typeq Foo 1 ; ; def f ( fn [q [q n:Foo ] [q Any ] [q n ] ] ) ; undef Foo ; f 1	1	ERROR:undefined_word	after the name is unbound too
+run ; typeq Foo 1 ; ; def f ( fn [q [q n:Foo ] [q Any ] [q n ] ] ) ; undef Foo ; f/v	fn [[n:Foo][Any][n]]	ERROR:undefined_word	and still reads as the name
+run ; typeq Foo 1 ; ; undef Foo ; def f ( fn [q [q n:Foo ] [q Any ] [q n ] ] ) ;	ERROR:fn_invalid_spec	ERROR:undefined_word	a specification written after the unbinding finds no such type
+run ; typeq Foo 1 ; ; undef Foo ; typeq Foo 2	ERROR:type_error	ERROR:undefined_word	NUR418: UNBINDING DOES NOT RELEASE THE NAME — its reservation stays, and the name cannot be a type again
+run ; typeq Foo 1 ; ; undef Foo ; typeq Bar 2 ; Bar	Bar	ERROR:undefined_word	(another name is free)
+run ; typeq F 1 ; ; def F 5 ; F	5	ERROR:undefined_word	a VALUE bound over a type's name hides the type
+run ; typeq F 1 ; ; def F 5 ; typeq F 2	ERROR:type_error	ERROR:undefined_word	and then the name is a value's: it cannot be defined as a type
+run ; typeq F 1 ; ; def F 5 ; undef F ; F	F	ERROR:undefined_word	until the value is unbound
+run ; typeq Foo/Bar 1 ; Foo/Bar	Foo/Bar	ERROR:undefined_word	A NAME MAY BE WRITTEN WITH SLASHES: the type is named by the whole of it
+run ; typeq Foo/Bar 1 ; unifyq 1 Foo/Bar	true	ERROR:undefined_word	and is a type like any other
+run ; typeq Foo/Bar 1 ; ; typeq Bar 2	ERROR:type_error	ERROR:undefined_word	EACH PART of the name is reserved
+run ; typeq Foo/Bar 1 ; ; typeq Zed/Foo 2	ERROR:type_error	ERROR:undefined_word	wherever it is written
+run ; typeq Foo/Integer 1	ERROR:type_error	ERROR:undefined_word	and no part may be a builtin's
+run ; typeq Foo/bar 1 ; Foo/bar	Foo/bar	ERROR:undefined_word	only the FIRST character must be a capital
+
+# --- NUR421: a singleton passes for a value at a slot of the type it sits under ----
+# A bare type is refused at a slot that reads a payload — `addq Integer 1` raises —
+# but a minted node that carries content is exempt from that refusal, and it sits
+# under its content's type. So it is admitted where a value of that type is
+# expected, and the word reads the payload it does not have: zero.
+run ; typeq One 1 ; addq One 1	1	ERROR:undefined_word	NUR421: `One` is admitted at an Integer slot and read as 0 — the sum is 1, not 2 and not an error
+run ; typeq Sev 7 ; negq Sev	0	ERROR:undefined_word	NUR421: read as 0 whatever its literal
+run ; typeq Sev 7 ; addq Sev Sev	0	ERROR:undefined_word	NUR421: in both slots
+run ; typeq Sev 7 ; patq Sev	1	ERROR:undefined_word	NUR421: at a slot whose PATTERN is its literal it is admitted too — the type unifies with 7
+run ; typeq One 1 ; patq One	ERROR:signature_error	ERROR:undefined_word	(and refused where the pattern is another literal)
+run ; typeq Shp {q a: 1 } ; mpatq Shp	Shp	ERROR:undefined_word	NUR421: a map shape's type at a Map slot: handed over as the type
+run ; typeq Lst [q 1 2 ] ; eachq Lst [q negq ]	ERROR:fixture_not_a_list	ERROR:undefined_word	NUR421: a list type at a List slot: admitted, and it has no elements to read
+run ; typeq Foo d( Integer String ) ; addq Foo 1	ERROR:signature_error	ERROR:undefined_word	(a union's node sits under no value type, and is refused)
+
+# --- NUR422: the meet of two named types depends on their order, and on which is named ---
+# Two named types are settled by the LEFT one's rule. A union's rule puts the other
+# to its alternatives; a singleton's or a structural type's rule, facing a type, only
+# reads the lattice — where no named type is under another.
+run ; typeq Foo d( Integer String ) ; ; typeq One 1 ; meetq Foo One	One	ERROR:undefined_word	NUR422: the union first: its alternatives are asked, and Integer takes the singleton
+run ; typeq Foo d( Integer String ) ; ; typeq One 1 ; meetq One Foo	ERROR:fixture_no_meet	ERROR:undefined_word	NUR422: the singleton first: the lattice is asked, and there is no meet
+run ; typeq Foo d( [: Integer ] String ) ; ; typeq Lst [: Integer ] ; meetq Foo Lst	[:Integer]	ERROR:undefined_word	NUR422: a list type the same
+run ; typeq Foo d( [: Integer ] String ) ; ; typeq Lst [: Integer ] ; meetq Lst Foo	ERROR:fixture_no_meet	ERROR:undefined_word	NUR422: and the other way, none
+run ; typeq One 1 ; meetq d( Integer String ) One	1	ERROR:undefined_word	NUR422: the same union WRITTEN IN PLACE is a value to the singleton's rule, and the meet is the VALUE 1 — where the named union's was the type `One`
+run ; typeq One 1 ; meetq One d( Integer String )	1	ERROR:undefined_word	NUR422: in either order
+
+# --- NUR423: a union met inside a typed container comes back as a zero -------------
+# The meet of a list holding a union with a typed list is, element by element, the
+# meet of the element and the child: `Integer tor String` against `Integer` is
+# `Integer`. The kernel then RETAGS the element it started from with that type —
+# the step meant for a value narrowed into a newtype — and the union's payload,
+# tagged Integer, reads as 0. core/ts and the specification answer the meet.
+run meetq [q d( Integer String ) ] [: Integer ]	[0]	[Integer]	NUR423: the element's meet is `Integer`; the kernel hands back the union retagged, which prints as 0
+run meetq [: Integer ] [q d( Integer String ) ]	[0]	[Integer]	NUR423: from either side
+run meetq [q d( Integer String ) 5 ] [: Integer ]	[0 5]	[Integer 5]	NUR423: beside a value, which is kept
+run meetq {q a: d( Integer String ) } {: Integer }	{a:0}	{a:Integer}	NUR423: in a typed map
+run meetq [q d( String Boolean ) ] [: Scalar/String ]	['']	[String]	NUR423: retagged String, the payload reads as the empty string
+
+# --- NUR424: a word literal written after the word is not claimed by a slot of a named type ---
+# The plan reads `true`, `false` or an unbound name written after a word as "a
+# Boolean — an atom — will stand here": a probe of that type with no payload. A
+# builtin slot is satisfied by the type. A slot of a named type asks for the VALUE,
+# and a probe with no payload is a type to it — no member. From the stack, or as a
+# group's value, the same `true` is the value and is taken.
+run ; typeq Foo d( 'a' Boolean ) ; ; def f ( fn [q [q n:Foo ] [q Any ] [q n ] ] ) ; f true	ERROR:signature_error	ERROR:undefined_word	NUR424: `true` is a member — every Boolean is — and written after the word it is refused
+run ; typeq Foo d( 'a' Boolean ) ; ; def f ( fn [q [q n:Foo ] [q Any ] [q n ] ] ) ; f false	ERROR:signature_error	ERROR:undefined_word	NUR424: `false` the same
+run ; typeq Foo d( 'a' Boolean ) ; ; def f ( fn [q [q n:Foo ] [q Any ] [q n ] ] ) ; true f	true	ERROR:undefined_word	from the stack it is the value, and taken
+run ; typeq Foo d( 'a' Boolean ) ; ; def f ( fn [q [q n:Foo ] [q Any ] [q n ] ] ) ; f ( true )	true	ERROR:undefined_word	as a group's value too
+run ; typeq Foo d( 'a' Boolean ) ; ; def f ( fn [q [q n:Foo ] [q Any ] [q n ] ] ) ; def x true ; f x	true	ERROR:undefined_word	and as a bound name's
+run ; typeq Foo d( 'a' Boolean ) ; ; def f ( fn [q [q n:Foo ] [q Any ] [q n ] ] ) ; f 'a'	'a'	ERROR:undefined_word	(a literal that is no word is claimed where it is written)
+run ; typeq Tru true ; ; def f ( fn [q [q n:Tru ] [q Any ] [q n ] ] ) ; f true	ERROR:signature_error	ERROR:undefined_word	NUR424: the singleton of `true` refuses `true` written after the word
+run ; typeq Tru true ; ; def f ( fn [q [q n:Tru ] [q Any ] [q n ] ] ) ; true f	true	ERROR:undefined_word	and takes it from the stack
+run ; typeq Foo d( 'a' Atom ) ; ; def f ( fn [q [q n:Foo ] [q Any ] [q n ] ] ) ; f zzz	ERROR:signature_error	ERROR:undefined_word	NUR424: an unbound name, which an Atom slot takes as its atom, the same
+
+# --- an alias inside a shape, a value that holds a type, and when a shape is resolved ---
+run ; typeq One 1 ; ; typeq Al One ; [: Al ]	[:One]	ERROR:undefined_word	AN ALIAS INSIDE A SHAPE IS THE NODE IT ADOPTED, not that node's content: an alias of a singleton is the singleton's name
+run ; typeq Foo d( Integer String ) ; ; typeq Al Foo ; [: Al ]	[:Foo]	ERROR:undefined_word	an alias of a union is the union's name — where the union's own name is its alternatives
+run ; typeq Foo d( Integer String ) ; ; typeq Al Foo ; d( Al Boolean )	Boolean tor Foo	ERROR:undefined_word	among a union's alternatives too
+run ; typeq One 1 ; ; typeq Al One ; unifyq [q 1 ] [q Al ]	true	ERROR:undefined_word	it admits what the type admits either way
+run ; typeq One 1 ; ; typeq Al One ; unifyq [q 2 ] [q Al ]	false	ERROR:undefined_word	and refuses what it refuses
+run ; typeq One 1 ; ; def x One ; def f ( fn [q [q n:Any ] [q x ] [q n ] ] ) ; f/v	fn [[n:Any][One][n]]	ERROR:undefined_word	A VALUE THAT HOLDS A MINTED TYPE names it as a RETURN's declaration: the return reads as the type
+run ; typeq One 1 ; ; def x One ; def f ( fn [q [q n:Any ] [q x ] [q n ] ] ) ; f 1	1	ERROR:undefined_word	and is checked by membership
+run ; typeq One 1 ; ; def x One ; def f ( fn [q [q n:Any ] [q x ] [q n ] ] ) ; f 2	ERROR:type_error	ERROR:undefined_word	what is no member is the call's error
+run ; typeq One 1 ; ; def x One ; def f ( fn [q [q n:x ] [q Any ] [q n ] ] ) ;	ERROR:fn_invalid_spec	ERROR:undefined_word	(as a named PARAMETER's type only a type binding will do: a value's name is no type there)
+run ; typeq Foo 1 ; ; def f ( fn [q [q n:Any m:Any ] [q Any ] [q n ] ] ) ; f [: Foo ] [ typeq Foo 2 ]	(quote [:1])	ERROR:undefined_word	AN ARGUMENT'S SHAPE IS RESOLVED IN ITS OWN TURN: a later argument that rebinds the type does not change what the earlier one named
+run ; typeq Foo 1 ; ; def f ( fn [q [q n:Any m:Any ] [q Any ] [q m ] ] ) ; f [ typeq Foo 2 ] [: Foo ]	(quote [:2])	ERROR:undefined_word	and an earlier one that rebinds it does
+
+# --- NUR425: a typed container over a singleton's name is dead in a declaration ----
+# A typed container written as a parameter's or a return's declaration has a child
+# that is a name resolved when the specification is read — to the type's content,
+# but only where that content is itself a type. A name bound to a singleton, or to
+# a list or map literal, is left a name, and the pattern admits nothing.
+run ; typeq Foo d( Integer String ) ; ; def f ( fn [q [q {: Foo } ] [q Any ] [q 9 ] ] ) ; f {q a: 1 }	9	ERROR:undefined_word	a typed map over a UNION's name: the child is the union's content, and a member map is taken
+run ; typeq Foo d( Integer String ) ; ; def f ( fn [q [q {: Foo } ] [q Any ] [q 9 ] ] ) ; f {q a: true }	ERROR:signature_error	ERROR:undefined_word	and one that is no member refused
+run ; typeq Lst [: Integer ] ; ; def f ( fn [q [q {: Lst } ] [q Any ] [q 9 ] ] ) ; f {q a: [q 1 ] }	9	ERROR:undefined_word	over a typed list's name: the content
+run ; typeq One 1 ; ; def f ( fn [q [q {: One } ] [q Any ] [q 9 ] ] ) ; f {q a: 1 }	ERROR:signature_error	ERROR:undefined_word	NUR425: over a SINGLETON's name the child stays a name, and the map of its one member is refused
+run ; typeq Shp {q a: 1 } ; ; def f ( fn [q [q {: Shp } ] [q Any ] [q 9 ] ] ) ; f {q k: {q a: 1 } }	ERROR:signature_error	ERROR:undefined_word	NUR425: over a map literal's name the same
+run ; typeq One 1 ; ; def f ( fn [q [q n:Any ] [q [: One ] ] [q n ] ] ) ; f [q 1 ]	ERROR:type_error	ERROR:undefined_word	NUR425: as a RETURN, a list of its one member is the call's error
+run ; typeq One 1 ; ; typeq Lst [: One ] ; def f ( fn [q [q n:Lst ] [q Any ] [q n ] ] ) ; f [q 1 ]	(quote [1])	ERROR:undefined_word	(the same typed list under a NAME of its own is resolved by the installer, and takes it)
+run ; typeq One 1 ; unifyq [q 1 ] [: One ]	true	ERROR:undefined_word	(and unification reads the name as the content)

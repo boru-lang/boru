@@ -21,37 +21,52 @@ namespace Boru.Core
 /-- Word resolution ahead of unification (core/go/resolve.go
     `ResolveWordsDeep`): a bare word inside a shape is the keyword, type
     name or atom it spells. Only plain lists and maps, typed containers
-    and disjunct alternatives are entered. -/
-def resolveWordValue : Value → Value
+    and disjunct alternatives are entered.
+
+    `types` is the TYPE BINDINGS in force, where the resolution is made
+    with them in hand (`ResolveWordsDeepR`): a name a program bound to a
+    type is that type's declared CONTENT — before a builtin of the name is
+    looked for. Made without them, a name is a builtin's or an atom. -/
+def resolveWordValueWith (types : String → Option Value) : Value → Value
   | .word w =>
     if w.name == "true" then .bool true
     else if w.name == "false" then .bool false
-    else match resolveTypeName? w.name with
-      | some t => .typeLit t
-      | none => .atom w.name
+    else match types w.name with
+      | some body => body
+      | none =>
+        match resolveTypeName? w.name with
+        | some t => .typeLit t
+        | none => .atom w.name
   | v => v
 
 mutual
-def resolveWordsDeep : Value → Value
-  | .word w => resolveWordValue (.word w)
-  | .list elems _ => .list (resolveWordsList elems) false
-  | .map entries _ => .map (resolveWordsEntries entries) false
-  | .typedList child elems => .typedList (resolveWordsDeep child) (resolveWordsList elems)
-  | .typedMap child entries => .typedMap (resolveWordsDeep child) (resolveWordsEntries entries)
+def resolveWordsDeepWith (types : String → Option Value) : Value → Value
+  | .word w => resolveWordValueWith types (.word w)
+  | .list elems _ => .list (resolveWordsListWith types elems) false
+  | .map entries _ => .map (resolveWordsEntriesWith types entries) false
+  | .typedList child elems =>
+    .typedList (resolveWordsDeepWith types child) (resolveWordsListWith types elems)
+  | .typedMap child entries =>
+    .typedMap (resolveWordsDeepWith types child) (resolveWordsEntriesWith types entries)
   | .disjunct alts =>
     -- a disjunct is a SET: resolved, it is reduced to its canonical
     -- alternatives — repeats and absorbed alternatives dropped, the rest
     -- in the total order
-    .disjunct (simplifyDisjunctAlts (resolveWordsList alts))
-  | .quoted v => resolveWordsDeep v
+    .disjunct (simplifyDisjunctAlts (resolveWordsListWith types alts))
+  | .quoted v => resolveWordsDeepWith types v
   | v => v
-def resolveWordsList : List Value → List Value
+def resolveWordsListWith (types : String → Option Value) : List Value → List Value
   | [] => []
-  | v :: vs => resolveWordsDeep v :: resolveWordsList vs
-def resolveWordsEntries : List (String × Value) → List (String × Value)
+  | v :: vs => resolveWordsDeepWith types v :: resolveWordsListWith types vs
+def resolveWordsEntriesWith (types : String → Option Value) :
+    List (String × Value) → List (String × Value)
   | [] => []
-  | (k, v) :: es => (k, resolveWordsDeep v) :: resolveWordsEntries es
+  | (k, v) :: es => (k, resolveWordsDeepWith types v) :: resolveWordsEntriesWith types es
 end
+
+/-- The resolution with no type bindings in hand. -/
+def resolveWordValue : Value → Value := resolveWordValueWith fun _ => none
+def resolveWordsDeep : Value → Value := resolveWordsDeepWith fun _ => none
 
 namespace Value
 
@@ -77,7 +92,7 @@ mutual
     disjunct, a function — and, for a list or a map, holding only such
     values. `[1 2]` is one; `[Integer]` and `[: Integer ]` are not. -/
 def Value.isPlain : Value → Bool
-  | .typeLit _ | .typedList _ _ | .typedMap _ _ | .disjunct _ | .fn _ _ _ => false
+  | .typeLit _ | .named _ _ | .typedList _ _ | .typedMap _ _ | .disjunct _ | .fn _ _ _ => false
   | .list elems _ => allPlain elems
   | .map entries _ => allPlainEntries entries
   | .quoted v => v.isPlain
@@ -116,8 +131,19 @@ mutual
 def unifyInner : Nat → Value → Value → Option Value
   | 0, _, _ => none
   | fuel + 1, a, b =>
-    -- a disjunct rules first, whichever side it is on
     match a, b with
+    -- A NAMED TYPE'S OWN RULE outranks every other when exactly one side
+    -- is a named type: the other is put to it whatever it is — a value, a
+    -- type, a union, `Any`, `None`
+    | .named _ body, .named _ _ =>
+      -- two named types: the LEFT one's rule (as the kernel has it, not as
+      -- a meet should be — NUR422: the answer depends on the order)
+      (match body with
+       | .disjunct alts => if a == b then unifySameOrSubtype a b else unifyDisjunct fuel alts b
+       | _ => unifySameOrSubtype a b)
+    | .named _ body, _ => unifyNamed fuel a body b
+    | _, .named _ body => unifyNamed fuel b body a
+    -- a disjunct rules next, whichever side it is on
     | .disjunct alts, _ => unifyDisjunct fuel alts b
     | _, .disjunct alts => unifyDisjunct fuel alts a
     | _, _ =>
@@ -165,6 +191,27 @@ def unifyInner : Nat → Value → Value → Option Value
               | .map ea _, .map eb _ => unifyMaps fuel ea eb
               | _, _ => none
           else unifySameOrSubtype a b
+
+/-- A NAMED TYPE against anything that is not one (core/go
+    `DisjunctUnifier.Unify`, `BindingBodyUnifier.Unify`). What the type
+    was declared with decides.
+
+      * A UNION: the other side is put to the alternatives, exactly as it
+        would be to the union written in place.
+      * ANYTHING ELSE — a literal, a list or a map, a typed container:
+        the type has one question, "is this VALUE a member". A value is
+        unified with the content, and the answer is the value as that
+        unification leaves it — never the type. A TYPE on the other side
+        is no member to test: the pair is settled by the lattice, where
+        the named type sits under the node its content sits at. -/
+def unifyNamed : Nat → Value → Value → Value → Option Value
+  | 0, _, _, _ => none
+  | fuel + 1, node, body, other =>
+    match body with
+    | .disjunct alts => unifyDisjunct fuel alts other
+    | _ =>
+      if !other.isConcrete then unifySameOrSubtype node other
+      else unifyInner fuel (resolveWordsDeep other) (resolveWordsDeep body)
 
 /-- A disjunct against a value (core/go/unify_disjunct.go `unifyDisjunct`).
     ONE rule: the meet is the disjunct of the meets of its alternatives
@@ -357,5 +404,33 @@ def unify (a b : Value) : Option Value :=
 
 /-- The predicate half: do the two values unify at all. -/
 def unifies (a b : Value) : Bool := (unify a b).isSome
+
+/-- Unification with the TYPE BINDINGS in hand (`UnifyR` with a
+    registry): a name inside either shape that a program bound to a type
+    is that type's content. -/
+def unifyWith (types : String → Option Value) (a b : Value) : Option Value :=
+  let a := resolveWordsDeepWith types a
+  let b := resolveWordsDeepWith types b
+  unifyInner (2 * (a.size + b.size) + 8) a b
+
+/-- IS `v` A MEMBER of the named type `node` — the question a slot of
+    that type, and a return declared as it, ask (the node's `Match`:
+    core/go `DisjunctUnifier.Match`, `BindingBodyUnifier.Match`).
+
+    A VALUE is put to the type's content: to a union's alternatives, or
+    unified with the literal, list, map or typed container the type was
+    declared as. A TYPE is not a member of anything — it is asked only
+    whether it is this type (or one under it) in the lattice. `None` is
+    the one type literal a union still takes as a value: it is what a
+    missing member reads as. -/
+def memberMatch (node v : Value) : Bool :=
+  let v := v.unquote
+  match node with
+  | .named path (.disjunct alts) =>
+    if v.isTypeLiteral then conforms v.typeOf path
+    else (unifyDisjunct (2 * (sizeList alts + v.size) + 8) alts v).isSome
+  | .named path body =>
+    if !v.isConcrete then conforms v.typeOf path else unifies v body
+  | _ => false
 
 end Boru.Core

@@ -728,6 +728,23 @@ func coreSpecRegistry(t *testing.T) *Registry {
 		}),
 		BarrierPos: 2,
 	})
+	// typeq is the door onto TYPE INSTALLATION (InstallType, the one entry
+	// basic's `def Name body` goes through for a capitalised name): it
+	// validates the name and the body, mints the type's lattice node — or,
+	// for a bare type, adopts the node it aliases — and binds the name to
+	// it. Every refusal of the installer is the installer's own error.
+	r.Register("typeq", Signature{
+		Params:  []FnParam{{Name: "n", Type: TAtom, Quote: true}, {Name: "body", Type: TAny}},
+		Returns: []*Type{},
+		Impl: Go(func(a []Value, _ map[string]Value, _ []Value, reg *Registry) ([]Value, error) {
+			n, err := AsAtom(a[0])
+			if err != nil {
+				return nil, err
+			}
+			return nil, InstallType(reg, n, a[1])
+		}),
+		BarrierPos: 2,
+	})
 	// afn0q builds an anonymous function of NO parameters — `afn0q [q body…
 	// ]` — which afn, taking one parameter name, cannot. Such a function is
 	// the one value whose call needs nothing beside it, and the kernel

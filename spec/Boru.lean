@@ -10,6 +10,7 @@ import Boru.Core.Match
 import Boru.Core.Truth
 import Boru.Core.Engine
 import Boru.Core.FnSpec
+import Boru.Core.TypeInstall
 import Boru.Core.Theorems.Lattice
 import Boru.Core.Theorems.ArgumentRule
 import Boru.Core.Theorems.UnifyOrder
@@ -27,3 +28,5 @@ import Boru.Core.Theorems.Raw
 import Boru.Core.Theorems.PatternOperand
 import Boru.Core.Theorems.Splice
 import Boru.Core.Theorems.ZeroArg
+import Boru.Core.Theorems.TypeInstall
+

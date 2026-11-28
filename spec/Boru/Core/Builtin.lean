@@ -14,10 +14,52 @@ namespace Boru.Core
 /-- The builtin lattice. -/
 def builtin : TypeTable := ⟨builtinDecls⟩
 
-/-- `t` conforms to `pattern` in the builtin lattice. -/
-def conforms (t pattern : TypeId) : Bool := builtin.conformsTo t pattern
+/-! ## Minted nodes
 
-def isSubtype (t pattern : TypeId) : Bool := builtin.isSubtypeOf t pattern
+A type a program DEFINES is a new node of the lattice, minted under the
+node its content sits at (core/go `TypeTable.MintType`). Its path is its
+parent's, then the name it was defined under, then the number that tells
+it from every other node minted under that name (`mintSep` between
+them). No table holds it — the path alone says where it hangs. -/
+
+/-- The path of a node minted under `parent`. -/
+def mintedPath (parent : TypeId) (name : String) (ident : Nat) : TypeId :=
+  parent ++ mintSep ++ name ++ mintSep ++ toString ident
+
+/-- The parent of a minted path; `none` for a builtin one. -/
+def mintedParent? (p : TypeId) : Option TypeId :=
+  match (p.splitOn mintSep).reverse with
+  | _ident :: _name :: parent@(_ :: _) => some (mintSep.intercalate parent.reverse)
+  | _ => none
+
+/-- The number a minted path ends in. -/
+def mintedIdent (p : TypeId) : Nat :=
+  ((p.splitOn mintSep).getLastD "").toNat?.getD 0
+
+/-- `p` and its ancestors, nearest first: through the minted nodes, then
+    up the builtin table. -/
+def typeChain (p : TypeId) : List TypeId := go (p.length + 1) p
+where
+  go : Nat → TypeId → List TypeId
+    | 0, p => [p]
+    | fuel + 1, p =>
+      match mintedParent? p with
+      | some q => p :: go fuel q
+      | none => builtin.chain p
+
+/-- `t` conforms to `pattern`: `pattern` is `Any`, `t` itself, or one of
+    its ancestors. -/
+def conforms (t pattern : TypeId) : Bool := pattern == "Any" || (typeChain t).contains pattern
+
+def isSubtype (t pattern : TypeId) : Bool := t != pattern && (typeChain t).contains pattern
+
+/-- Depth of a node: the number of its ancestors. -/
+def typeDepth (p : TypeId) : Nat := (typeChain p).length - 1
+
+/-- The lowest common ancestor of two nodes, when they share one. -/
+def typeLca? (a b : TypeId) : Option TypeId :=
+  let cb := typeChain b
+  (typeChain a).find? (cb.contains ·)
 
 /-- A bare name resolved against the builtin lattice (ADR-012 rule 4). -/
 def resolveTypeName? (name : String) : Option TypeId := builtin.resolveName? name
@@ -44,7 +86,7 @@ namespace Value
     `TypeMembership`). -/
 def isType (v : Value) : Bool :=
   match v.unquote with
-  | typeLit _ | typedList _ _ | typedMap _ _ | disjunct _ | fn _ _ _ => true
+  | typeLit _ | named _ _ | typedList _ _ | typedMap _ _ | disjunct _ | fn _ _ _ => true
   | _ => false
 
 /-- `v` is a value of type `t` (the kernel's `Value.Is`). By default the

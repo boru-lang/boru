@@ -92,6 +92,20 @@ inductive Value where
   /-- A bare lattice node used as a value: a type literal. Types are
       values (ADR-010). -/
   | typeLit (t : TypeId)
+  /-- A MINTED lattice node: a type a program DEFINED (core/go
+      `InstallType`). It is a bare node as a builtin's is — a type, with
+      no payload to read — and it carries what it was declared with: the
+      CONTENT that decides what its members are (core/go `Value.TypeBody`
+      and the membership rule on the node). `path` is its place in the
+      lattice: its parent's path, then its name and its number
+      (`mintedPath`). -/
+  | named (path : TypeId) (body : Value)
+  /-- A TYPE BINDING, as the binding store holds it: the name is bound to
+      a lattice NODE — one MINTED for it, or an existing one it adopted
+      (an alias). Only the store holds this; read, the binding is its
+      node. The two differ in what the name was DECLARED with: a minted
+      node's content, or — for an alias — the adopted node itself. -/
+  | typeBind (node : Value) (minted : Bool)
   /-- `Node/List`. `eval` is set on a list the PARSER wrote and nothing
       has consumed yet: such a list is a pending program. A list a word
       returned is data. -/
@@ -300,6 +314,7 @@ questions. -/
 /-- `v` is its own lattice node — a bare type literal. -/
 def isBareTypeNode : Value → Bool
   | typeLit _ => true
+  | named _ _ => true
   | quoted v => isBareTypeNode v
   | _ => false
 
@@ -307,6 +322,7 @@ def isBareTypeNode : Value → Bool
     which dispatch treats as a value. -/
 def isTypeLiteral : Value → Bool
   | typeLit t => t != "None"
+  | named _ _ => true
   | _ => false
 
 def isWord : Value → Bool | word _ => true | _ => false
@@ -335,6 +351,8 @@ def typeOf : Value → TypeId
   | atom _ => "Scalar/Atom"
   | none => "None"
   | typeLit t => t
+  | named path _ => path
+  | typeBind node _ => typeOf node
   | list _ _ => "Node/List"
   | map _ _ => "Node/Map"
   | typedList _ _ => "Node/List"
@@ -385,6 +403,8 @@ def Value.size : Value → Nat
   | .disjunct alts => 1 + sizeList alts
   | .parenExpr items => 1 + sizeList items
   | .splice v => 1 + v.size
+  | .named _ body => 1 + body.size
+  | .typeBind node _ => 1 + node.size
   | .quoted v => 1 + v.size
   | .applied v => 1 + v.size
   | _ => 1

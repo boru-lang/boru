@@ -9,6 +9,7 @@
   the runners share no code, so a bug in one cannot hide in another.
 -/
 import Boru.Core.FnSpec
+import Boru.Core.TypeInstall
 
 namespace Boru.Corespec
 open Boru.Core
@@ -102,7 +103,10 @@ def fixtureDefs : Defs :=
     word "afn0q" [p "body" TList] ["Type/Function"] 1,
     word "applyq" [p "f" TAny] [TAny] 1,
     -- the FULL-STACK fixture
-    word "depthq" [] [] 0 (fullStack := true)
+    word "depthq" [] [] 0 (fullStack := true),
+    -- the TYPE installer: `typeq Name body` defines a type, as a
+    -- capitalised `def` does in the language above the core
+    word "typeq" [p "n" TAtom (quote := true), p "body" TAny] [] 2
   ].zipIdx.map fun ((n, v), i) =>
     -- each fixture word is one function, with an identity of its own
     (n, [match v with
@@ -193,9 +197,12 @@ def fixtureNatives : Natives :=
     ("bothq", .plain fun a d => pure ([a.getD 1 .none], d)),
     ("tyq", .plain fun a d => pure ([a.getD 0 .none], d)),
     ("tpatq", .plain fun a d => pure ([a.getD 0 .none], d)),
-    ("unifyq", .plain fun a d => pure ([.bool (unifies (a.getD 0 .none) (a.getD 1 .none))], d)),
+    -- unification with the bindings in hand: a name inside a shape that
+    -- the program bound to a type is that type's content
+    ("unifyq", .plain fun a d =>
+      pure ([.bool (unifyWith d.typeBody? (a.getD 0 .none) (a.getD 1 .none)).isSome], d)),
     ("meetq", .plain fun a d =>
-      match unify (a.getD 0 .none) (a.getD 1 .none) with
+      match unifyWith d.typeBody? (a.getD 0 .none) (a.getD 1 .none) with
       | some meet => pure ([meet], d)
       | none => throw { code := "fixture_no_meet", detail := "the two values do not unify" }),
     ("eachq", .driven {
@@ -270,7 +277,14 @@ def fixtureNatives : Natives :=
             (match s.impl with | .boru _ _ true _ _ => true | _ => false)
         | _ => false
       pure ([if marks then .applied v else v], d)),
-    ("depthq", .fullStack fun _ stack => pure (stack ++ [.int stack.length]))
+    ("depthq", .fullStack fun _ stack => pure (stack ++ [.int stack.length])),
+    ("typeq", .plain fun a d =>
+      match a.getD 0 .none with
+      | .atom n =>
+        match TypeInstall.install d n (a.getD 1 .none) with
+        | .ok d => pure ([], d)
+        | .error (code, detail) => throw { code := code, detail := detail }
+      | _ => throw { code := "type_error", detail := "typeq: not an atom" })
   ]
 
 end Boru.Corespec

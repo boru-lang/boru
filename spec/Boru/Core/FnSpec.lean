@@ -31,6 +31,7 @@
   `unmodelled` rather than guessed at.
 -/
 import Boru.Core.Engine
+import Boru.Core.TypeInstall
 
 namespace Boru.Core
 namespace FnSpec
@@ -80,8 +81,46 @@ def looksLikeTypeName (name : String) : Bool :=
 def boundType (d : Defs) (name : String) : Option (TypeId × Option Value) :=
   match d.top? name with
   | some (.typeLit t) => some (t, none)
+  -- a VALUE binding that holds a type a program minted names that type
+  -- too: the node, with its membership rule
+  | some (.named path body) => some (path, some (.named path body))
   | some (.disjunct _) | some (.typedList _ _) | some (.typedMap _ _) | some (.fn _ _ _) => some (TAny, none)
   | _ => none
+
+/-- A NAME THAT IS A TYPE BINDING (core/go `Registry.LookupTypeName`): the
+    slot's type is the binding's NODE. For an alias that is the node it
+    adopted; for a type the program minted it is the minted node, which
+    the slot carries whole — its path as the type, and the node itself
+    where a pattern would stand (`Sig.named?`). -/
+def typeBound (d : Defs) (name : String) : Option (TypeId × Option Value) :=
+  match d.typeNode? name with
+  | some (.typeLit t) => some (t, none)
+  | some (.named path body) => some (path, some (.named path body))
+  | _ => none
+
+/-- THE CHILD OF A TYPED CONTAINER IN A DECLARATION (core/go
+    `ResolveSigChildParam`). A child written as a name is resolved when
+    the specification is read: a type binding gives its declared content
+    — but only where that content is itself a TYPE (a bare node, a union,
+    a typed container). A name bound to a SINGLETON or to a list or map
+    literal is left a name, and the pattern then admits nothing the type
+    admits: as the kernel has it (NUR425). Any other name is a builtin's,
+    or an atom; a typed container as the child is read the same way. -/
+def resolveSigChild (d : Defs) : Nat → Value → Value
+  | 0, v => v
+  | fuel + 1, v =>
+    let child (c : Value) : Value :=
+      match c with
+      | .word w =>
+        (match d.typeBody? w.name with
+         | some body => if TypeInstall.isTypeBody body then body else .word w
+         | none => resolveWordsDeep (.word w))
+      | .typedList _ _ | .typedMap _ _ => resolveSigChild d fuel c
+      | c => resolveWordsDeep c
+    match v with
+    | .typedList c elems => .typedList (child c) elems
+    | .typedMap c entries => .typedMap (child c) entries
+    | v => v
 
 /-- WHAT A DECLARATION RESOLVES TO (core/go `ResolveSigType`): the slot's
     type, and a pattern where the declaration says more than a type.
@@ -93,29 +132,36 @@ def boundType (d : Defs) (name : String) : Option (TypeId × Option Value) :=
     its family with itself as the pattern. -/
 def resolveSigType (d : Defs) : Value → R (TypeId × Option Value)
   | .typeLit t => pure (t, none)
+  | v@(.named path _) => pure (path, some v)
   | .word w =>
-    match resolveTypeName? w.name with
-    | some t => pure (t, none)
+    match typeBound d w.name with
+    | some r => pure r
     | none =>
-      match boundType d w.name with
-      | some r => pure r
-      -- a word is always a NAME: one that names no type is an error
-      | none => throw s!"unknown type {w.name}"
-  | .str s =>
-    match resolveTypeName? s with
-    | some t => pure (t, none)
-    | none =>
-      match boundType d s with
-      | some r => pure r
+      match resolveTypeName? w.name with
+      | some t => pure (t, none)
       | none =>
-        if looksLikeTypeName s then throw s!"unknown type {s}"
-        else pure (TString, some (.str s))
+        match boundType d w.name with
+        | some r => pure r
+        -- a word is always a NAME: one that names no type is an error
+        | none => throw s!"unknown type {w.name}"
+  | .str s =>
+    match typeBound d s with
+    | some r => pure r
+    | none =>
+      match resolveTypeName? s with
+      | some t => pure (t, none)
+      | none =>
+        match boundType d s with
+        | some r => pure r
+        | none =>
+          if looksLikeTypeName s then throw s!"unknown type {s}"
+          else pure (TString, some (.str s))
   | .disjunct alts => pure (TAny, some (.disjunct alts))
   | .int n => pure (TInteger, some (.int n))
   | .bool b => pure (TBoolean, some (.bool b))
   | v@(.list _ _) => pure (TList, some v)
-  | v@(.typedList _ _) => pure (TList, some (resolveInert v))
-  | v@(.typedMap _ _) => pure (TMap, some (resolveInert v))
+  | v@(.typedList _ _) => pure (TList, some (resolveSigChild d (v.size + 1) v))
+  | v@(.typedMap _ _) => pure (TMap, some (resolveSigChild d (v.size + 1) v))
   | .map entries ev => pure (TMap, some (.map (entries.map fun (k, v) => (k, resolveWordsDeep v)) ev))
   | .none => pure (TAny, none)
   | _ => unmodelled
@@ -162,8 +208,9 @@ def parseParams (d : Defs) : List Value → Params → R Params
             | none => (rawType, false)
           if !validName name then throw s!"invalid parameter name {name}"
           else
-            match resolveTypeName? typeName with
-            | some t => add (.mk name t none quote false optional {})
+            -- a builtin's name, or a name the program bound as a TYPE
+            match (resolveTypeName? typeName).map (·, none) <|> typeBound d typeName with
+            | some (t, node) => add (.mk name t node quote false optional {})
             | none =>
               -- `name:kw/q`, where `kw` names no type: a KEYWORD slot — it
               -- admits exactly the written word `kw`
@@ -171,8 +218,8 @@ def parseParams (d : Defs) : List Value → Params → R Params
               else throw s!"unknown type {typeName}"
         | none =>
           -- a bare type name: an unnamed parameter
-          match resolveTypeName? w.name with
-          | some t => add (.mk "" t none false false false {})
+          match (resolveTypeName? w.name).map (·, none) <|> typeBound d w.name with
+          | some (t, node) => add (.mk "" t node false false false {})
           | none => throw s!"unknown type {w.name}"
     | .typeLit t => add (.mk "" t none false false false {})
     | .int n => add (.mk "" TInteger (some (.int n)) false false false {})
@@ -281,7 +328,12 @@ def expandOptional (name : String) (s : Sig) : List Sig :=
           if omitted i then
             match baseValue p.type with
             | some v =>
-              if (match p.pattern with | some pat => unifies v pat | none => true) then
+              -- a parameter of a NAMED type is given its type's base value
+              -- unasked: the type's own rule is not consulted (NUR420)
+              if (match p.pattern with
+                  | some (.named _ _) => true
+                  | some pat => unifies v pat
+                  | none => true) then
                 (args more present).map (v :: ·)
               else none
             | none => none

@@ -15,14 +15,17 @@ kernel (or the corpus, which did not pin the case) is wrong.
 
     tools/diff-fuzz.py [--n 2000] [--seed 1] [--max-len 8] [--out FILE]
 
-Two disagreements are KNOWN and are the kernel's, recorded in NUR.md; the
-model states the rule in both, and a seed may still draw them:
+Three disagreements are KNOWN and are the kernel's, recorded in NUR.md; the
+model states the rule in each, and a seed may still draw them:
 
   NUR407  a callee that unbinds its own parameter, called LAST by a
           function of the same parameter name (tail-call elision shows)
   NUR412  an all-unnamed function value — a `fn(` of `_` parameters, or
           `name/u` of one — with its arguments on the stack in the order
           the one argument rule refuses (the kernel reads them bottom-up)
+  NUR423  a union as an element of a list (or a member of a map) met with
+          a typed container whose child takes ONE of its alternatives: the
+          kernel hands back the union retagged, which prints as a zero
 """
 import argparse, os, random, subprocess, sys, tempfile
 
@@ -34,10 +37,14 @@ WORDS = ["addq", "negq", "pairq", "sumq", "boomq", "patq", "dupq", "__pa", "unde
          "qanyq", "bothq", "tyq", "tpatq", "unifyq", "meetq", "meetq", "depthq", "afn", "eachq",
          "forq", "forq", "rangeq", "whileq", "breakq", "contq", "ifq", "ifq", "replayq", "callq", "callq",
          "argsq", "def", "bindq", "rawlq", "rawmq", "rawpq", "formq", "raw2q", "form2q",
-         "mpatq", "rawmpatq", "lpatq", "rawlpatq", "spliceq", "afn0q", "applyq", "applyq"]
+         "mpatq", "rawmpatq", "lpatq", "rawlpatq", "spliceq", "afn0q", "applyq", "applyq", "typeq"]
 RAW = ("rawlq", "rawmq", "rawpq", "formq", "raw2q", "form2q", "mpatq", "rawmpatq", "lpatq", "rawlpatq")
 LITS = ["0", "1", "2", "5", "7", "-3", "'a'", "'x'", "true", "false", "none", "null"]
 TYPES = ["Integer", "String", "Any", "None", "List", "Map", "Boolean", "Word", "Scalar/String"]
+# names a program may have bound as TYPES (`typeq`): a union, a singleton,
+# a typed list, a map shape, an alias
+USER_TYPES = ["Foo", "One", "Lst", "Shp", "Al"]
+TYPES += USER_TYPES
 NAMES = ["x", "y", "n", "nosuchword", "w", "w", "m", "z", "z"]
 MARKS = ["(", ")", ";"]
 
@@ -265,19 +272,24 @@ def gen_spec(rng):
     """A function specification: `[q [q params ] [q returns ] [q body ] … ]`."""
     types = ["Integer", "Integer", "String", "Any", "Any", "Boolean", "List", "Map", "None", "Number", "Scalar",
              "Float", "Atom", "Function", "Scalar/String", "Node", "Nosuch", "integer"]
+    # a name the program may have bound as a type, as a parameter's or a
+    # return's type. Never an OPTIONAL one: the omitted parameter is given
+    # its type's base value unasked, and where that is no member the
+    # function calls itself without end (NUR420)
+    named = types + USER_TYPES * 2
     out = ["[q"]
     for _ in range(rng.choice([1, 1, 1, 2])):
         params = []
         for name in rng.sample(["n", "m", "k"], rng.choice([0, 1, 1, 1, 2, 2, 3])):
             r = rng.random()
             if r < 0.45:
-                params.append(f"{name}:{rng.choice(types)}")
+                params.append(f"{name}:{rng.choice(named)}")
             elif r < 0.62:
                 params.append(f"{name}?:{rng.choice(types)}")
             elif r < 0.68:
                 params.append(f"{name}:{rng.choice(['Atom/q', 'kw/q', 'Integer/q', 'Any/q'])}")
             elif r < 0.76:
-                params.append(rng.choice(types))
+                params.append(rng.choice(named))
             elif r < 0.84:
                 params.append(rng.choice(["7", "'a'", "0", "''"]))
             elif r < 0.88:
@@ -290,7 +302,7 @@ def gen_spec(rng):
                                       ["Bad:Integer"], ["n:"], [":Integer"], ["{q", "}"], ["{:", "Integer", "}"]])
         returns = []
         for _ in range(rng.choice([0, 1, 1, 1, 1, 2])):
-            returns += rng.choice([[rng.choice(types)], [rng.choice(types)], ["d(", "Integer", "String", ")"], ["7"],
+            returns += rng.choice([[rng.choice(named)], [rng.choice(types)], ["d(", "Integer", "String", ")"], ["7"],
                                    ["'a'"], ["r:Integer"], ["none"], ["[q", "1", "]"], ["[:", "Integer", "]"],
                                    ["{q", "a:", "Integer", "}"], ["d(", ")"], ["d(", "7", "'a'", ")"], ["x"],
                                    ["'Integer'"], ["'ok'"], ["'Nosuch'"], ["Bad:Integer"]])
@@ -312,7 +324,77 @@ def gen_spec(rng):
     return out + ["]"]
 
 
+TYPE_BODIES = {"Foo": ["d( Integer String )", "d( Integer String )", "d( 1 2 )", "d( Integer None )", "d( 'a' Boolean )",
+                       "d( [: Integer ] String )", "d( )"],
+               "One": ["1", "1", "7", "'a'", "true", "none", "0"],
+               "Lst": ["[: Integer ]", "[: Integer ]", "[q 1 2 ]", "[: String ]", "[q ]", "[: Foo ]", "[q Integer ]"],
+               "Shp": ["{q a: Integer }", "{q a: 1 }", "{q }", "{: Integer }", "{q a: Integer b: String }"],
+               "Al": ["Integer", "Integer", "String", "Foo", "One", "List", "Any", "None"]}
+
+
+def type_uses(rng):
+    """USES of the types a program defined: the two sides of a unification,
+    an argument at a slot of the type, a return declared as it, the type
+    where a value is expected."""
+    ops = USER_TYPES * 2 + ["Integer", "String", "Any", "None", "List", "Map", "Boolean", "Scalar", "Number",
+                            "1", "2", "7", "0", "'a'", "true", "none", "[q 1 2 ]", "[q ]", "[q 'a' ]", "[q 1 'a' ]",
+                            "{q a: 1 }", "{q a: 'x' }", "{q a: 1 b: 'y' }", "{q }", "[: Integer ]", "[: String ]",
+                            "d( Integer String )", "d( 1 2 )", "d( String Boolean )", "[ addq 1 2 ]",
+                            "{ a: p( addq 0 1 ) }", "[: Foo ]", "[: One 1 ]", "d( Foo Boolean )", "{ a: One }",
+                            "[q Foo ]", "[q One ]", "( negq -1 )", "[: Al ]", "d( Al Boolean )", "{: One }",
+                            "[: Lst ]", "{: Foo a: 1 }"]
+    uses = []
+    for _ in range(rng.randint(1, 3)):
+        a, b, t = rng.choice(ops).split(), rng.choice(ops).split(), rng.choice(USER_TYPES)
+        t2 = rng.choice(USER_TYPES + ["Integer", "Any", "String", "List", "Scalar"])
+        body = rng.choice(["n", "'in'", "addq n 1", "[ n ]", "argsq", "n n"])
+        uses.append(rng.choice([
+            ["unifyq"] + a + b, ["meetq"] + a + b, ["meetq"] + a + b,
+            ["tyq"] + a, ["addq"] + a + ["1"], ["negq"] + a, ["bothq", "0"] + a, ["dupq"] + a, a,
+            [";", "def", "tf", "(", "fn", "[q", "[q", f"n:{t}", "]", "[q", "Any", "]", "[q"] + body.split() + ["]", "]", ")", ";",
+             "tf"] + a,
+            [";", "def", "tf", "(", "fn", "[q", "[q", f"n:{t}", "]", "[q", "Any", "]", "[q", "'one'", "]",
+             "[q", f"n:{t2}", "]", "[q", "Any", "]", "[q", "'two'", "]", "]", ")", ";", "tf"] + a,
+            [";", "def", "tf", "(", "fn", "[q", "[q", "n:Any", "]", "[q", t, "]", "[q", "n", "]", "]", ")", ";", "tf"] + a,
+            [";", "def", "tf", "(", "fn", "[q", "[q", f"n:{t}", "]", "[q", "Any", "]", "[q", "n", "]", "]", ")", ";"] + a + ["tf"],
+            [";", "def", "tf", "(", "fn", "[q", "[q", f"n:{t}", f"m:{t2}", "]", "[q", "Any", "]", "[q", "n", "m", "]", "]", ")", ";",
+             "tf"] + a + b,
+            [";", "def", "tf", "(", "fn", "[q", "[q", f"n:{t}", "]", "[q", "Any", "]", "[q", "n", "]", "]", ")", ";",
+             "undef", t, ";", "tf"] + a + ["tf/v"],
+            ["undef", t, ";", "typeq", t] + b + [";"] + a,
+            # a typed container over the type's name, as a parameter's and as
+            # a return's declaration; a VALUE that holds the type, as a
+            # return's; and an argument that rebinds a type an earlier or a
+            # later argument's shape names
+            [";", "def", "tf", "(", "fn", "[q", "[q"] + rng.choice([["{:", t, "}"], ["[:", t, "]"]]) + ["]",
+             "[q", "Any", "]", "[q", "9", "]", "]", ")", ";", "tf"] + a,
+            [";", "def", "tf", "(", "fn", "[q", "[q", "n:Any", "]", "[q"] + rng.choice([["[:", t, "]"], ["{:", t, "}"]])
+            + ["]", "[q", "n", "]", "]", ")", ";", "tf"] + a,
+            [";", "def", "x", t, ";", "def", "tf", "(", "fn", "[q", "[q", "n:Any", "]", "[q", "x", "]", "[q", "n", "]",
+             "]", ")", ";", "tf"] + a + ["tf/v"],
+            [";", "def", "tf", "(", "fn", "[q", "[q", "n:Any", "m:Any", "]", "[q", "Any", "]", "[q", "n", "m", "]", "]",
+             ")", ";", "tf"] + rng.choice([["[:", t, "]", "[", "typeq", t] + b + ["]"],
+                                           ["[", "typeq", t] + b + ["]", "[:", t, "]"]]),
+            ["typeq", rng.choice(["Zed", "Foo/Bar", "Integer", "Lst/Foo", "zed", "Foo"])] + a + [";", "Zed"],
+        ]))
+    return uses
+
+
+def gen_type_program(rng):
+    """A program about TYPES and nothing else: every name is defined, then
+    a few uses — so the answer is one about the types, not an error some
+    unrelated token raised first."""
+    toks = [";"]
+    for name in USER_TYPES:
+        toks += ["typeq", name] + rng.choice(TYPE_BODIES[name]).split() + [";"]
+    for use in type_uses(rng):
+        toks += use
+    return "run " + " ".join(toks)
+
+
 def gen_program(rng, max_len):
+    if rng.random() < 0.25:
+        return gen_type_program(rng)
     toks = []
     if rng.random() < 0.25:
         toks += ["def", "x"] + gen_value(rng, 1) + [";"]
@@ -335,6 +417,18 @@ def gen_program(rng, max_len):
         toks += ["def", "m", "s("] + rng.choice(["[q addq 1 ]", "[q negq ]", "[q x ]", "[q 1 addq ]", "[q def y 3 ]",
                                                  "[q w w ]", "[q dupq ]", "[q breakq ]", "p( addq 1 2 )",
                                                  "[q bindq y 4 ; ]", "[q m ]"]).split() + [")", ";"]
+    # TYPES the program defines: a union, a singleton, a typed list, a map
+    # shape, an alias — and now and then anything at all, a second
+    # definition of a name, or an unbinding
+    if rng.random() < 0.30:
+        bodies = TYPE_BODIES
+        toks += [";"]
+        for name in rng.sample(USER_TYPES, rng.randint(1, 4)):
+            body = rng.choice(bodies[name]).split() if rng.random() < 0.9 else gen_value(rng, 1)
+            toks += ["typeq", name] + body + [";"]
+            if rng.random() < 0.08:
+                toks += rng.choice([["undef", name], ["typeq", name] + rng.choice(bodies[rng.choice(USER_TYPES)]).split() + [";"],
+                                    ["def", name, "5", ";"], ["typeq", name.lower(), "1", ";"]])
     # a global named like the parameter every generated function takes: a
     # call shadows it, and must leave it bound
     if rng.random() < 0.10:
@@ -472,6 +566,8 @@ def gen_program(rng, max_len):
                                ["negq/s"], ["dupq/s"], ["depthq"], [str(tag), str(tag)], ["sumq"]])
             toks += ["def", "ov", "fn("] + params + ["Any", "["] + body + ["]", ")", ";"]
     items = [gen_item(rng, 2) for _ in range(rng.randint(1, max_len))]
+    if "typeq" in toks and rng.random() < 0.5:
+        items = type_uses(rng) + items[:rng.randint(0, 2)]
     if overloaded:
         for _ in range(rng.randint(1, 2)):
             items.insert(rng.randint(0, len(items)),

@@ -658,6 +658,10 @@ function fixtureRegistry(): Registry {
   // patterns compare a payload by identity, so they are scalar patterns
   // only, and a container pattern would admit nothing. Their rows are the
   // divergence ledger's.)
+  // (typeq — the kernel's type installer as a word: an alias, a union, a
+  // singleton or a structural type under a capitalised name — is not
+  // registered either: core/ts installs no types. Its rows are the
+  // divergence ledger's.)
   // tpatq carries a TYPE-LITERAL pattern (rather than patq's concrete
   // scalar one) on a STACK slot — the shape that reaches the pattern
   // matcher's type arm, since a type pattern is enforced only on stack
