@@ -143,8 +143,9 @@ capture inside a one-element list, because a captured word or paren
 handed back bare re-enters the tape and runs. `raw2q` (the list mode) and
 `form2q` (the form mode) put the raw slot SECOND of two and answer both
 arguments in signature order, so a row can tell which position a mode
-belongs to. core/ts has the list mode only: `rawlq` and `raw2q` are in
-all three runners, the other four in the Go runner and the Lean model.
+belongs to. core/ts has the list and map modes: `rawlq`, `rawmq` and
+`raw2q` are in all three runners, the other three in the Go runner and
+the Lean model.
 
 ### A call's arguments
 
@@ -240,7 +241,7 @@ than silently re-baselined. Each runner also **fails a row whose `go` and
 belongs in, or this stops being an honest debt list. Shrink-only, exactly as
 `parser/spec/divergent.tsv` is.
 
-It holds **627 rows**. 594 are a mechanism `core/ts` does not have at
+It holds **612 rows**. 579 are a mechanism `core/ts` does not have at
 all: closures (26 rows, the `afn` fixture); driven loops (35 rows, the
 `eachq` fixture — eight of them the same loop out of a group and inside one
 a waiting word evaluates, where the kernel once stepped the loop's inert
@@ -265,9 +266,9 @@ function value (6 rows); and the function-spec reader and the definition
 install (101 rows, the `fn` fixture and `def` over a function — five of
 them the dispatch order of a pattern against a bare type, two of
 them NUR409, two NUR410 and three NUR411, pinned as the kernel has it);
-and three of the four raw-capture slots (107 rows, the `rawmq`, `rawpq`,
-`formq` and `form2q` fixtures — four of them NUR413 and three NUR414,
-pinned as the kernel has it). Three are a difference in a mechanism both have:
+and two of the four raw-capture slots (92 rows, the `rawpq`, `formq` and
+`form2q` fixtures — three of them NUR413 and three NUR414, pinned as the
+kernel has it). Three are a difference in a mechanism both have:
 `core/ts` puts a list argument's quoted BINDING in the args list, where
 the kernel puts the argument (two rows), and hands a waiting word the
 paren expression a name is bound to as code, where the kernel runs it as

@@ -487,13 +487,13 @@ function fixtureRegistry(): Registry {
     ],
   });
   // rawlq's slot takes a pending LIST unevaluated (noEvalArgs) and hands it
-  // back; raw2q puts that slot SECOND of two and returns both arguments in
+  // back; rawmq's takes a pending MAP (noEvalMapArgs, a separate field);
+  // raw2q puts the list slot SECOND of two and returns both arguments in
   // signature order, so a row can tell which position the mode belongs to.
-  // The kernel's three other raw-capture modes — a map taken unevaluated, a
-  // paren expression captured as code, a form captured as written — are
-  // signature fields core/ts does not have: their fixtures (rawmq, rawpq,
-  // formq, form2q) are not registered here, and their rows are the
-  // divergence ledger's.
+  // The kernel's two other raw-capture modes — a paren expression captured
+  // as code, a form captured as written — are signature fields core/ts does
+  // not have: their fixtures (rawpq, formq, form2q) are not registered
+  // here, and their rows are the divergence ledger's.
   r.registerNativeFunc({
     name: "rawlq",
     signatures: [
@@ -502,6 +502,19 @@ function fixtureRegistry(): Registry {
         argNames: ["x"],
         returns: [TAny],
         noEvalArgs: new Set([0]),
+        barrierPos: 1,
+        handler: (a: Value[]): Value[] => [a[0]!],
+      },
+    ],
+  });
+  r.registerNativeFunc({
+    name: "rawmq",
+    signatures: [
+      {
+        args: [TAny],
+        argNames: ["x"],
+        returns: [TAny],
+        noEvalMapArgs: new Set([0]),
         barrierPos: 1,
         handler: (a: Value[]): Value[] => [a[0]!],
       },

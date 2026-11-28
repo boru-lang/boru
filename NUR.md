@@ -2219,9 +2219,9 @@ form2q p( addq 3 4 ) p( addq 1 2 )       → [7 (addq 1 2)]
 form2q/u p( addq 1 2 ) p( addq 3 4 )     → [7 3]          (should be the line above)
 ```
 
-`core/spec/dispatch.tsv` pins the list mode's rows (core/ts drops it the
-same way), `core/spec/divergent.tsv` the map, paren and form modes', and
-the Lean specification reproduces both halves (`Engine.lean` `usurpOver`,
+`core/spec/dispatch.tsv` pins the list and map modes' rows (core/ts drops
+them the same way), `core/spec/divergent.tsv` the paren and form modes',
+and the Lean specification reproduces both halves (`Engine.lean` `usurpOver`,
 `Theorems/Raw.lean` `nur413_usurp_does_not_carry_the_modes`).
 
 **Proposed verdict:** resolve by fix — the wrapper carries all four

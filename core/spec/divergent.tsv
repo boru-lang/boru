@@ -860,29 +860,11 @@ run 7 'a' fn( _ Integer _ Any Any [ argsq ] )	[7 'a']	ERROR:uncalled_function	NU
 run def f fn( _ Integer _ Any Any [ argsq ] ) ; 'a' 7 f/u	7	ERROR:uncalled_function	NUR412: usurped, the bottom-up reading matches the WRAPPER and its frame has no body — the function is never run, and the top argument is the answer
 run def f fn( _ Integer _ Any Any [ depthq ] ) ; 'a' 7 f/u	7	ERROR:uncalled_function	NUR412: whatever the body is
 
-# --- the raw-capture slots core/ts does not have: a map, a paren expression, a form ---
-# Three of the kernel's four raw-capture modes are signature fields with no
-# counterpart in core/ts (`NoEvalMapArgs`, `RawParens`, `FormArgs`); the
-# fourth, the list mode, is in `dispatch.tsv`. Their fixtures are registered
-# by the Go runner and the Lean model only, so the `ts` column is the
-# missing word.
-#
-# `rawmq` — a pending MAP handed over as it was written.
-run rawmq { a: p( addq 1 2 ) }	{a:(addq 1 2)}	ERROR:undefined_word	THE MAP MODE: a pending map is handed over as it was written — a member's expression is not run
-run { a: p( addq 1 2 ) } rawmq	{a:(addq 1 2)}	ERROR:undefined_word	from the stack too
-run rawmq { a: [ addq 1 2 ] b: nosuch }	{a:[addq 1 2] b:nosuch}	ERROR:undefined_word	a list member is as raw, and an unbound word no error
-run rawmq { a: { b: p( addq 1 2 ) } }	{a:{b:(addq 1 2)}}	ERROR:undefined_word	all the way down
-run def x 5 ; rawmq { a: x }	{a:x}	ERROR:undefined_word	a bound word is not replaced by its value
-run rawmq { a: p( breakq ) }	{a:(breakq)}	ERROR:undefined_word	a member that would raise a signal never runs
-run { a: p( rawmq { b: p( addq 1 2 ) } ) }	{a:{b:(addq 1 2)}}	ERROR:undefined_word	what is handed back is DATA: the map it is written in does not evaluate it
-run rawmq { a: p( addq 1 2 ) } rawmq	{a:(addq 1 2)}	ERROR:undefined_word	nor a second call
-run rawmq {q a: nosuch }	{a:nosuch}	ERROR:undefined_word	a quoted map was never pending
-run rawmq [ addq 1 2 ]	[3]	ERROR:undefined_word	THE MAP MODE SAYS NOTHING ABOUT LISTS: a list at the slot is evaluated
-run rawmq 5	5	ERROR:undefined_word	and any other operand is taken as an ordinary slot takes it
-run rawmq {: Integer a: 1 }	{:Integer a:1}	ERROR:undefined_word	a typed map is no pending map
-run def x { a: p( addq 1 2 ) } ; rawmq x	{a:(addq 1 2)}	ERROR:undefined_word	a NAME bound to a pending map delivers it pending, and the slot takes it as written
-run ; def g rawmq/v ; g { a: p( addq 1 2 ) }	{a:(addq 1 2)}	ERROR:undefined_word	the function as a value keeps the slot
-run rawmq/u { a: p( addq 1 2 ) }	{a:3}	ERROR:undefined_word	NUR413: `/u` drops the map mode as it drops the list mode — the map is evaluated
+# --- the raw-capture slots core/ts does not have: a paren expression, a form -------
+# Two of the kernel's four raw-capture modes are signature fields with no
+# counterpart in core/ts (`RawParens`, `FormArgs`); the list and map modes
+# are in `dispatch.tsv`. Their fixtures are registered by the Go runner and
+# the Lean model only, so the `ts` column is the missing word.
 #
 # `rawpq` — a paren expression written after the word is captured as code.
 # It hands its capture back inside a one-element list: bare, a paren
@@ -978,9 +960,8 @@ run ; def g form2q/v ; g 1 nosuch	[1 nosuch]	ERROR:undefined_word	the function a
 
 # --- NUR413: `/u` keeps the paren and form modes at the ORIGINAL's positions -------
 # The usurp wrapper reverses the parameters and not the positions of the
-# paren and form modes (and drops the two no-evaluation modes: `rawmq/u`
-# above, the list mode in `dispatch.tsv`). `form2q/u a b` should be
-# `form2q b a`.
+# paren and form modes (and drops the two no-evaluation modes: both in
+# `dispatch.tsv`). `form2q/u a b` should be `form2q b a`.
 run def x 5 ; form2q/u x 1	[1 5]	ERROR:undefined_word	NUR413: `form2q 1 x` is [1 x] — reversed, the wrapper captures raw at ITS second position, which is the original's first, and looks `x` up at its first
 run form2q/u p( addq 1 2 ) p( addq 3 4 )	[7 3]	ERROR:undefined_word	NUR413: `form2q p( addq 3 4 ) p( addq 1 2 )` is [7 (addq 1 2)] — reversed, the wrapper evaluates the one it should keep, and the original evaluates the other
 run def x 5 ; form2q/u 1 x	[5 1]	ERROR:undefined_word	(`form2q x 1` is [5 1] too: the wrapper captures the word, and the original looks it up)

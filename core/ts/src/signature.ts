@@ -44,10 +44,18 @@ export interface Signature {
    */
   patterns?: Map<number, Value>;
   /**
-   * NoEvalArgs marks positions where list auto-evaluation is suppressed.
-   * Unused in the spec subset; included for shape parity.
+   * NoEvalArgs marks positions where LIST auto-evaluation is suppressed: a
+   * pending list is handed to the handler as it was written, and is data
+   * from then on. A map at such a position evaluates as it does anywhere.
    */
   noEvalArgs?: Set<number>;
+  /**
+   * NoEvalMapArgs is the MAP counterpart, a separate field as in core/go:
+   * a pending map at such a position is handed over as it was written (the
+   * typed-name map of `def x:T v` is the shipped use), and a list there
+   * evaluates.
+   */
+  noEvalMapArgs?: Set<number>;
   /** Fallback marker — true for the generic 0-arg fallback. */
   fallback?: boolean;
   /**
@@ -147,6 +155,7 @@ export interface NativeSig {
   barrierPos?: number;
   patterns?: Map<number, Value>;
   noEvalArgs?: Set<number>;
+  noEvalMapArgs?: Set<number>;
   fallback?: boolean;
   typeArgs?: Set<number>;
   quoteArgs?: Set<number>;

@@ -1309,10 +1309,10 @@ run def f fn( _ Integer _ Any Any [ argsq ] ) ; 7 'a' f	ERROR:signature_error	an
 # `NoEvalArgs`): a pending list that fills it is handed to the word as it
 # was written — nothing in it is run or looked up — and is DATA from then
 # on. `rawlq` has that one slot and hands its argument back; `raw2q` has it
-# SECOND of two and hands back both. (The three other raw-capture modes —
-# a map taken unevaluated, a paren expression captured as code, a form
-# captured as written — are signature fields core/ts does not have: their
-# rows are in `divergent.tsv`.)
+# SECOND of two and hands back both. A pending MAP has a mode of its own
+# (`NoEvalMapArgs`), below. (The two other raw-capture modes — a paren
+# expression captured as code, a form captured as written — are signature
+# fields core/ts does not have: their rows are in `divergent.tsv`.)
 run rawlq [ addq 1 2 ]	[addq 1 2]	A NO-EVALUATION SLOT: the pending list is handed over as it was written — its words are not run
 run [ addq 1 2 ] rawlq	[addq 1 2]	from the stack too: the mode is the slot's, whichever side fills it
 run [ addq 1 2 ] rawlq/s	[addq 1 2]	under /s
@@ -1358,11 +1358,30 @@ run def x [ addq 1 2 ] ; raw2q 1 x	[1 [addq 1 2]]	a name at the raw slot
 run def x [ addq 1 2 ] ; raw2q x 1	[[3] 1]	and at the ordinary one
 run ; def g raw2q/v ; g 1 [ addq 1 2 ]	[1 [addq 1 2]]	through a binding of the function
 
-# --- NUR413: `/u` drops the no-evaluation mode -------------------------------------
+# --- the raw-capture slots: a map handed over as it was written --------------------
+# `rawmq` has the one slot that takes a pending MAP unevaluated, and hands
+# its argument back. The mode is a field of its own: the list mode keeps no
+# map, and this one keeps no list.
+run rawmq { a: p( addq 1 2 ) }	{a:(addq 1 2)}	THE MAP MODE: a pending map is handed over as it was written — a member's expression is not run
+run { a: p( addq 1 2 ) } rawmq	{a:(addq 1 2)}	from the stack too
+run rawmq { a: [ addq 1 2 ] b: nosuch }	{a:[addq 1 2] b:nosuch}	a list member is as raw, and an unbound word no error
+run rawmq { a: { b: p( addq 1 2 ) } }	{a:{b:(addq 1 2)}}	all the way down
+run def x 5 ; rawmq { a: x }	{a:x}	a bound word is not replaced by its value
+run rawmq { a: p( breakq ) }	{a:(breakq)}	a member that would raise a signal never runs
+run { a: p( rawmq { b: p( addq 1 2 ) } ) }	{a:{b:(addq 1 2)}}	what is handed back is DATA: the map it is written in does not evaluate it
+run rawmq { a: p( addq 1 2 ) } rawmq	{a:(addq 1 2)}	nor a second call
+run rawmq {q a: nosuch }	{a:nosuch}	a quoted map was never pending
+run rawmq [ addq 1 2 ]	[3]	THE MAP MODE SAYS NOTHING ABOUT LISTS: a list at the slot is evaluated
+run rawmq 5	5	and any other operand is taken as an ordinary slot takes it
+run rawmq {: Integer a: 1 }	{:Integer a:1}	a typed map is no pending map
+run def x { a: p( addq 1 2 ) } ; rawmq x	{a:(addq 1 2)}	a NAME bound to a pending map delivers it pending, and the slot takes it as written
+run ; def g rawmq/v ; g { a: p( addq 1 2 ) }	{a:(addq 1 2)}	the function as a value keeps the slot
+
+# --- NUR413: `/u` drops the no-evaluation modes ------------------------------------
 # The usurp wrapper is the function with its parameters reversed — and
-# WITHOUT the no-evaluation mode: the wrapper evaluates the list, and the
-# original is handed the result. As the kernel has it, not as it should be
-# (NUR413); core/ts drops it the same way.
+# WITHOUT the two no-evaluation modes: the wrapper evaluates the list or
+# the map, and the original is handed the result. As the kernel has it,
+# not as it should be (NUR413); core/ts drops them the same way.
 run rawlq/u [ addq 1 2 ]	[3]	NUR413: `/u` reverses the argument order of a one-argument word — nothing — and yet the list is evaluated
 run rawlq/u [ nosuch ]	ERROR:undefined_word	NUR413: so what the word takes as written, its reversal looks up
 run [ addq 1 2 ] rawlq/u	[3]	NUR413: from the stack
@@ -1370,3 +1389,4 @@ run rawlq/u [q addq 1 2 ]	[addq 1 2]	(a quoted list is safe from it)
 run raw2q/u [ addq 1 2 ] 1	[1 [3]]	NUR413: `raw2q/u a b` is `raw2q b a` in everything but this — `raw2q 1 [ addq 1 2 ]` keeps its list
 run raw2q/u [ addq 1 2 ] [ addq 3 4 ]	[[7] [3]]	NUR413: both evaluated
 run ; def g raw2q/v ; g/u [ addq 1 2 ] 1	[1 [3]]	NUR413: through a binding too
+run rawmq/u { a: p( addq 1 2 ) }	{a:3}	NUR413: `/u` drops the map mode as it drops the list mode — the map is evaluated

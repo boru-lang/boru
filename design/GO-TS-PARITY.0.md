@@ -475,21 +475,27 @@ Three things from it are worth carrying even if the tables are never read:
   core/ts answers at all: two `fn(` functions of the same parameter
   types bound by `def` are `2 1` here and `undefined_word` after the
   `undef` in Go, where the second replaced the first.
-- **One raw-capture slot of four** (2026-11-28). A core/go signature can
+- **Two raw-capture slots of four** (2026-11-28). A core/go signature can
   mark a slot to take its operand as it was written, in four fields: a
   list unevaluated (`NoEvalArgs`), a map (`NoEvalMapArgs`), a paren
   expression as code (`RawParens`), any form (`FormArgs`). core/ts has
-  the first only, so the 107 rows that specify the other three are on the
-  Go column of `core/spec/divergent.tsv`, and their fixtures (`rawmq`,
-  `rawpq`, `formq`, `form2q`) are the Go runner's and the Lean runner's
-  only. The list mode is shared — 51 rows of `dispatch.tsv`, through
-  `rawlq` and `raw2q` — after a fix to the port: `autoEvalArgs` skipped a
-  no-evaluation slot WHOLE, so a map at the slot went unevaluated (Go's
-  field is list-only) and a list kept its pending flag, and one the
-  handler handed back was evaluated after all by whatever met it next
-  (`rawlq [ addq 1 2 ]` was `[3]`). Both engines drop the mode under `/u`
-  (NUR413), and agree in doing so. One row the new fixtures exposed is a
-  difference in a mechanism both have: a name bound to a paren
+  the first two, so the 92 rows that specify the other two are on the Go
+  column of `core/spec/divergent.tsv`, and their fixtures (`rawpq`,
+  `formq`, `form2q`) are the Go runner's and the Lean runner's only. The
+  list and map modes are shared — 66 rows of `dispatch.tsv`, through
+  `rawlq`, `rawmq` and `raw2q` — after a fix to the port. core/ts had ONE
+  field, `noEvalArgs`, and `autoEvalArgs` skipped such a slot whole with
+  the pending flag still set: a map went unevaluated at a list slot, and
+  a list or map the handler handed back was evaluated after all, by
+  whatever met it next (`rawlq [ addq 1 2 ]` was `[3]`). Two eng/ts
+  fixtures leaned on one half each — the typed-name map of `def x:T v`
+  arrived raw through the list field, and `quote { a:( 1 addq 2 ) }`
+  looked evaluated at the call because the sweep evaluated what `quote`
+  handed back. The port now has both fields, each for its own kind, and
+  what a slot keeps is no longer pending; the typed-def fixture declares
+  `noEvalMapArgs`, as Go's does. Both engines drop the two modes under
+  `/u` (NUR413), and agree in doing so. One row the new fixtures exposed
+  is a difference in a mechanism both have: a name bound to a paren
   expression, collected by a waiting word, is run as a group in core/go
   and handed over as code in core/ts.
 - NUR059: canon still renders sugar tags, `/r` and `/N` word modifiers,
