@@ -825,3 +825,12 @@ run def x d( Integer String ) ; ; def f ( fn [q [q n:Any ] [q x ] [q n ] ] ) ; f
 run def x [: Integer ] ; ; def f ( fn [q [q n:Any ] [q x ] [q n ] ] ) ; f [q 'a' ]	(quote ['a'])	ERROR:undefined_word	NUR411: a name bound to a typed list, the same
 run def x fn( n Any Any [ n ] ) ; ; def f ( fn [q [q n:Any ] [q x ] [q n ] ] ) ; f 5	5	ERROR:undefined_word	NUR411: and a name bound to a function
 run def x 5 ; ; def f ( fn [q [q n:Any ] [q x ] [q n ] ] ) ; f 5	ERROR:fn_invalid_spec	ERROR:undefined_word	a name bound to a value that is no type names no type
+
+# --- an unnamed argument is inert wherever its frame is stepped ---------------------------
+# A usurped call (`un/u …`) completes when the input, or its group, ends; the
+# frame it splices is stepped by the loop that resolves it, not the main one.
+# The argument span is passed over there as everywhere (core/go
+# `stepPastOpenParen`; two loops did not until 2026-11-28).
+run def un fn( _ Any Any [ ] ) ; un/u negq/uv	fn [[a:Integer][Integer][]]	ERROR:signature_error	a FUNCTION handed as the unnamed argument through `/u`: the call completes at the end of input, and the argument is data there too (the kernel once stepped it: `uncalled_function`)
+run def un fn( _ Any Any [ ] ) ; ( un/u negq/uv )	fn [[a:Integer][Integer][]]	ERROR:signature_error	at the close of a group, the same
+run def un fn( _ Any Any [ 7 ] ) ; un/u negq/uv	7	ERROR:signature_error	beneath a value the body leaves it is dropped, unrun (the kernel once CALLED it on that value: `-7`)

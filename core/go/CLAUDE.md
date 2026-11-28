@@ -176,13 +176,19 @@ way.
 
 The inert span an open paren carries — a driven region's inputs, a call
 frame's unnamed arguments — is skipped in ONE place, `stepPastOpenParen`,
-and every token loop that meets an open paren goes through it: the main
-loop's `stepToken` and the group evaluator's own loop (`evalParenGroupAt`,
-which steps a forward-argument group off the main loop). The second
-stepped over the paren alone until 2026-11-27, so a function among a
-loop's inputs was called, and a `/v` word resolved, when the loop ran
-inside a group a waiting word evaluates (NUR397). A new token loop steps
-an open paren the same way or re-opens that.
+and every token loop that meets an open paren goes through it. There are
+four: the main loop's `stepToken`; the group evaluator's own loop
+(`evalParenGroupAt`, which steps a forward-argument group off the main
+loop); the retry after a forward left pending at the end of input is
+resolved (`resolveOrphanedForwards`); and a group's re-run at its close
+(`stepCloseParen`'s implicit end). The second stepped over the paren alone
+until 2026-11-27, so a function among a loop's inputs was called, and a
+`/v` word resolved, when the loop ran inside a group a waiting word
+evaluates (NUR397). The last two did until 2026-11-28: a function handed
+as an unnamed argument through a usurped call, which completes at the end
+of input, was called on what the body left — `def un fn [[Any][Any][true]]
+; un/u not/uv` answered `false`. A new token loop steps an open paren the
+same way or re-opens that.
 
 A native whose LAST act is running a body — `case`'s matched block or
 default (`if` splices a computed arm inline already) — returns that run as a **call

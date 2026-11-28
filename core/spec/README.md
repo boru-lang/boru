@@ -222,7 +222,7 @@ than silently re-baselined. Each runner also **fails a row whose `go` and
 belongs in, or this stops being an honest debt list. Shrink-only, exactly as
 `parser/spec/divergent.tsv` is.
 
-It holds **500 rows**. 471 are a mechanism `core/ts` does not have at
+It holds **503 rows**. 474 are a mechanism `core/ts` does not have at
 all: closures (26 rows, the `afn` fixture); driven loops (35 rows, the
 `eachq` fixture — eight of them the same loop out of a group and inside one
 a waiting word evaluates, where the kernel once stepped the loop's inert
@@ -236,7 +236,7 @@ again); the arity widening of a value call
 (4 rows, two of them NUR401, pinned as the kernel has it); and an unnamed
 parameter's argument as the frame's own stack data (53 rows — `core/ts`
 binds it under the empty name — three of them NUR404, pinned as the kernel
-has it), with 11 more that read the args list or call `__pa` from inside a
+has it — and 3 more for an argument handed through a usurped call), with 11 more that read the args list or call `__pa` from inside a
 loop, a region, a branch or a closure; the frame's ENTRY SNAPSHOT, which
 ends a body's own definitions with the call (28 rows — `core/ts` leaves
 them bound — and 4 more that bind in a round, a region or a branch outside
