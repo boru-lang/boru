@@ -130,6 +130,18 @@ The word answers the function as the reader leaves it; binding it with
 planned, a row writes `def f ( fn [q … ] )`. Every refusal of the reader
 is `ERROR:fn_invalid_spec`. The Go runner's and the Lean runner's only.
 
+### A splice marker
+
+`s( item )` writes a SPLICE MARKER (`Word/__SP`) wrapping one item, as
+`p( … )` writes a paren expression; `spliceq v` makes one of its
+argument, as basic's `word` does. Stepped with nothing waiting for it, a
+marker FIRES: its payload takes its place, unevaluated — a plain list's
+elements, any other value itself — and is stepped from there against the
+live stack. A leading clause binds a name to one (`def w s( [q 1 2 ] )
+;`), which is how a row reaches the rule that a word bound to a DATA
+splice reads as the group `(w)` where another word collects it. In all
+three runners.
+
 ### An operand taken as it was written
 
 Six words reach the RAW-CAPTURE slots: four ways a signature takes an
@@ -255,14 +267,14 @@ than silently re-baselined. Each runner also **fails a row whose `go` and
 belongs in, or this stops being an honest debt list. Shrink-only, exactly as
 `parser/spec/divergent.tsv` is.
 
-It holds **686 rows**. 653 are a mechanism `core/ts` does not have at
-all: closures (26 rows, the `afn` fixture); driven loops (35 rows, the
+It holds **703 rows**. 665 are a mechanism `core/ts` does not have at
+all: closures (26 rows, the `afn` fixture); driven loops (36 rows, the
 `eachq` fixture — eight of them the same loop out of a group and inside one
 a waiting word evaluates, where the kernel once stepped the loop's inert
-inputs); call regions (26 rows, the `callq` fixture); counted and conditional loops (73 rows, the `forq`, `rangeq` and
+inputs); call regions (26 rows, the `callq` fixture); counted and conditional loops (74 rows, the `forq`, `rangeq` and
 `whileq` fixtures — six of them NUR400, a full-stack word ending a counted
 loop, and five the index at the edge of the Integer range, two of those
-NUR402, all pinned as the kernel has it); break and continue (48 rows, the
+NUR402, all pinned as the kernel has it); break and continue (50 rows, the
 `breakq` and `contq` fixtures); the `if` continuation and the plain mark
 and move (47 rows, the `ifq` and `replayq` fixtures — three of them NUR400
 again); the arity widening of a value call
@@ -271,24 +283,28 @@ parameter's argument as the frame's own stack data (53 rows — `core/ts`
 binds it under the empty name — three of them NUR404, pinned as the kernel
 has it — and 3 more for an argument handed through a usurped call), with 11 more that read the args list or call `__pa` from inside a
 loop, a region, a branch or a closure; the frame's ENTRY SNAPSHOT, which
-ends a body's own definitions with the call (28 rows — `core/ts` leaves
+ends a body's own definitions with the call (30 rows — `core/ts` leaves
 them bound — and 4 more that bind in a round, a region or a branch outside
 a function); a function that calls itself last, through a branch (13
 rows); the deferred residual of an anonymous function's one bare
 container (9 rows); an alias of a binding word in the body of a
 function value (6 rows); and the function-spec reader and the definition
-install (101 rows, the `fn` fixture and `def` over a function — five of
-them the dispatch order of a pattern against a bare type, two of
+install (105 rows, the `fn` fixture and `def` over a function — five of
+them the dispatch order of a pattern against a bare type, four a
+keyword slot beside a word bound to a splice, two of
 them NUR409, two NUR410 and three NUR411, pinned as the kernel has it);
-two of the four raw-capture slots (92 rows, the `rawpq`, `formq` and
+two of the four raw-capture slots (94 rows, the `rawpq`, `formq` and
 `form2q` fixtures — three of them NUR413 and three NUR414, pinned as the
 kernel has it); and a pattern that reads a container's contents, with
 the evaluation of the pending operand it judges (74 rows, the `mpatq`,
-`lpatq`, `rawmpatq` and `rawlpatq` fixtures — two of them NUR413). Three are a difference in a mechanism both have:
+`lpatq`, `rawmpatq` and `rawlpatq` fixtures — two of them NUR413). Five are a difference in a mechanism both have:
 `core/ts` puts a list argument's quoted BINDING in the args list, where
 the kernel puts the argument (two rows), and hands a waiting word the
 paren expression a name is bound to as code, where the kernel runs it as
-the group it is (one). Two are a diagnostic: the kernel reports a
+the group it is (one), and leaves a splice marker written as a map
+member unfired, where the kernel fires it in the member's region (two).
+Three are a rendering: a splice marker left on the stack prints as each
+engine's own debug dump (NUR416). Two are a diagnostic: the kernel reports a
 void argument of the word named `def` as `def_error`. **Five are the only
 rows where the Lean specification agrees with the `ts` column.** Two are
 NUR407: core/go's tail-call elision changes the answer of a callee that

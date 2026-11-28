@@ -34,19 +34,27 @@ WORDS = ["addq", "negq", "pairq", "sumq", "boomq", "patq", "dupq", "__pa", "unde
          "qanyq", "bothq", "tyq", "tpatq", "unifyq", "meetq", "meetq", "depthq", "afn", "eachq",
          "forq", "forq", "rangeq", "whileq", "breakq", "contq", "ifq", "ifq", "replayq", "callq", "callq",
          "argsq", "def", "bindq", "rawlq", "rawmq", "rawpq", "formq", "raw2q", "form2q",
-         "mpatq", "rawmpatq", "lpatq", "rawlpatq"]
+         "mpatq", "rawmpatq", "lpatq", "rawlpatq", "spliceq"]
 RAW = ("rawlq", "rawmq", "rawpq", "formq", "raw2q", "form2q", "mpatq", "rawmpatq", "lpatq", "rawlpatq")
 LITS = ["0", "1", "2", "5", "7", "-3", "'a'", "'x'", "true", "false", "none", "null"]
 TYPES = ["Integer", "String", "Any", "None", "List", "Map", "Boolean", "Word", "Scalar/String"]
-NAMES = ["x", "y", "n", "nosuchword"]
+NAMES = ["x", "y", "n", "nosuchword", "w", "w", "m"]
 MARKS = ["(", ")", ";"]
 
 
 def gen_item(rng, depth):
     r = rng.random()
     if depth > 0 and r < 0.16:
-        kind = rng.choice(["[", "[q", "p(", "{", "{q", "d(", "[:", "{:"])
+        kind = rng.choice(["[", "[q", "p(", "{", "{q", "d(", "[:", "{:", "s("])
         n = rng.randint(0, 3)
+        if kind == "s(":
+            # a splice marker: its payload is ONE item — a list of values, a
+            # list that is a program, or a single value
+            payload = rng.choice([lambda: ["[q"] + sum((gen_value(rng, 0) for _ in range(n)), []) + ["]"],
+                                  lambda: ["[q"] + rng.choice(["addq 1", "negq", "x", "1 addq", "w", "dupq",
+                                                               "def y 3", "breakq", "n", "s( [q 1 2 ] )"]).split() + ["]"],
+                                  lambda: gen_value(rng, 1)])()
+            return ["s("] + payload + [")"]
         if kind in ("[", "[q"):
             return [kind] + sum((gen_item(rng, depth - 1) for _ in range(n)), []) + ["]"]
         if kind == "p(":
@@ -298,6 +306,16 @@ def gen_program(rng, max_len):
         toks += ["def", "x"] + gen_value(rng, 1) + [";"]
     if rng.random() < 0.08:
         toks += ["def", "y"] + gen_value(rng, 1) + [";"]
+    # names bound to SPLICE MARKERS: `w` a data splice — a word that
+    # collects it reads it as the group `(w)` — and `m` a code-bearing one,
+    # a macro that runs against the live stack
+    if rng.random() < 0.30:
+        toks += ["def", "w", "s("] + rng.choice(["[q 1 2 ]", "[q 5 ]", "[q ]", "[q 1 2 3 ]", "5", "[q 'a' 7 ]",
+                                                 "{q a: 1 }", "[q [q 1 ] ]"]).split() + [")", ";"]
+    if rng.random() < 0.20:
+        toks += ["def", "m", "s("] + rng.choice(["[q addq 1 ]", "[q negq ]", "[q x ]", "[q 1 addq ]", "[q def y 3 ]",
+                                                 "[q w w ]", "[q dupq ]", "[q breakq ]", "p( addq 1 2 )",
+                                                 "[q bindq y 4 ; ]", "[q m ]"]).split() + [")", ";"]
     # a global named like the parameter every generated function takes: a
     # call shadows it, and must leave it bound
     if rng.random() < 0.10:
@@ -526,6 +544,11 @@ def main():
         if g.startswith("NOTATION") and l.startswith("NOTATION"):
             malformed += 1
             continue
+        # a splice marker left on the stack prints as the kernel's debug
+        # dump (NUR416), which the model states only for simple payloads:
+        # compare what stands before the first one, and that there is one
+        if "word()(" in g and "word()(" in l:
+            g, l = g[:g.index("word()(")], l[:l.index("word()(")]
         if g != l:
             diffs.append((p, g, l))
     print(f"seed {args.seed}: {len(progs)} programs, {len(diffs)} differ, {unmodelled} outside the model"

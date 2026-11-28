@@ -30,6 +30,7 @@ import {
   newNone,
   newOpenParen,
   newParenExpr,
+  newSplice,
   newString,
   newTypedList,
   newTypedMap,
@@ -198,6 +199,16 @@ function item(toks: string[], st: { i: number }): Value {
     while (st.i < toks.length && ")" !== toks[st.i]) items.push(item(toks, st));
     st.i++;
     return newParenExpr(items);
+  }
+  if ("s(" === tok) {
+    // `s( item )` — a SPLICE MARKER (`__SP`) wrapping one item: stepped with
+    // nothing waiting for it, it is replaced by its payload — a plain
+    // list's elements, any other value itself.
+    st.i++;
+    const payload = item(toks, st);
+    if (")" !== toks[st.i]) throw new Error("s( wants one item and a closing )");
+    st.i++;
+    return newSplice(payload);
   }
   if ("{" === tok || "{q" === tok) {
     st.i++;
@@ -530,6 +541,21 @@ function fixtureRegistry(): Registry {
         noEvalArgs: new Set([1]),
         barrierPos: 2,
         handler: (a: Value[]): Value[] => [newList([a[0]!, a[1]!])],
+      },
+    ],
+  });
+  // spliceq makes a SPLICE MARKER of its argument, as basic's `word` does.
+  // Handed back, the marker is at the pointer with nothing waiting for it,
+  // and fires: `spliceq [q 1 2 ]` leaves 1 and 2.
+  r.registerNativeFunc({
+    name: "spliceq",
+    signatures: [
+      {
+        args: [TAny],
+        argNames: ["v"],
+        returns: [TAny],
+        barrierPos: 1,
+        handler: (a: Value[]): Value[] => [newSplice(a[0]!)],
       },
     ],
   });

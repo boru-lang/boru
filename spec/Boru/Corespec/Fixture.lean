@@ -61,6 +61,9 @@ def fixtureDefs : Defs :=
     word "formq" [p "x" TAny (raw := { form := true })] [TList] 1,
     word "raw2q" [p "a" TAny, p "b" TAny (raw := { list := true })] [TList] 2,
     word "form2q" [p "a" TAny, p "b" TAny (raw := { form := true })] [TList] 2,
+    -- a SPLICE MARKER of the argument: handed back, it is at the pointer
+    -- with nothing waiting for it, and fires
+    word "spliceq" [p "v" TAny] [TAny] 1,
     -- THE PATTERN'S PENDING OPERAND: a pattern that reads contents — a
     -- map that must hold a:1, a list of Integers — on an ordinary slot,
     -- and on a slot that takes its operand raw
@@ -173,6 +176,7 @@ def fixtureNatives : Natives :=
     -- the raw-capture words hand back what they were handed: a list or a
     -- map as it is, a captured paren or form inside a one-element list —
     -- bare, it would re-enter the tape and run
+    ("spliceq", .plain fun a d => pure ([.splice (a.getD 0 .none)], d)),
     ("mpatq", .plain fun a d => pure ([a.getD 0 .none], d)),
     ("rawmpatq", .plain fun a d => pure ([a.getD 0 .none], d)),
     ("lpatq", .plain fun a d => pure ([a.getD 0 .none], d)),

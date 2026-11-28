@@ -242,6 +242,18 @@ def keepsParen (s : Sig) (i : Nat) : Bool := (s.raw i).paren || (s.raw i).form
 def wantsRawParen (s : Sig) : Bool := s.params.any fun p => p.raw.paren || p.raw.form
 def pattern? (s : Sig) (i : Nat) : Option Value := (s.param? i).bind Param.pattern
 
+/-- Does the signature capture THIS token structurally at slot `i`
+    (core/go `capturesForwardToken`): a raw-paren, form or type-arg slot
+    captures whatever stands there, and so does a `/q` slot — unless its
+    pattern is a name, a KEYWORD slot, which captures only the word of
+    that name. Every other word keeps its ordinary treatment at the
+    position: one keyword overload does not make a capture of every word
+    written there. -/
+def capturesToken (s : Sig) (i : Nat) (tok : Value) : Bool :=
+  s.isRawSlot i || (s.isQuote i && (match s.pattern? i with
+    | some (.atom kw) => (match tok with | .word w => w.name == kw | _ => false)
+    | _ => true))
+
 /-- How many leading parameters THIS call may take from the forward
     stack: the declared barrier, unless the call site overrides it
     (`/s` — none, `/f` — all). -/
