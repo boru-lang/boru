@@ -107,6 +107,11 @@ inductive Value where
   /-- `Word/__PE` — a deferred paren expression held as ONE value (what a
       map value like `{a: (1 add 2)}` is). -/
   | parenExpr (items : List Value)
+  /-- `Word/__SP` — a SPLICE MARKER. Stepped with nothing waiting for it,
+      it is replaced, unevaluated, by its payload: a plain list gives its
+      elements, any other value itself — and they are stepped where the
+      marker stood, against the live stack. -/
+  | splice (payload : Value)
   /-- `Word` — a word to resolve and dispatch. -/
   | word (w : WordInfo)
   /-- `Word/__OP` — the open-paren marker. -/
@@ -330,6 +335,7 @@ def typeOf : Value → TypeId
   | typedMap _ _ => "Node/Map"
   | disjunct _ => "Type/Disjunct"
   | parenExpr _ => "Word/__PE"
+  | splice _ => "Word/__SP"
   | word _ => "Word"
   | openParen => "Word/__OP"
   | frameOpen _ => "Word/__OP"
@@ -371,6 +377,7 @@ def Value.size : Value → Nat
   | .typedMap c entries => 1 + c.size + sizeEntries entries
   | .disjunct alts => 1 + sizeList alts
   | .parenExpr items => 1 + sizeList items
+  | .splice v => 1 + v.size
   | .quoted v => 1 + v.size
   | _ => 1
 def sizeList : List Value → Nat
@@ -388,6 +395,7 @@ mutual
 def Value.bearsActive : Value → Bool
   | .word _ => true
   | .parenExpr _ => true
+  | .splice _ => true
   | .list elems _ => bearsActiveList elems
   | .map entries _ => bearsActiveEntries entries
   | .quoted v => v.bearsActive

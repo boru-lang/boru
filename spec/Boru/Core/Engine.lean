@@ -427,6 +427,31 @@ def bodyWordsEntries : List (String × Value) → List String
   | (_, v) :: es => bodyWords v ++ bodyWordsEntries es
 end
 
+/-- WHAT A SPLICE MARKER CONTRIBUTES (core/go `SpliceExpand`): a plain
+    list gives its top-level elements — pending or quoted, it is only a
+    carrier here — and any other value gives itself. Nothing is evaluated:
+    what is spliced is stepped afterwards, where the marker stood. -/
+def spliceExpand : Value → List Value
+  | .list elems _ => elems
+  | .quoted (.list elems _) => elems
+  | v => [v]
+
+/-- A DATA splice (core/go `spliceIsData`): what it contributes is plain
+    values at the top level — no word, no paren expression, no marker. It
+    gives the same values wherever it stands, so a word bound to one may
+    be read as the group `(w)`. A CODE-bearing splice is a macro that runs
+    against the live stack, and is never grouped. -/
+def spliceIsData (payload : Value) : Bool :=
+  (spliceExpand payload).all fun v => match v with
+    | .word _ | .parenExpr _ | .splice _ => false
+    | _ => true
+
+/-- Is `name` bound to a data splice. -/
+def boundToDataSplice (d : Defs) (name : String) : Bool :=
+  match d.top? name with
+  | some (.splice payload) => spliceIsData payload
+  | _ => false
+
 /-- The words whose execution can bind a name in the current scope or
     construct an inner function (`frameStateWords`). -/
 def frameStateWords : List String :=
@@ -459,7 +484,24 @@ def standsForBindingWord (d : Defs) (name : String) : Bool :=
     none is a LEAF: its frame is entered with no baseline and records no
     snapshot (`bodyNeedsFrameState`). -/
 def bodyNeedsFrameState (d : Defs) (body : List Value) : Bool :=
-  (bodyWordsList body).any fun n => frameStateWords.contains n || standsForBindingWord d n
+  -- A body word can HIDE a binding word: a name bound to a splice marker
+  -- splices its payload into THIS frame, so the payload's words are the
+  -- body's too — through as many markers as it takes, each name once
+  let rec go (fuel : Nat) (seen : List String) (names : List String) : Bool :=
+    match fuel with
+    | 0 => false
+    | fuel + 1 =>
+      match names with
+      | [] => false
+      | n :: rest =>
+        if frameStateWords.contains n || standsForBindingWord d n then true
+        else if seen.contains n then go fuel seen rest
+        else match d.top? n with
+          | some (.splice payload) =>
+            go fuel (n :: seen) (bodyWordsList (spliceExpand payload) ++ rest)
+          | _ => go fuel seen rest
+  let names := bodyWordsList body
+  go (names.length + d.foldl (fun acc (_, vs) => acc + sizeList vs) 0 + 1) [] names
 
 mutual
 /-- The names a body binds for itself — `def NAME` at any depth outside a
@@ -608,7 +650,21 @@ def stepWord (nat : Natives) : Nat → Engine → WordInfo → Except BoruError 
     else
       match e.defs.top? w.name with
       | some top =>
-        if !top.isFn then stepLiteral nat fuel { e with tape := setAt e.tape e.ptr top }
+        if !top.isFn then
+          -- `f w` IS `f (w)` for a word bound to a DATA splice that a word
+          -- is waiting to collect: the word becomes the group `(w)`, so
+          -- the payload's values arrive from a segment of their own — as
+          -- many as there are. A BINDER is exempt: `def y w` rebinds the
+          -- marker, and `y` is the splice under another name (the kernel
+          -- knows the binder by its name, `def`: `bindsReferent`)
+          let grouped := boundToDataSplice e.defs w.name &&
+            (match pendingForwardIdx e.tape e.ptr with
+             | some i => (match e.tape[i]? with
+                | some (.forward f _) => f.funcName != "def"
+                | _ => false)
+             | none => false)
+          if grouped then stepLiteral nat fuel { e with tape := setAt e.tape e.ptr (.parenExpr [.word w]) }
+          else stepLiteral nat fuel { e with tape := setAt e.tape e.ptr top }
         else dispatchWord nat fuel e w
       | none => dispatchWord nat fuel e w
 
@@ -728,12 +784,12 @@ def collectForward (nat : Natives) : Nat → Engine → List Sig → WordInfo �
     let viable := sigs.filterMap fun s =>
       let b := s.forwardLimit w
       if b > 0 then some (s, b) else none
-    collectWalk nat fuel e sigs viable 0 (e.ptr + 1)
+    collectWalk nat fuel (w.name == "def") e sigs viable 0 (e.ptr + 1)
 
 def collectWalk (nat : Natives) :
-    Nat → Engine → List Sig → List (Sig × Nat) → Nat → Nat → Except BoruError Engine
-  | 0, _, _, _, _, _ => Engine.outOfFuel
-  | fuel + 1, e, sigs, viable, pos, scanIdx =>
+    Nat → Bool → Engine → List Sig → List (Sig × Nat) → Nat → Nat → Except BoruError Engine
+  | 0, _, _, _, _, _, _ => Engine.outOfFuel
+  | fuel + 1, binder, e, sigs, viable, pos, scanIdx =>
     let maxBarrier := viable.foldl (fun m (_, b) => max m b) 0
     let consumes := viable.any (fun (_, b) => pos < b)
     let rawSlot (s : Sig) : Bool := s.isRawSlot pos
@@ -769,19 +825,29 @@ def collectWalk (nat : Natives) :
                     | v => viable.filter fun (s, b) =>
                         !(pos < b && !s.isRawSlot pos && !s.isQuote pos && forwardPatternRejects s pos v))
                 | none => viable
-              collectWalk nat fuel e sigs viable (pos + 1) (scanIdx + 1)
+              collectWalk nat fuel binder e sigs viable (pos + 1) (scanIdx + 1)
           | .parenExpr items =>
             -- at a raw-capture position it stays code, for the overload
             -- that captures it
-            if keepsParen then collectWalk nat fuel e sigs viable (pos + 1) (scanIdx + 1)
+            if keepsParen then collectWalk nat fuel binder e sigs viable (pos + 1) (scanIdx + 1)
             else
             -- a paren expression becomes its marker span and is re-read
-            collectWalk nat fuel
+            collectWalk nat fuel binder
               { e with tape := splice e.tape scanIdx 1 (.openParen :: items ++ [.closeParen]) }
               sigs viable pos scanIdx
           | .word tw =>
+            -- `f w` IS `f (w)` for a word bound to a DATA splice: at a
+            -- position a still-viable overload collects, and no overload
+            -- captures structurally, the word is rewritten to the group
+            -- and read again — so the group is evaluated here, and what
+            -- it leaves fills as many slots as it has values. A binder's
+            -- operand is exempt (`def y w` rebinds the marker)
+            if consumes && !binder && !captures && boundToDataSplice e.defs tw.name then
+              collectWalk nat fuel binder
+                { e with tape := setAt e.tape scanIdx (.parenExpr [tok]) } sigs viable pos scanIdx
+            else
             if !captures && (e.defs.lookup? tw.name).isSome && !tw.forceVal then pure e
-            else collectWalk nat fuel e sigs (pruneResolved tok) (pos + 1) (scanIdx + 1)
+            else collectWalk nat fuel binder e sigs (pruneResolved tok) (pos + 1) (scanIdx + 1)
           | v =>
             let viable :=
               if v.isConcrete then
@@ -789,7 +855,7 @@ def collectWalk (nat : Natives) :
                   !(pos < b && !rawSlot s
                     && ((s.ptype pos != TAny && !sigArgMatches s pos v) || forwardPatternRejects s pos v))
               else viable
-            collectWalk nat fuel e sigs viable (pos + 1) (scanIdx + 1)
+            collectWalk nat fuel binder e sigs viable (pos + 1) (scanIdx + 1)
 
 /-- Collapse, in place, the paren group opening at `scanIdx` — a group in
     another word's forward window. The pointer is restored afterwards: the
@@ -877,6 +943,11 @@ def stepLiteral (nat : Natives) : Nat → Engine → Except BoruError Engine
       match pendingForwardIdx e.tape e.ptr with
       | none =>
         match val with
+        -- A SPLICE MARKER with nothing waiting for it FIRES: its payload
+        -- takes its place, unevaluated, and is stepped from there against
+        -- the live stack. (With a word waiting it is a value like any
+        -- other, collected below if the slot takes it.)
+        | .splice payload => pure { e with tape := splice e.tape valIdx 1 (spliceExpand payload) }
         | .dispatchMod _ => pure { e with tape := removeAt e.tape valIdx }
         | .fn name sigs _ =>
           -- a function value at the pointer is a CALL, unless a `/v` or

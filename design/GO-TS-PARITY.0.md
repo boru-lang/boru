@@ -509,6 +509,15 @@ Three things from it are worth carrying even if the tables are never read:
   that specify the rule are on the Go column of `core/spec/divergent.tsv`,
   and the fixtures `mpatq`, `lpatq`, `rawmpatq` and `rawlpatq` are the Go
   runner's and the Lean runner's only.
+- **Splice markers are shared, but for two things** (2026-11-28). core/ts
+  has the marker, its firing where it is stepped, and the rule that a
+  word bound to a data splice reads as the group `(w)` where another word
+  collects it — 79 rows of `core/spec/dispatch.tsv`, through the `s(`
+  notation and the `spliceq` fixture in all three runners. Two rows are a
+  gap in the port: a marker written as a MAP MEMBER is left a marker
+  (`{ a: s( [q 1 2 ] ) }` is `{a:word(undefined)}`), where core/go fires
+  it in the member's region. Two more are each engine's own debug print
+  of a marker left on the stack (NUR416: neither is source).
 - NUR059: canon still renders sugar tags, `/r` and `/N` word modifiers,
   and paren groups in debug spelling. Both engines agree, so it is render
   quality rather than parity — pinned by corpus rows so a one-sided fix

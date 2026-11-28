@@ -1088,3 +1088,19 @@ run ; def f ( fn [q [q {q a: 1 } ] [q Any ] [q 'one' ] [q {q a: 7 } ] [q Any ] [
 run ; def f ( fn [q [q {q a: 1 } ] [q Any ] [q 'one' ] [q Map ] [q Any ] [q 'map' ] ] ) ; f { a: p( bindq z 5 7 ) } z	'map' 5	ERROR:undefined_word	an overload with no pattern takes the value the declined pattern left
 run ; def f ( fn [q [q {q a: 1 } Integer ] [q Any ] [q 'one' ] [q Map String ] [q Any ] [q 'ms' ] ] ) ; f { a: p( bindq z 5 1 ) } 'x' z	'ms' 5	ERROR:undefined_word	an overload a TYPE rules out never reads its pattern — the map is evaluated by the call that takes it, not by the match
 run ; def f ( fn [q [q {q a: 1 } {q b: 2 } ] [q Any ] [q 'one' ] [q Map Map ] [q Any ] [q 'mm' ] ] ) ; f { a: p( bindq z 5 9 ) } { b: p( bindq y 6 2 ) } z y	'mm' 5 6	ERROR:undefined_word	two patterned slots: the first declines, and the second operand is evaluated by the call that takes both
+
+# --- splice markers: where core/ts differs, and what core/ts does not have ---------
+# core/ts has the marker, its firing and the `f w ≡ f (w)` rule: those rows
+# are in `dispatch.tsv`. These are the rest.
+run { a: s( [q 1 2 ] ) }	{a:[1 2]}	{a:word(undefined)}	A MARKER WRITTEN AS A MAP MEMBER fires in the member's region, and two values are a list — core/ts leaves the member a marker
+run { a: s( 5 ) }	{a:5}	{a:word(undefined)}	one value is the member
+run def w s( [q 1 2 ] ) ; w/v	word()({[1 2]})	word(undefined)	/v WITH NOTHING WAITING: the marker is placed, not fired — and a marker left on the stack has no source spelling: canon falls back to the engine's debug print (NUR416), each engine's own
+run def w s( [q 'a' x ] ) ; w/v	word()({['a' word(x)]})	word(undefined)	the payload in the same print: a word is `word(x)` there
+run def w s( [q def y 3 ] ) ; def f fn( n Any Any [ w ; y ] ) ; f 0 y	ERROR:undefined_word	3 3	FRAME STATE SEES THROUGH A MARKER: the body names only `w`, whose payload names `def` — so the frame records its entry state, and what the spliced `def` binds ends with the call (core/ts has no entry snapshot)
+run def v s( [q def y 3 ] ) ; def w s( [q v ] ) ; def f fn( n Any Any [ w ; y ] ) ; f 0 y	ERROR:undefined_word	3 3	through a marker whose payload names a marker
+run def w s( [q 1 2 ] ) ; formq w	[w]	ERROR:undefined_word	a FORM slot takes the word as it is written (the `formq` fixture is not core/ts's)
+run def w s( [q 1 2 ] ) ; rawpq w	[(w)]	ERROR:undefined_word	a RAW-PAREN slot captures the GROUP the word became, as code: `(w)`
+run def w s( [q 1 2 ] ) ; forq 2 [q w ]	1 2 1 2	ERROR:undefined_word	in a loop's round, each round
+run def w s( [q 1 2 ] ) ; eachq [q 7 ] [q w ]	[7 1 2]	ERROR:undefined_word	in a driven loop's region
+run s( [q breakq ] )	ERROR:flow_error	ERROR:undefined_word	a spliced signal with no loop to take it
+run def w s( [q 1 breakq ] ) ; forq 2 [q 7 w 8 ]		ERROR:undefined_word	and with one: the round's values go with it

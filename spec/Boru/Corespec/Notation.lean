@@ -112,6 +112,12 @@ partial def item : List String → Except String (Value × List String)
   | "p(" :: rest => do
     let (elems, rest) ← itemsUntil ")" rest
     pure (.parenExpr elems, rest)
+  | "s(" :: rest => do
+    -- `s( item )`: a SPLICE MARKER wrapping one item
+    let (payload, rest) ← item rest
+    match rest with
+    | ")" :: rest => pure (.splice payload, rest)
+    | _ => throw "s( wants one item and a closing )"
   | "d(" :: rest => do
     let (elems, rest) ← itemsUntil ")" rest
     pure (.disjunct elems, rest)
@@ -202,6 +208,7 @@ partial def install (defs : Defs) : Value → Value
   | .quoted v => .quoted (install defs v)
   | .map entries ev => .map (entries.map fun (k, v) => (k, install defs v)) ev
   | .parenExpr items => .parenExpr (items.map (install defs))
+  | .splice payload => .splice (install defs payload)
   | .disjunct alts => .disjunct (alts.map (install defs))
   | .typedList child elems => .typedList (install defs child) (elems.map (install defs))
   | .typedMap child entries => .typedMap (install defs child) (entries.map fun (k, v) => (k, install defs v))

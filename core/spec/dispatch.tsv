@@ -1390,3 +1390,107 @@ run raw2q/u [ addq 1 2 ] 1	[1 [3]]	NUR413: `raw2q/u a b` is `raw2q b a` in every
 run raw2q/u [ addq 1 2 ] [ addq 3 4 ]	[[7] [3]]	NUR413: both evaluated
 run ; def g raw2q/v ; g/u [ addq 1 2 ] 1	[1 [3]]	NUR413: through a binding too
 run rawmq/u { a: p( addq 1 2 ) }	{a:3}	NUR413: `/u` drops the map mode as it drops the list mode — the map is evaluated
+
+# --- splice markers: stepped, a marker is replaced by its payload ------------------
+# `s( item )` writes a SPLICE MARKER (`Word/__SP`) wrapping one item, and
+# `spliceq v` makes one of its argument, as basic's `word` does. Stepped
+# with nothing waiting for it, a marker FIRES: it is replaced, unevaluated,
+# by its payload — a plain list gives its elements, any other value itself
+# — and what took its place is stepped from there, against the live stack.
+run s( [q 1 2 ] )	1 2	A SPLICE MARKER FIRES where it is stepped: a list payload's elements take its place
+run s( 5 )	5	any other payload takes its place itself
+run s( {q a: 1 } )	{a:1}	a map is one value
+run s( [: Integer 1 2 ] )	[:Integer 1 2]	and so is a typed list: only a plain list is spread
+run s( [q ] )		an empty list: nothing takes its place
+run s( [q addq 1 2 ] )	3	WHAT IS SPLICED IS STEPPED: the elements are tokens again
+run s( [ addq 1 2 ] )	3	a pending list is spread the same way — the list only carries them, and is never evaluated as a list
+run 5 s( [q addq 1 ] )	6	AGAINST THE LIVE STACK: a spliced word takes what stands before the marker
+run s( [q addq 1 ] ) 5	6	and what follows it
+run 5 s( [q negq/s ] )	-5	with its modifiers
+run s( [q nosuch ] )	ERROR:undefined_word	an unbound word is an error where it is stepped
+run s( [q 1 ; 2 ] )	1 2	`end` among the elements is stepped as `end`
+run s( [q ( 1 2 ) ] )	1 2	a group among them is a group
+run 9 s( [q ) ] )	ERROR:syntax_error	an unmatched close is the error it is anywhere
+run s( s( [q 1 2 ] ) )	1 2	a marker in a marker fires in turn
+run s( [q s( [q 1 2 ] ) 3 ] )	1 2 3	and one among the elements
+run s( p( addq 1 2 ) )	3	a paren-expression payload takes the marker's place, and runs
+run s( fn( n Integer Integer [ addq n 1 ] ) ) 5	6	a function payload takes its place, and is called
+run spliceq [q 1 2 ]	1 2	`spliceq` makes the marker; handed back, it is at the pointer with nothing waiting, and fires
+run spliceq 5	5	any value
+run 5 spliceq [q addq 1 ]	6	a macro made on the spot
+run ( s( [q 1 2 ] ) )	1 2	in a group
+run [ s( [q 1 2 ] ) 3 ]	[1 2 3]	in a list literal: its values stand among the list's
+
+# --- a marker a word is collecting is a value --------------------------------------
+# With a word waiting for an argument the marker does not fire: it is a
+# value like any other, collected if the slot takes it. It is not its
+# payload — a typed slot refuses it — and it fires wherever it is next
+# stepped with nothing waiting.
+run dupq s( [q 1 2 ] )	1 2 1 2	WITH A WORD WAITING the marker is collected as it is — and fires where the word hands it back, each copy
+run bothq 9 s( [q 1 2 ] )	1 2	a word that hands back its second argument: the marker, which fires
+run bothq s( [q 1 2 ] ) 9	9	and one that hands back the other: the marker never fires
+run addq s( [q 1 2 ] )	ERROR:signature_error	IT IS NOT ITS PAYLOAD: an Integer slot refuses a marker of two Integers
+run negq s( 5 )	ERROR:signature_error	and a marker of one
+run s( [q 1 2 ] ) addq	3	(BEFORE the word it has fired, and its values are on the stack)
+run s( [q 1 2 ] ) sumq	3	(for a stack-only word too)
+run negq ( s( [q 5 ] ) )	-5	(and in a group it fires: the group's value is the operand)
+
+# --- a name bound to a marker ------------------------------------------------------
+run def w s( [q 1 2 ] ) ; w	1 2	A NAME BOUND TO A MARKER fires where it is stepped
+run def w s( [q 1 2 ] ) ; w w	1 2 1 2	each time
+run def w s( [q ] ) ; w		an empty one leaves nothing
+run def w s( [q 1 2 ] ) ; w addq	3	its values are the next word's
+run def w s( [q 1 2 ] ) ; w/2	1 2	a forced arity changes nothing: there is no call
+run def w s( [q 1 2 ] ) ; w/s	1 2	nor does /s
+run def w s( [q 1 2 ] ) ; w/u	ERROR:illegal_ref	/u wants a function
+run def w s( [q 1 2 ] ) ; undef w w	ERROR:undefined_word	unbound again, it is an unbound word
+run def inc s( [q addq 1 ] ) ; 1 inc inc inc	4	A MACRO: a payload of words runs against the live stack, each time the name is stepped
+run def inc s( [q 1 addq ] ) ; 5 inc	6	written the other way round
+run def w s( [q x ] ) ; def x 5 ; w	5	a word in the payload is looked up when it is STEPPED: `x` was bound after `w`
+run def w s( [q 1 2 ] ) ; s( [q w w ] )	1 2 1 2	a marker whose payload names a marker
+run def w s( [q 1 2 ] ) ; [ w ]	[1 2]	in a list literal
+run def w s( [q 1 2 ] ) ; { a: w }	{a:[1 2]}	in a map member: two values are a list
+run def w s( [q 1 2 ] ) ; ( w )	1 2	in a group
+
+# --- `f w` is `f (w)` for a word bound to a data splice ----------------------------
+# A DATA splice — a payload with no word, paren expression or marker at
+# its top level — gives the same values wherever it stands. A word bound
+# to one, where another word is collecting an argument, is read as the
+# group `(w)`: the values arrive from a segment of their own, as many as
+# there are, and fill as many slots (core/go `spliceIsData`; the rewrite
+# is in the plan walk and at the word's step).
+run def w s( [q 1 2 ] ) ; addq w	3	`f w` IS `f (w)`: the two values fill addq's two slots
+run def w s( [q 1 ] ) ; addq w 2	3	one value, one slot
+run def w s( [q 1 ] ) ; addq 2 w	3	in the second position
+run def w s( [q 1 ] ) ; 2 addq w	3	with the other operand on the stack
+run def w s( [q 5 ] ) ; negq w	-5	a one-slot word
+run def w s( 5 ) ; negq w	-5	a payload that is no list is one value
+run def w s( [q 1 2 ] ) ; addq w ; addq w	3 3	each time
+run def w s( [q 1 2 3 ] ) ; addq w	3 3	MORE VALUES THAN SLOTS is the group's rule: the word takes the first two, and the third is left after its result
+run def w s( [q 1 2 ] ) ; dupq w	1 1 2	a one-slot word takes the first, and the second is left after its results
+run def w s( [q 1 2 ] ) ; bothq w	2	a two-slot word takes both
+run def w s( [q 1 2 ] ) ; bothq w 9	2 9	and what follows is not its operand
+run def w s( [q 1 2 ] ) ; unifyq w	false	the two values are compared with each other
+run def w s( [q ] ) ; negq w	ERROR:no_value_error	a group that leaves nothing is no operand
+run def w s( [q 1 2 ] ) ; rawlq w	1 2	a no-evaluation slot is an ordinary one for this: it is handed the group's first value
+run def w s( [q 1 2 ] ) ; rawlq [ w ]	[w]	(inside a raw list a word is only a word)
+run def w s( [q 1 2 ] ) ; sumq w	ERROR:signature_error	a STACK-ONLY word collects nothing forward: the name is not its operand
+run def w s( [q 1 2 ] ) ; w sumq	3	(before it, the marker has fired)
+run def w s( [q 1 2 ] ) ; def f fn( n Any Any [ addq w ] ) ; f 0	3	in a function's body
+
+# --- where `f w` is not `f (w)` ----------------------------------------------------
+run def w s( [q 1 2 ] ) ; qanyq w	1 2	A NAME-CAPTURING SLOT takes the WORD (which `qanyq` hands back, and which then fires)
+run def w s( [q 1 2 ] ) ; tyq w	ERROR:signature_error	a type-arg slot takes neither the word nor the group
+run def w s( [q 1 2 ] ) ; ; def y w ; y	1 2	A BINDER TAKES THE MARKER: `def y w` rebinds it, and `y` is the same splice under another name
+run def w s( [q 1 2 ] ) ; ; bindq y w ; y	2 1	NUR415: BUT ONLY THE WORD NAMED `def` — another binder is handed the group's first value, and the second is left
+run def w s( [q 1 2 ] ) ; ; def y ( w ) ; y	2 1	(written as the group, `def` binds the group's first value like anyone)
+run def w s( [q 1 2 ] ) ; ; def mydef def/v ; mydef y w ; y	2 1	NUR415: and `def`'s OWN FUNCTION under another name is not the binder — the exemption reads the name
+run def w s( [q 1 2 ] ) ; dupq w/v	1 2 1 2	/v IS THE MARKER, as a value: collected, and fired where it is handed back
+run def w s( [q 1 2 ] ) ; bothq w/v 9	9	handed to a word that keeps it, it never fires
+run def w s( [q 1 2 ] ) ; addq w/v	ERROR:signature_error	and it is not grouped: an Integer slot refuses it
+run def w s( [q x ] ) ; def x 5 ; negq w	ERROR:signature_error	A CODE-BEARING SPLICE IS NEVER GROUPED: a payload with a word at its top level is a macro — collected, the marker is a value, and an Integer slot refuses it
+run def inc s( [q addq 1 ] ) ; negq inc	ERROR:signature_error	a macro of words
+run def inc s( [q addq 1 ] ) ; 5 negq inc	-4	(so the word falls back to the stack, and the macro then runs on its result)
+run def w s( p( addq 1 2 ) ) ; negq w	ERROR:signature_error	a paren-expression payload is code too
+run def w s( p( addq 1 2 ) ) ; w	3	(stepped alone, it runs)
+run def w s( [q bindq y 3 ] ) ; def f fn( n Any Any [ w ; y ] ) ; f 0 y	3 3	a marker spliced in a function's body binds as its words bind: `bindq` is not a word the frame undoes

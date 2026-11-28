@@ -25,3 +25,4 @@ import Boru.Core.Theorems.Tail
 import Boru.Core.Theorems.FnSpec
 import Boru.Core.Theorems.Raw
 import Boru.Core.Theorems.PatternOperand
+import Boru.Core.Theorems.Splice

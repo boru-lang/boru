@@ -79,6 +79,10 @@ def canon : Value → String
     "{" ++ " ".intercalate ((":" ++ canonTag child) :: canonEntries entries) ++ "}"
   | .word w => canonWord w
   | .parenExpr items => "(" ++ " ".intercalate (canonGroup items) ++ ")"
+  -- A SPLICE MARKER has no source spelling. The kernel's canon has no arm
+  -- for one and falls back to the engine's own value print — a debug
+  -- spelling (NUR416) — with the payload printed the same way
+  | .splice payload => "word()({" ++ debugValue payload ++ "})"
   | .disjunct alts => " tor ".intercalate (canonAlts alts)
   | .fn _ sigs _ => "fn [" ++ " ".intercalate (canonSigs sigs) ++ "]"
   | .forward info _ => "__FW(" ++ info.funcName ++ ")"
@@ -98,6 +102,26 @@ def canonTag : Value → String
   | .word w => canonWord w
   | .disjunct alts => "(" ++ " tor ".intercalate (canonAlts alts) ++ ")"
   | v => canon v
+
+/-- The engine's own value print (core/go `Value.String`), for the one
+    place canon falls back to it: a word prints as `word(name)`, and a
+    list or map prints its members the same way. Only what a splice
+    marker's payload is seen to hold is stated here; anything else is
+    printed as canon prints it. -/
+def debugValue : Value → String
+  | .word w => "word(" ++ w.name ++ ")"
+  | .list elems _ => "[" ++ " ".intercalate (debugList elems) ++ "]"
+  | .map entries _ => "{" ++ " ".intercalate (debugEntries entries) ++ "}"
+  | .quoted v => debugValue v
+  | v => canon v
+
+def debugList : List Value → List String
+  | [] => []
+  | v :: vs => debugValue v :: debugList vs
+
+def debugEntries : List (String × Value) → List String
+  | [] => []
+  | (k, v) :: es => (canonKey k ++ ":" ++ debugValue v) :: debugEntries es
 
 /-- Elements of a container: a disjunct element is parenthesised so it
     reads back as one element. -/

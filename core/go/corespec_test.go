@@ -429,6 +429,18 @@ func coreSpecItem(t *testing.T, r *Registry, toks []string, pos int) (Value, int
 		}
 		pos++ // the ")"
 		return NewParenExpr(items), pos
+	case "s(":
+		// `s( item )` — a SPLICE MARKER (`__SP`) wrapping one item: stepped
+		// with nothing waiting for it, it is replaced by its payload — a
+		// plain list's elements, any other value itself.
+		pos++
+		var payload Value
+		payload, pos = coreSpecItem(t, r, toks, pos)
+		if pos >= len(toks) || toks[pos] != ")" {
+			t.Fatalf("s( wants one item and a closing ) in %s", strings.Join(toks, " "))
+		}
+		pos++
+		return NewSplice(payload), pos
 	case "{", "{q":
 		open := toks[pos]
 		pos++
@@ -995,6 +1007,17 @@ func coreSpecRegistry(t *testing.T) *Registry {
 			return []Value{NewList([]Value{a[0], a[1]})}, nil
 		}),
 		BarrierPos: 2,
+	})
+	// spliceq makes a SPLICE MARKER of its argument, as basic's `word` does.
+	// Handed back, the marker is at the pointer with nothing waiting for
+	// it, and fires: `spliceq [q 1 2 ]` leaves 1 and 2.
+	r.Register("spliceq", Signature{
+		Params:  []FnParam{{Name: "v", Type: TAny}},
+		Returns: []*Type{TAny},
+		Impl: Go(func(a []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Value, error) {
+			return []Value{NewSplice(a[0])}, nil
+		}),
+		BarrierPos: 1,
 	})
 	// THE PATTERN'S PENDING OPERAND (NUR235): a pattern that reads a
 	// container's contents — a map shape, a typed list — judges the value

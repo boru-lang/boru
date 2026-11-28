@@ -134,6 +134,8 @@ list only by becoming **Resolved** (the record is then deleted) or
 | [NUR412](#nur412) | A function VALUE all of whose parameters are unnamed takes its stack arguments BOTTOM-UP — and so an unbound function literal of unnamed parameters cannot be called forward at all (`fn [[Integer String][List][args]] 5 "a"` is left uncalled, where `x:`/`y:` or a `def` makes it `[5 'a']`): `7 "a" fn [[Integer String][List][args]]` is `[7 'a']` and `"a" 7 fn […]` is not called, the opposite of the same function with named parameters and of the same function called by name; and a usurped one matched that way is not run — `def f fn [[Integer String][List][args]] ; "a" 7 f/u` returns its own argument (`<fn>: expected List, got Integer`) | the Lean specification's differential fuzzer, against core/go and the shipped words (2026-11-28) |
 | [NUR413](#nur413) | `/u` does not carry a signature's raw-capture slots with the parameters it reverses: the wrapper drops the two no-evaluation slots, so a code body is EVALUATED before the word is handed it (`quote/u [add 1 2]` is `[3]`, `for/u [print i] 2` is `undefined word: i`, `if/u [print "no"] [print "yes"] true` prints both), and keeps the raw-paren and form slots at the positions they had before the reversal, which are other parameters' positions now | the Lean specification's model of the raw-capture slots, against core/go and the shipped words (2026-11-28) |
 | [NUR414](#nur414) | A paren expression that ARRIVES at a waiting word — a name bound to one, stepped — is captured as code when the word's signature has a raw-paren or form slot ANYWHERE, also at an ordinary slot of it; written at that same slot it is evaluated, because the plan asks the position and the arrival asks the signature | the Lean specification's model of the raw-capture slots, against core/go (2026-11-28) |
+| [NUR415](#nur415) | The one word that takes a data splice's MARKER where every other word takes its values — the binder, so that `def y w` makes `y` the same splice — is known by its NAME: `def w word [1 2] ; def y w ; y` is `1 2`, and with `def mydef def/v`, `mydef y w ; y` is `2 1` — `def`'s own function under another name binds the first value and leaves the second | the Lean specification's model of splice markers, against core/go and the shipped words (2026-11-28) |
+| [NUR416](#nur416) | A splice marker has no canonical form: `canon` of one is the engine's debug dump, `word()({[1 2]})`, which no parser accepts (ADR-015), with the payload in the engine's value print (`word(x)` for a word); core/ts prints `word(undefined)` for the same value | the Lean specification's model of splice markers, against core/go, core/ts and the shipped words (2026-11-28) |
 
 Pending records normally use a compact form (rule / divergence /
 evidence / documentation status, plus a proposed verdict where one is
@@ -2284,5 +2286,90 @@ is itself a no-evaluation slot.
 
 **Proposed verdict:** resolve by fix — `pendingForwardWantsRawParen` asks
 the parked forward's next slot, as `hasPendingForwardFormArg` does.
+
+---
+
+## NUR415 — the binder that takes a splice's marker is known by its name {#nur415}
+
+**Status:** Pending · **Recorded:** 2026-11-28 · measured through the shipped words · silent (a name bound to one value where the splice was meant)
+
+**Rule:** a word bound to a DATA splice, where another word is collecting
+an argument, is read as the group `(w)`: `f w ≡ f (w)`
+(`core/go/engine.go`, the `stepWord` substitution; `collect_kernel.go`,
+the plan walk). The one deliberate exception is a BINDER: "`def y xs`
+with xs splice-bound must rebind the marker itself — the new name ALIASES
+the splice" (`bindsReferent`). A function is the same function under any
+name it is bound to: `def mydef def/v` makes `mydef` call as `def` does,
+and the frame analysis already reads the FUNCTION for exactly that reason
+(`fnValueIsBindingWord`, "a name bound to a binding word's VALUE …
+installs into this frame exactly as the word itself would").
+
+**Divergence:** the exception is decided by the collecting word's name —
+
+```go
+func bindsReferent(name string) bool { return name == "def" }
+```
+
+— on the argument that "def is frozen (reserved_word), so the name is a
+reliable identity". The name is reserved; the function is not confined to
+it. Under any other name, and for any other word that binds, the operand
+is the group:
+
+```
+def w word [1 2] ; def y w ; y                        → 1 2      (y is the splice)
+def w word [1 2] ; def y (w) ; y                      → 2 1      (the group: y is 1, and 2 is left)
+def mydef def/v ; def w word [1 2] ; mydef y w ; y    → 2 1      (def's own function: the group)
+```
+
+`core/spec/dispatch.tsv` pins the `bindq` and `mydef` rows — core/ts has
+the same test — and the Lean specification reproduces it
+(`Engine.lean`, `stepWord` and `collectWalk`; `Theorems/Splice.lean`
+`nur415_the_binder_is_known_by_its_name`).
+
+**Proposed verdict:** resolve by fix — `bindsReferent` asks whether the
+collecting word's function IS a binder (the identity test
+`fnValueIsBindingWord` already makes), so `mydef y w` aliases the splice
+as `def y w` does. Whether a host binder other than `def` should alias
+too (lang's `unpack`) is the same question NUR384 asks of the frame
+analysis, and wants the same answer.
+
+---
+
+## NUR416 — a splice marker has no canonical form {#nur416}
+
+**Status:** Pending · **Recorded:** 2026-11-28 · measured through the shipped words · visible (a debug dump where source was promised)
+
+**Rule:** ADR-015, "Canon always round-trips": "`canon v` renders boru
+source that re-parses to a value `deq` to `v`. Every value; no exempt
+kinds. A rendering no parser accepts — a debug spelling, a struct dump, a
+pointer address — is a defect, not a display choice".
+
+**Divergence:** `canon` (`core/go/canon.go`) has no arm for a splice
+marker (`Word/__SP`) and falls through to the engine's own value print: a
+struct dump of the marker, with the payload printed by `Value.String`
+rather than by canon — so a word in it is `word(x)`, the spelling
+`canon.go` itself calls "the debug spelling ADR-015 calls a defect". A
+marker stays on the stack whenever one is taken as a value and not
+stepped: `w/v`, a member of a quoted list.
+
+```
+def w word [1 2] ; w/v            → word()({[1 2]})
+def w word [1 2] ; canon w/v      → "word()({[1 2]})"
+def w word ["a" x] ; w/v          → word()({['a' word(x)]})
+```
+
+The two ports do not print the same dump: core/ts answers
+`word(undefined)` for each of these. `core/spec/divergent.tsv` pins two
+rows; the Lean specification states the Go spelling for a payload of
+lists, maps, words and scalars (`Canon.lean` `debugValue`) and says
+nothing of any other payload, and its differential fuzzer compares only
+what stands before a marker's dump.
+
+**Proposed verdict:** resolve by fix — canon gets an arm for the marker
+in both ports: the construction that makes one over the payload's canon,
+as a function value renders as its `fn` construction. (What that source
+is — `word [1 2]` re-parses to a marker that fires where it stands — is
+ADR-015's question for a value that acts when stepped, and the answer
+chosen for a function value is the precedent.)
 
 ---
