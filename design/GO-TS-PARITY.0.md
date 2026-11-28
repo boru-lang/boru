@@ -458,6 +458,20 @@ Three things from it are worth carrying even if the tables are never read:
   was its last act, reads what was beneath that. core/ts only nests, and
   gives the nested answer — which is the Lean specification's. Two ledger
   rows; they leave with the kernel fix.
+- **No function-spec reader and no definition install** (2026-11-28).
+  core/go reads a written function — `[[params][returns][body]]` triples
+  — into signatures (`ParseFnDef`, `ParseFnParams`, `ParseFnReturns`,
+  `ResolveSigType`) and COMPILES a function when it is bound by name
+  (`InstallDef`): optional parameters expanded into signatures, a
+  redefinition of the same parameter types replacing the older one, each
+  body asked then whether its frames record. core/ts has neither — the
+  reader lives a layer up, in eng/ts, and a binding is a binding — so the
+  84 rows that specify them are on the Go column of
+  `core/spec/divergent.tsv`, and the `fn` fixture is the Go runner's and
+  the Lean runner's only. The first row of the redefinitions is the one
+  core/ts answers at all: two `fn(` functions of the same parameter
+  types bound by `def` are `2 1` here and `undefined_word` after the
+  `undef` in Go, where the second replaced the first.
 - NUR059: canon still renders sugar tags, `/r` and `/N` word modifiers,
   and paren groups in debug spelling. Both engines agree, so it is render
   quality rather than parity — pinned by corpus rows so a one-sided fix

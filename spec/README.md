@@ -29,6 +29,7 @@ The specification is three things at once, on purpose:
 | [`Boru/Core/Truth.lean`](Boru/Core/Truth.lean) | the one truthiness rule |
 | [`Boru/Core/Match.lean`](Boru/Core/Match.lean) | the binding store, slot admission, the plan: which signature a call takes and where its arguments come from |
 | [`Boru/Core/Engine.lean`](Boru/Core/Engine.lean) | the step loop |
+| [`Boru/Core/FnSpec.lean`](Boru/Core/FnSpec.lean) | a function's written specification read into signatures, and the install that compiles it under a name |
 | [`Boru/Core/Theorems/`](Boru/Core/Theorems) | what is proved |
 | [`Boru/Corespec/`](Boru/Corespec), [`Corespec.lean`](Corespec.lean) | the corpus notation, the fixture words, and the runner |
 | [`COVERAGE.md`](COVERAGE.md) | which kernel mechanisms are specified, and which are not yet |
@@ -91,7 +92,7 @@ them because the kernel had them, and each was recorded in
 the records closed: the model now states the rule, and the rows that pin
 each fix are in `core/spec` under the record's number.
 
-Twelve more are open, and the model reproduces them until they are ruled
+Fourteen more are open, and the model reproduces them until they are ruled
 on: a `/uv` value is not collected by a waiting word as a `/v` value is
 (NUR390); a word with more than one definition is not equal to itself
 (NUR391); an unmatched `(` is refused at the top level and in a
@@ -112,8 +113,13 @@ second time when a body calls it (NUR405); a frame's close takes its own
 names off by count, so a body that unbound its parameter unbinds the
 caller's binding of that name (NUR406); and a frame whose body names no
 binding word records nothing to undo, so what it binds by another route
-outlives the call (NUR384). Each is marked where it is modelled and where
-it is pinned.
+outlives the call (NUR384); a parameter written without a name is read by
+a shorter list of forms than a named one (NUR409); and `?` on a parameter
+whose type has no base value adds no signature and says nothing (NUR410).
+Each is marked where it is modelled and where it is pinned. One more is
+stated in the model as the kernel has it but cannot be written in the
+corpus notation: the value `none` in a declaration constrains nothing
+(NUR408).
 
 One the model deliberately does NOT reproduce, though it is a rule it
 could state: tail-call elision changes the answer of a callee that unbinds

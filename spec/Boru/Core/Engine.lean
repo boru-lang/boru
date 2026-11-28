@@ -1475,4 +1475,11 @@ def run (nat : Natives) (defs : Defs) (program : List Value) (fuel : Nat := defa
     Except BoruError (List Value) :=
   (runProgram nat fuel defs program).map (·.1)
 
+/-- The bindings a program leaves, when it ends without an error. -/
+def runDefs (nat : Natives) (defs : Defs) (program : List Value) (fuel : Nat := defaultFuel) :
+    Option Defs :=
+  match runProgram nat fuel defs program with
+  | .ok (_, d) => some d
+  | .error _ => none
+
 end Boru.Core

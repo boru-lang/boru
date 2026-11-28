@@ -210,6 +210,53 @@ def gen_value(rng, depth):
     return [rng.choice(TYPES[:7])]
 
 
+def gen_spec(rng):
+    """A function specification: `[q [q params ] [q returns ] [q body ] … ]`."""
+    types = ["Integer", "Integer", "String", "Any", "Any", "Boolean", "List", "Map", "None", "Number", "Scalar",
+             "Float", "Atom", "Function", "Scalar/String", "Node", "Nosuch", "integer"]
+    out = ["[q"]
+    for _ in range(rng.choice([1, 1, 1, 2])):
+        params = []
+        for name in rng.sample(["n", "m", "k"], rng.choice([0, 1, 1, 1, 2, 2, 3])):
+            r = rng.random()
+            if r < 0.45:
+                params.append(f"{name}:{rng.choice(types)}")
+            elif r < 0.62:
+                params.append(f"{name}?:{rng.choice(types)}")
+            elif r < 0.68:
+                params.append(f"{name}:{rng.choice(['Atom/q', 'kw/q', 'Integer/q', 'Any/q'])}")
+            elif r < 0.76:
+                params.append(rng.choice(types))
+            elif r < 0.84:
+                params.append(rng.choice(["7", "'a'", "0", "''"]))
+            elif r < 0.88:
+                params += [f"{name}:{rng.choice(types)}", "?"]
+            elif r < 0.92:
+                params += ["|", f"{name}:{rng.choice(types)}"]
+            else:
+                params += rng.choice([["nosuch"], ["none"], ["[q", "1", "]"], ["d(", "Integer", "String", ")"],
+                                      ["{q", "x:", "Integer", "}"], ["[:", "Integer", "]"], ["?"], ["|"],
+                                      ["Bad:Integer"], ["n:"], [":Integer"], ["{q", "}"], ["{:", "Integer", "}"]])
+        returns = []
+        for _ in range(rng.choice([0, 1, 1, 1, 1, 2])):
+            returns += rng.choice([[rng.choice(types)], [rng.choice(types)], ["d(", "Integer", "String", ")"], ["7"],
+                                   ["'a'"], ["r:Integer"], ["none"], ["[q", "1", "]"], ["[:", "Integer", "]"],
+                                   ["{q", "a:", "Integer", "}"], ["d(", ")"], ["d(", "7", "'a'", ")"], ["x"],
+                                   ["'Integer'"], ["'ok'"], ["'Nosuch'"], ["Bad:Integer"]])
+        body = rng.choice(["n", "n", "addq n 1", "m", "[ n m ]", "", "7", "'a'", "n m", "argsq", "negq/s", "true",
+                           "depthq", "k", "n 'a'", "[q 1 ]", "none", "{ a: n }", "def y n ; y", "sumq",
+                           "5", "n k m", "ifq [q n ] [q ( addq n -1 ) sf/s ] [q 0 ]", "sf"])
+        # a part that is not a list stands for the list of itself
+        ps = ["[q"] + params + ["]"] if (len(params) != 1 or rng.random() < 0.85) else params
+        rs = ["[q"] + returns + ["]"] if (len(returns) != 1 or rng.random() < 0.8) else returns
+        out += ps + rs + ["[q"] + body.split() + ["]"]
+    if rng.random() < 0.04:
+        out = out[:-rng.randint(1, 3)]  # a specification cut short
+        depth = sum(1 for t in out if t in ("[q", "[", "d(", "{q", "[:", "{:")) - sum(1 for t in out if t in ("]", ")", "}"))
+        out += ["]"] * max(depth - 1, 0)
+    return out + ["]"]
+
+
 def gen_program(rng, max_len):
     toks = []
     if rng.random() < 0.25:
@@ -309,6 +356,25 @@ def gen_program(rng, max_len):
             rng.choice(["Any", "Any", "Integer"]), "["] + body.split() + ["]", ")", ";"]
         if rng.random() < 0.8:
             toks += [rng.choice(["un", "un", "un/u", "un/s", "un/v"])]
+    # a function WRITTEN as a specification and bound by the program's own
+    # `def`: the kernel's reader makes its signatures, and the install
+    # compiles it under the name — optional parameters expanded, an older
+    # definition it overlaps replaced
+    if rng.random() < 0.18:
+        toks += [";"]
+        for _ in range(rng.choice([1, 1, 1, 2, 2, 3])):
+            toks += ["def", "sf", "(", "fn"] + gen_spec(rng) + [")", ";"]
+            if rng.random() < 0.3:
+                toks += rng.choice([["sf", "5"], ["sf"], ["sf", "'a'"], ["sf/v"]])
+        for _ in range(rng.randint(0, 3)):
+            toks += rng.choice([["sf"], ["sf", "5"], ["sf", "'a'"], ["sf", "5", "6"], ["sf", "5", "'a'"], ["5", "sf"],
+                                ["sf", "kw", "5"], ["sf", "hello"], ["sf/v"], ["sf/1", "5"], ["sf/s"], ["sf/u", "5", "6"],
+                                ["sf", "true"], ["sf", "none"], ["sf", "7"], ["6", "sf", "5"], ["sf", "[q", "1", "]"],
+                                ["undef", "sf"], ["def", "g", "sf/v", ";", "g", "5"], ["def", "g", "sf/v", ";", "g/v"],
+                                ["sf", ";"], ["sf", "'a'", "5"], ["sf", "7", "7"]])
+    if rng.random() < 0.04:
+        # the function value as the reader leaves it, applied where it stands
+        toks += [";", "fn"] + gen_spec(rng) + rng.choice([["5"], [], ["'a'"], ["5", "6"]])
     # a word with SEVERAL definitions, of one or two parameters: which one
     # a call takes is the dispatch order — more arguments first, then the
     # more specific type at the first position that differs, then the

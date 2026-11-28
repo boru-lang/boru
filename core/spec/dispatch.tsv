@@ -1289,3 +1289,9 @@ run 1 ; undef ( )	ERROR:no_value_error	and where there is none to take, the word
 # `divergent.tsv`.)
 run 0 def mydef def/v ; mydef y 3 ; y	0 3	a name bound to a word's FUNCTION calls as the word does
 run def y 1 ; def f fn( n Any Any [ mydef y 3 ; y ] ) ; 0 def mydef def/v ; f 5 y	0 3 3	AN INSTALLED FUNCTION WAS ASKED WHEN IT WAS MADE — a function the row's leading clause binds was made before the program ran, and before the alias was bound: its frame records nothing
+
+# --- binding over a binding: the notation's clauses, and plain values -------------------
+# (What the program's own `def` does with a FUNCTION — it installs it, and a
+# redefinition replaces — is in `divergent.tsv`: core/ts only binds.)
+run def f fn( n Integer Any [ 1 ] ) ; def f fn( n Integer Any [ 2 ] ) ; f 5 undef f f 5	2 1	a row's LEADING clauses only bind: two definitions of the same parameter types are both there, the newer first
+run ; def f 1 ; def f 2 ; f undef f f	2 1	values that are no function are bound one over the other

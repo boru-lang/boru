@@ -597,7 +597,8 @@ func coreSpecRegistry(t *testing.T) *Registry {
 	// function's body needs to make a definition of its OWN: the leading
 	// `def NAME item ;` clauses of a row bind before the program starts, so
 	// they can never be inside a frame. The mechanism is core's
-	// (DefTable.Push, and the frame's truncation of what its body pushed);
+	// (InstallDef — the kernel's definition install — and the frame's
+	// truncation of what its body bound);
 	// the word is basic's, and it carries basic's NAME on purpose, as afn
 	// and undef do: the kernel's frame analysis decides by name whether a
 	// body can bind (frameStateWords), and a body that cannot gets a frame
@@ -624,17 +625,10 @@ func coreSpecRegistry(t *testing.T) *Registry {
 	// readers beneath it): `fn [q [q params ] [q returns ] [q body ] … ]`
 	// answers the function the specification describes — triples, one per
 	// overload. The value is as the reader leaves it: a function VALUE,
-	// applied where it stands. Named as the shipped word is, for the frame
-	// analysis (a body that builds a function needs the baseline).
-	//
-	// IN PROGRESS: this is the Go half only. No corpus row calls it yet;
-	// the Lean model of the reader, the TypeScript runner's word, and the
-	// rows come with the increment that specifies it. Binding one of these
-	// values by name needs the kernel's definition INSTALL (InstallDef,
-	// which compiles a function under its name), and `def` above is still
-	// the plain push — routing it through the install changes what a
-	// `def`-bound `fn(` function answers (it is asked about its frame at
-	// the def, not when the row was read), so that moves with the model.
+	// applied where it stands, and compiled when `def` binds it. Named as
+	// the shipped word is, for the frame analysis (a body that builds a
+	// function needs the baseline). The Go runner's and the Lean runner's
+	// only: core/ts has no reader, and its rows are in the ledger.
 	r.Register("fn", Signature{
 		Params:  []FnParam{{Name: "spec", Type: TList}},
 		Returns: []*Type{TFunction},
