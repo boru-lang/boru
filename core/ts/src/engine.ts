@@ -2218,7 +2218,34 @@ export class Engine {
   private autoEvalArgs(args: Value[], sig: Signature): void {
     for (let i = 0; i < args.length; i++) {
       const a = args[i]!;
-      if (sig.noEvalArgs?.has(i)) continue;
+      // THE NO-EVALUATION SLOTS, two fields as in core/go: noEvalArgs keeps
+      // a pending LIST as it was written, noEvalMapArgs a pending MAP, and
+      // neither says anything about the other kind. What is kept is no
+      // longer PENDING — Go's execMatch clears the flag on every consumed
+      // argument. Until 2026-11-28 the one field skipped the slot whole and
+      // left the flag set: a map went unevaluated at a list slot (which
+      // `def x:T v` relied on), and a list or map the handler handed back
+      // was evaluated after all, by whatever met it next (which `quote` of
+      // a map relied on, to look as if it had been evaluated at the call).
+      const rawList =
+        sig.noEvalArgs?.has(i) === true &&
+        a.vType.matches(TList) &&
+        a.isConcrete();
+      const rawMap =
+        sig.noEvalMapArgs?.has(i) === true &&
+        a.vType.matches(TMap) &&
+        a.data instanceof OrderedMap;
+      if (rawList || rawMap) {
+        if (a.eval && !a.quoted) {
+          const raw = new Value(a.vType, a.data, {
+            eval: false,
+            quoted: false,
+          });
+          raw.pos = a.pos;
+          args[i] = raw;
+        }
+        continue;
+      }
       // In compile mode, deep-evaluate a map arg through deepEvalData so it
       // records a makeMap and carries provenance (typeof/is over a computed
       // map). Gated on emit; value mode and plain checking are unchanged.

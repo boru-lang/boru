@@ -150,7 +150,7 @@ namespace Sig
     `sigSlotValue`). -/
 def slotValue (s : Sig) (i : Nat) : Value :=
   match s.params[i]? with
-  | some (.mk _ type pattern _ _ _) => pattern.getD (.typeLit type)
+  | some (.mk _ type pattern _ _ _ _) => pattern.getD (.typeLit type)
   | none => .typeLit TAny
 
 /-- A PIPED barrier: some positions forward and some from the stack.
@@ -227,6 +227,19 @@ namespace Sig
 def ptype (s : Sig) (i : Nat) : TypeId := ((s.param? i).map Param.type).getD TAny
 def isQuote (s : Sig) (i : Nat) : Bool := ((s.param? i).map Param.quote).getD false
 def isTypeArg (s : Sig) (i : Nat) : Bool := ((s.param? i).map Param.typeArg).getD false
+/-- The slot's raw-capture modes; an ordinary slot has none. -/
+def raw (s : Sig) (i : Nat) : Raw := ((s.param? i).map Param.raw).getD {}
+/-- A slot that takes its forward operand STRUCTURALLY — a raw paren, a
+    raw form, a type — rather than by the value it evaluates to (core/go
+    `sigRawSlot`). No concrete value prunes an overload at such a slot. -/
+def isRawSlot (s : Sig) (i : Nat) : Bool := s.isTypeArg i || (s.raw i).paren || (s.raw i).form
+/-- Does the slot leave a paren expression written after the word as it
+    stands. -/
+def keepsParen (s : Sig) (i : Nat) : Bool := (s.raw i).paren || (s.raw i).form
+/-- Does ANY slot of the signature capture a paren or a form raw. A
+    parked forward is asked this, not which slot is next (core/go
+    `pendingForwardWantsRawParen`). -/
+def wantsRawParen (s : Sig) : Bool := s.params.any fun p => p.raw.paren || p.raw.form
 def pattern? (s : Sig) (i : Nat) : Option Value := (s.param? i).bind Param.pattern
 
 /-- How many leading parameters THIS call may take from the forward
@@ -389,7 +402,9 @@ def scanAdmits (defs : Defs) (s : Sig) (fwd : Nat) (tok : Value) : Bool :=
   | .forward _ _ | .endMark | .closeParen | .openParen | .frameOpen _ | .defCleanup _ _ _ | .returnCheck _ _ _
   | .mark _ | .move _ _ => false
   | .word w =>
-    if s.isQuote fwd then conforms TAtom expected                  -- `/q`: the name is the operand
+    -- a FORM slot takes whatever is written, bound or not
+    if (s.raw fwd).form then true
+    else if s.isQuote fwd then conforms TAtom expected             -- `/q`: the name is the operand
     else match defs.top? w.name with
       | some top =>
         if top.isBareTypeNode && !s.isTypeArg fwd && rejectsTypeLiteral top expected then false
@@ -397,7 +412,7 @@ def scanAdmits (defs : Defs) (s : Sig) (fwd : Nat) (tok : Value) : Bool :=
         else if !top.isFn then false
         else bareWord w
       | none => bareWord w
-  | v => literal v
+  | v => (s.raw fwd).form || literal v
 
 /-- Forward positions claimed by `s`, in signature order. -/
 def candidateScan (tape : List Value) (defs : Defs) (s : Sig) (limit : Nat) :

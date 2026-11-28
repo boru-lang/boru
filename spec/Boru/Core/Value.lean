@@ -49,6 +49,26 @@ structure ForwardInfo where
   funcIndex : Nat
   deriving Repr, BEq, DecidableEq
 
+
+/-- The RAW-CAPTURE modes of a parameter: four independent ways a slot
+    takes its operand as it was WRITTEN rather than as it evaluates
+    (core/go `FnSig.NoEvalArgs`, `NoEvalMapArgs`, `RawParens`,
+    `FormArgs`). A slot with none of them is an ordinary one.
+
+    * `list` — a pending LIST literal is handed over unevaluated;
+    * `map` — a pending MAP literal is;
+    * `paren` — a paren expression written after the word is captured as
+      code, where an ordinary slot takes the value it evaluates to;
+    * `form` — whatever is written after the word is captured as it
+      stands: a word stays a word, bound or not, and a paren expression
+      stays code. -/
+structure Raw where
+  list : Bool := false
+  map : Bool := false
+  paren : Bool := false
+  form : Bool := false
+  deriving BEq, Repr, Inhabited
+
 mutual
 
 /-- A value. -/
@@ -186,6 +206,8 @@ inductive Param where
           this parameter is added, whose body calls the function by name
           with the parameter's type's base value in its place -/
        (optional : Bool)
+       /- how the slot takes its operand RAW, if it does -/
+       (raw : Raw)
 
 /-- What runs when a signature is selected. -/
 inductive Impl where
@@ -237,12 +259,13 @@ deriving instance BEq, Repr for Value, Loop, Param, Impl, Sig
 instance : Inhabited Value := ⟨Value.none⟩
 
 namespace Param
-def name : Param → String | mk n _ _ _ _ _ => n
-def type : Param → TypeId | mk _ t _ _ _ _ => t
-def pattern : Param → Option Value | mk _ _ p _ _ _ => p
-def quote : Param → Bool | mk _ _ _ q _ _ => q
-def typeArg : Param → Bool | mk _ _ _ _ t _ => t
-def optional : Param → Bool | mk _ _ _ _ _ o => o
+def name : Param → String | mk n _ _ _ _ _ _ => n
+def type : Param → TypeId | mk _ t _ _ _ _ _ => t
+def pattern : Param → Option Value | mk _ _ p _ _ _ _ => p
+def quote : Param → Bool | mk _ _ _ q _ _ _ => q
+def typeArg : Param → Bool | mk _ _ _ _ t _ _ => t
+def optional : Param → Bool | mk _ _ _ _ _ o _ => o
+def raw : Param → Raw | mk _ _ _ _ _ _ r => r
 end Param
 
 namespace Sig

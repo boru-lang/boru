@@ -33,7 +33,8 @@ REPO = os.path.dirname(SPEC)
 WORDS = ["addq", "negq", "pairq", "sumq", "boomq", "patq", "dupq", "__pa", "undef",
          "qanyq", "bothq", "tyq", "tpatq", "unifyq", "meetq", "meetq", "depthq", "afn", "eachq",
          "forq", "forq", "rangeq", "whileq", "breakq", "contq", "ifq", "ifq", "replayq", "callq", "callq",
-         "argsq", "def", "bindq"]
+         "argsq", "def", "bindq", "rawlq", "rawmq", "rawpq", "formq", "raw2q", "form2q"]
+RAW = ("rawlq", "rawmq", "rawpq", "formq", "raw2q", "form2q")
 LITS = ["0", "1", "2", "5", "7", "-3", "'a'", "'x'", "true", "false", "none", "null"]
 TYPES = ["Integer", "String", "Any", "None", "List", "Map", "Boolean", "Word", "Scalar/String"]
 NAMES = ["x", "y", "n", "nosuchword"]
@@ -182,6 +183,20 @@ def gen_item(rng, depth):
                                "undef c fn( n Integer Integer [ n ] )", "undef c ;", "undef c (",
                                "undef c boomq", "undef c x", "7", ""])
             return ["whileq", "[q"] + cond.split() + ["]", "[q"] + body.split() + ["]"]
+        if w in RAW and depth == 2 and rng.random() < 0.7:
+            # a raw-capture word with operands its modes tell apart: a
+            # pending list, a pending map, a paren expression, a word bound
+            # or not — before the word, after it, or either side of it
+            def operand():
+                return rng.choice(["[ addq 1 2 ]", "{ a: p( addq 1 2 ) }", "p( addq 1 2 )", "x", "nosuchword",
+                                   "[ x ]", "p( x )", "{ a: [ x ] }", "5", "negq", "[q addq 1 2 ]", "x/v",
+                                   "( addq 1 2 )", "[ breakq ]", "p( breakq )", "[: Integer 1 ]", "negq/v",
+                                   "inc", "p( )", "[ ]", "nosuchword/2", "c", "i", "n", "[ n ]",
+                                   "fn( n Integer Integer [ n ] )", "rawlq", "formq", ";"]).split()
+            mod = rng.choice(["", "", "", "", "/u", "/u", "/s", "/f", "/1", "/2", "/v", "/uv"])
+            before = sum((operand() for _ in range(rng.choice([0, 0, 0, 1, 2]))), [])
+            after = sum((operand() for _ in range(rng.choice([0, 1, 1, 1, 2, 2, 3]))), [])
+            return before + [w + mod] + after
         # call-site modifiers: /s stack only, /f forward only, /N arity,
         # /v the bound value, /u the function with its arguments reversed
         if rng.random() < 0.22:

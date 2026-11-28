@@ -854,7 +854,9 @@ function registerSpecWords(r: Registry): void {
       // table owns type names — the L135 `def Integer 42` contract).
       {
         args: [TMap, TAny],
-        noEvalArgs: new Set([0]),
+        // the typed-name map arrives as written: the MAP field, as Go's
+        // typedDef sig has it (NoEvalMapArgs)
+        noEvalMapArgs: new Set([0]),
         handler: (args, _ctx, _stk, registry) => {
           const nameMap = args[0]!.asMap()
           if (nameMap.size !== 1) {

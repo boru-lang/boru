@@ -46,6 +46,7 @@ theorem, or by the differential search.
 | The function-spec reader: a written list of triples — parameters, returns, a body — read into signatures. A parameter list element by element: `name:Type`, `name?:Type`, `name:Type/q`, the keyword `name:kw/q`, a bare type name or type, an Integer, Boolean or String the slot admits exactly, a map as an unnamed Map pattern, `|` the barrier, `?` the optional mark; a parameter name is a word's name. A declaration resolved to a type and, where it says more, a pattern (a scalar its family, a union `Any`, a list or map its family; a string that could never name a type the string, one shaped like a type name an error; a name bound to a bare type that type, and bound to any other type body `Any` with no pattern — NUR411, as the kernel has it; `none` nothing — NUR408, as the kernel has it). Returns: several by position, a named return its type, a part that is not a list the list of itself, and a typed list the list of its retained elements. The unnamed path takes fewer declarations than the named (NUR409, as the kernel has it) | `fn_def.go` `ParseFnDef`; `fn_params.go` `ParseFnParams`, `ParseFnReturns`, `ResolveSigType`, `unwrapNamedReturn`, `keywordParam`, `looksLikeTypeName`; `word_name.go` `ValidateWordName` | `FnSpec.lean` `parseTriples`, `parseParams`, `parseReturns`, `resolveSigType`, `boundType`, `validName` | `Theorems/FnSpec.lean`; `divergent.tsv` (Go column); search |
 | The return check's patterns: a returned value must be of the declared type and unify with the declared pattern | `engine.go` `validateReturnTypesIn`; `value.go` `ReturnCheckInfo.ReturnPatterns` | `Value.lean` `Impl.boru` (`returnPatterns`), `returnCheck`; `Engine.lean` `closeFrame` | `Theorems/FnSpec.lean` (`a_return_pattern_is_checked`); `divergent.tsv` (Go column); search |
 | The definition install: a plain value is bound; a function is compiled under the name — an older definition of the name whose parameter types it repeats is taken off (a redefinition replaces, other types stack) unless it is a host word's, whose signatures are locked, every optional parameter is expanded into signatures whose bodies call the function by name with the type's base value (none where the type has no base value or the parameter's pattern refuses it — NUR410, as the kernel has it), and each body is asked then whether its frames record | `core_helpers.go` `InstallDef`, `installFnDef`, `compileFnSigs`, `ExpandOptionalSigs`, `omittedDefaultValue`, `BaseValue`, `FnDefsOverlap`, `hasLockedSig` | `FnSpec.lean` `install`, `expandOptional`, `baseValue`, `overlap` | `Theorems/FnSpec.lean`; `dispatch.tsv`; `divergent.tsv` (Go column); search |
+| The raw-capture slots — four independent ways a slot takes its operand as it was WRITTEN: a pending list handed over unevaluated, a pending map, a paren expression written after the word captured as code, any form captured as it stands (a word stays a word, bound or not; `/v` is read first, as at a `/q` slot). Each mode is one slot's, whichever side fills it; the list and map modes are separate, and the form mode keeps neither a list nor a map unevaluated; what is handed over is data from then on. As the kernel has it: the usurp wrapper drops the list and map modes and keeps the paren and form modes at the original's positions (NUR413), and a paren expression that arrives at a waiting word is kept by the mode of its signature, not of the slot (NUR414) | `value.go` `FnSig.NoEvalArgs`, `NoEvalMapArgs`, `RawParens`, `FormArgs`; `engine.go` `execMatch`, `pendingForwardWantsRawParen`, `hasPendingForwardFormArg`, `sigRawSlot`; `collect_kernel.go` `CollectForward`, `CollectCandidateScan`; `core_ref.go` `usurpOver` | `Value.lean` `Raw`; `Match.lean` `isRawSlot`, `keepsParen`, `wantsRawParen`, `scanAdmits`; `Engine.lean` `evalArgs`, `collectWalk`, `stepLiteral`, `pendingFormSlot`, `pendingWantsRawParen`, `usurpOver` | `Theorems/Raw.lean`; `dispatch.tsv` (the list and map modes, 66 rows, through `rawlq`, `rawmq` and `raw2q`); `divergent.tsv` (the paren and form modes, through `rawpq`, `formq`, `form2q`); search |
 | A failed plan: retried with every argument from the stack — for a native word, a function literal and a forced arity, and NOT for a word defined in boru, whose synthetic fallback answers it (NUR398, as the kernel has it) | `engine.go` `matchForDispatch`, `registry.go` `fnFallbackSig` | `Engine.lean` `answersItself`, `dispatchWord` | `dispatch.tsv`; `divergent.tsv` (Go column); search |
 | The stack-form probe | `signature.go` `MatchSignature` | `Match.lean` | search |
 | The step loop: literals and arrival, word resolution, word literals, undefined words | `engine.go` | `Engine.lean` | corpus; search |
@@ -95,17 +96,25 @@ extending the notation and its fixture in all three runners first.
   names one, a sugar marker that lowers to one;
 - the RESOURCE side of tail calls: that a chain of them costs no tape (the
   model has fuel, not a tape ceiling);
-- the dispatch order's two inputs the fixture cannot reach: a pattern
-  against a bare type across two overloads of one word, and `CoreDefault`
-  (every fixture word has one signature, and `fn(` declares types only);
-  and `Extends`;
+- the dispatch order's inputs the fixture cannot reach: `CoreDefault` and
+  `Extends` (a pattern against a bare type across two overloads of one
+  word is pinned through the `fn` fixture, in `divergent.tsv`);
 - a loop's own step budget, its context layer, and the
   attribution of a body's fault; where a `flow_error` is reported (only
   its code is specified); `move_error`, for a move whose mark was never
   stepped (no token stream a word builds has one);
 - splice markers, sugar markers, reaches, interpolated strings, XML;
-- macros and the raw-capture slots (`FormArgs`, `RawParens`,
-  `NoEvalArgs`);
+- macros: the definer, expansion, hygiene, `macroexpand`;
+- of the raw-capture slots: two overloads of one word that mark a
+  position differently (the plan walk keeps a paren expression when ANY
+  overload marks it; no fixture word has two signatures); a reach or a
+  sugar marker at a raw slot; a pattern on a raw slot, and the evaluation
+  the raw slots are exempt from there — the kernel evaluates a pending
+  container a pattern must judge AT THE MATCH (`patternOperand`), and the
+  model has neither that evaluation nor the exemption; and the exemption
+  of an inert type shape from resolution at a no-evaluation slot, which
+  the model states and no row can show (the residual sweep resolves the
+  shape whatever the slot did);
 - the step budget's accounting, the tape growth ceiling, tracing.
 
 **Types and values**

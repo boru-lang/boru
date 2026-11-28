@@ -168,6 +168,7 @@ export class Registry {
       barrierPos,
       patterns: ns.patterns,
       noEvalArgs: ns.noEvalArgs,
+      noEvalMapArgs: ns.noEvalMapArgs,
       fallback: ns.fallback,
       fullStack: ns.fullStack,
       typeArgs: ns.typeArgs,

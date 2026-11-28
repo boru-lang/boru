@@ -655,6 +655,12 @@ func coreSpecRegistry(t *testing.T) *Registry {
 	// bound after the call. It stands for every word that binds from the
 	// host without being on the kernel's list (lang's `unpack` is the
 	// shipped one; NUR384).
+	//
+	// It binds as the kernel's own binders do — through InstallDef. A raw
+	// Defs.Push of a FUNCTION value leaves a body with no runner under a
+	// name, a state no kernel binder makes at run time: called by that name
+	// it is refused as an internal error (execMatch's nil-handler arm). The
+	// fixture pushed raw until 2026-11-28, and a fuzzer found the arm.
 	r.Register("bindq", Signature{
 		Params:  []FnParam{{Name: "n", Type: TAtom, Quote: true}, {Name: "v", Type: TAny}},
 		Returns: []*Type{},
@@ -663,7 +669,7 @@ func coreSpecRegistry(t *testing.T) *Registry {
 			if err != nil {
 				return nil, err
 			}
-			reg.Defs.Push(n, a[1])
+			InstallDef(reg, n, a[1])
 			return nil, nil
 		}),
 		BarrierPos: 2,
@@ -923,6 +929,72 @@ func coreSpecRegistry(t *testing.T) *Registry {
 			return []Value{a[0]}, nil
 		}),
 		BarrierPos: 1,
+	})
+	// The RAW-CAPTURE slots: four ways a signature takes an operand as it
+	// was written rather than as it evaluates. rawlq's slot leaves a pending
+	// LIST unevaluated and rawmq's a pending MAP — the two are separate
+	// fields, so a map at rawlq's slot evaluates and a list at rawmq's does.
+	// Each returns what it was handed.
+	r.Register("rawlq", Signature{
+		Params:     []FnParam{{Name: "x", Type: TAny}},
+		NoEvalArgs: map[int]bool{0: true},
+		Returns:    []*Type{TAny},
+		Impl: Go(func(a []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Value, error) {
+			return []Value{a[0]}, nil
+		}),
+		BarrierPos: 1,
+	})
+	r.Register("rawmq", Signature{
+		Params:        []FnParam{{Name: "x", Type: TAny}},
+		NoEvalMapArgs: map[int]bool{0: true},
+		Returns:       []*Type{TAny},
+		Impl: Go(func(a []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Value, error) {
+			return []Value{a[0]}, nil
+		}),
+		BarrierPos: 1,
+	})
+	// rawpq's slot captures a forward PAREN EXPRESSION as code, and formq's
+	// captures ANY form — a word stays a word. A captured word or paren
+	// handed back bare would re-enter the tape and run, so each returns its
+	// capture inside a one-element list, where a row can read it.
+	r.Register("rawpq", Signature{
+		Params:    []FnParam{{Name: "x", Type: TAny}},
+		RawParens: map[int]bool{0: true},
+		Returns:   []*Type{TList},
+		Impl: Go(func(a []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Value, error) {
+			return []Value{NewList([]Value{a[0]})}, nil
+		}),
+		BarrierPos: 1,
+	})
+	r.Register("formq", Signature{
+		Params:   []FnParam{{Name: "x", Type: TAny}},
+		FormArgs: map[int]bool{0: true},
+		Returns:  []*Type{TList},
+		Impl: Go(func(a []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Value, error) {
+			return []Value{NewList([]Value{a[0]})}, nil
+		}),
+		BarrierPos: 1,
+	})
+	// raw2q and form2q put the raw slot SECOND of two, so a row can tell
+	// which position a capture belongs to; each returns both arguments in
+	// signature order.
+	r.Register("raw2q", Signature{
+		Params:     []FnParam{{Name: "a", Type: TAny}, {Name: "b", Type: TAny}},
+		NoEvalArgs: map[int]bool{1: true},
+		Returns:    []*Type{TList},
+		Impl: Go(func(a []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Value, error) {
+			return []Value{NewList([]Value{a[0], a[1]})}, nil
+		}),
+		BarrierPos: 2,
+	})
+	r.Register("form2q", Signature{
+		Params:   []FnParam{{Name: "a", Type: TAny}, {Name: "b", Type: TAny}},
+		FormArgs: map[int]bool{1: true},
+		Returns:  []*Type{TList},
+		Impl: Go(func(a []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Value, error) {
+			return []Value{NewList([]Value{a[0], a[1]})}, nil
+		}),
+		BarrierPos: 2,
 	})
 	// tpatq carries a TYPE-LITERAL pattern (rather than patq's concrete
 	// scalar one) on a STACK slot. The distinction is load-bearing: a

@@ -14,8 +14,8 @@ namespace Boru.Corespec
 open Boru.Core
 
 private def p (name : String) (type : TypeId) (pattern : Option Value := none)
-    (quote : Bool := false) (typeArg : Bool := false) : Param :=
-  .mk name type pattern quote typeArg false
+    (quote : Bool := false) (typeArg : Bool := false) (raw : Raw := {}) : Param :=
+  .mk name type pattern quote typeArg false raw
 
 private def word (name : String) (params : List Param) (returns : List TypeId) (barrier : Nat)
     (fullStack : Bool := false) : String × Value :=
@@ -52,6 +52,15 @@ def fixtureDefs : Defs :=
     word "bothq" [p "a" TAny, p "b" TAny] [TAny] 2,
     -- a TYPE-ARG slot
     word "tyq" [p "t" TAny (typeArg := true)] [TAny] 1,
+    -- the RAW-CAPTURE slots: a pending list handed over unevaluated, a
+    -- pending map, a paren expression captured as code, any form captured
+    -- as it stands; and the raw slot second of two
+    word "rawlq" [p "x" TAny (raw := { list := true })] [TAny] 1,
+    word "rawmq" [p "x" TAny (raw := { map := true })] [TAny] 1,
+    word "rawpq" [p "x" TAny (raw := { paren := true })] [TList] 1,
+    word "formq" [p "x" TAny (raw := { form := true })] [TList] 1,
+    word "raw2q" [p "a" TAny, p "b" TAny (raw := { list := true })] [TList] 2,
+    word "form2q" [p "a" TAny, p "b" TAny (raw := { form := true })] [TList] 2,
     -- a TYPE-LITERAL pattern on a stack slot
     word "tpatq" [p "v" TAny (pattern := some (.typeLit TInteger))] [TInteger] 0,
     word "unifyq" [p "a" TAny, p "b" TAny] [TBoolean] 2,
@@ -149,9 +158,20 @@ def fixtureNatives : Natives :=
       | .error e => throw { code := "fn_invalid_spec", detail := e }),
     ("bindq", .plain fun a d =>
       match a.getD 0 .none with
-      | .atom n => pure ([], d.push n (a.getD 1 .none))
+      -- it binds as `def` does — a function is installed — and differs
+      -- from it only in the name the frame analysis reads
+      | .atom n => pure ([], FnSpec.install d n (a.getD 1 .none))
       | _ => throw { code := "type_error", detail := "bindq: not an atom" }),
     ("qanyq", .plain fun a d => pure ([a.getD 0 .none], d)),
+    -- the raw-capture words hand back what they were handed: a list or a
+    -- map as it is, a captured paren or form inside a one-element list —
+    -- bare, it would re-enter the tape and run
+    ("rawlq", .plain fun a d => pure ([a.getD 0 .none], d)),
+    ("rawmq", .plain fun a d => pure ([a.getD 0 .none], d)),
+    ("rawpq", .plain fun a d => pure ([.list [a.getD 0 .none] false], d)),
+    ("formq", .plain fun a d => pure ([.list [a.getD 0 .none] false], d)),
+    ("raw2q", .plain fun a d => pure ([.list [a.getD 0 .none, a.getD 1 .none] false], d)),
+    ("form2q", .plain fun a d => pure ([.list [a.getD 0 .none, a.getD 1 .none] false], d)),
     ("bothq", .plain fun a d => pure ([a.getD 1 .none], d)),
     ("tyq", .plain fun a d => pure ([a.getD 0 .none], d)),
     ("tpatq", .plain fun a d => pure ([a.getD 0 .none], d)),
@@ -212,7 +232,7 @@ def fixtureNatives : Natives :=
         -- a new function each time one is built, capturing what the
         -- enclosing frame has bound
         let (ident, d) := d.freshIdent
-        let sig := Sig.mk [.mk name TAny none false false false] [TAny] 1
+        let sig := Sig.mk [.mk name TAny none false false false {}] [TAny] 1
           (.boru body (computeCaptures d [name] body) true none []) false
         pure ([.fn "" [sig] ident], d)
       | _ => throw { code := "type_error", detail := "afn: the parameter is a name" }),

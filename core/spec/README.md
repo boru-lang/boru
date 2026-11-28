@@ -111,7 +111,9 @@ purpose, as `afn` and `undef` do: the kernel decides BY NAME whether a body
 can bind (`frameStateWords`), and gives a body that cannot a frame with no
 record of what to undo. `bindq name value` is the same binding under a
 name that list does not hold, and stands for every word that binds from
-the host without being on it (lang's `unpack` is the shipped one).
+the host without being on it (lang's `unpack` is the shipped one). It
+binds through the same install: a function pushed raw under a name is a
+state no kernel binder makes, and calling it there is an internal error.
 
 ### A function written as a specification
 
@@ -127,6 +129,23 @@ The word answers the function as the reader leaves it; binding it with
 `def` installs it, and since a nested call in a forward window is not
 planned, a row writes `def f ( fn [q … ] )`. Every refusal of the reader
 is `ERROR:fn_invalid_spec`. The Go runner's and the Lean runner's only.
+
+### An operand taken as it was written
+
+Six words reach the RAW-CAPTURE slots: four ways a signature takes an
+operand as it was written rather than as it evaluates, each a field of
+its own (`NoEvalArgs`, `NoEvalMapArgs`, `RawParens`, `FormArgs`). `rawlq`
+has one slot that leaves a pending LIST unevaluated and `rawmq` one that
+leaves a pending MAP; both answer what they were handed. `rawpq`'s slot
+captures a paren expression written after the word as code, and `formq`'s
+captures ANY form — a word stays a word, bound or not; each answers its
+capture inside a one-element list, because a captured word or paren
+handed back bare re-enters the tape and runs. `raw2q` (the list mode) and
+`form2q` (the form mode) put the raw slot SECOND of two and answer both
+arguments in signature order, so a row can tell which position a mode
+belongs to. core/ts has the list and map modes: `rawlq`, `rawmq` and
+`raw2q` are in all three runners, the other three in the Go runner and
+the Lean model.
 
 ### A call's arguments
 
@@ -222,7 +241,7 @@ than silently re-baselined. Each runner also **fails a row whose `go` and
 belongs in, or this stops being an honest debt list. Shrink-only, exactly as
 `parser/spec/divergent.tsv` is.
 
-It holds **514 rows**. 482 are a mechanism `core/ts` does not have at
+It holds **612 rows**. 579 are a mechanism `core/ts` does not have at
 all: closures (26 rows, the `afn` fixture); driven loops (35 rows, the
 `eachq` fixture — eight of them the same loop out of a group and inside one
 a waiting word evaluates, where the kernel once stepped the loop's inert
@@ -244,10 +263,16 @@ a function); a function that calls itself last, through a branch (13
 rows); the deferred residual of an anonymous function's one bare
 container (9 rows); an alias of a binding word in the body of a
 function value (6 rows); and the function-spec reader and the definition
-install (96 rows, the `fn` fixture and `def` over a function — two of
-them NUR409, two NUR410 and three NUR411, pinned as the kernel has it). Two are a difference in a mechanism both have:
+install (101 rows, the `fn` fixture and `def` over a function — five of
+them the dispatch order of a pattern against a bare type, two of
+them NUR409, two NUR410 and three NUR411, pinned as the kernel has it);
+and two of the four raw-capture slots (92 rows, the `rawpq`, `formq` and
+`form2q` fixtures — three of them NUR413 and three NUR414, pinned as the
+kernel has it). Three are a difference in a mechanism both have:
 `core/ts` puts a list argument's quoted BINDING in the args list, where
-the kernel puts the argument. Two are a diagnostic: the kernel reports a
+the kernel puts the argument (two rows), and hands a waiting word the
+paren expression a name is bound to as code, where the kernel runs it as
+the group it is (one). Two are a diagnostic: the kernel reports a
 void argument of the word named `def` as `def_error`. **Five are the only
 rows where the Lean specification agrees with the `ts` column.** Two are
 NUR407: core/go's tail-call elision changes the answer of a callee that

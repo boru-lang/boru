@@ -158,6 +158,34 @@ def pendingQuoteSlot (tape : List Value) (defs : Defs) (ptr : Nat) : Bool :=
     | _ => false
   | none => false
 
+/-- Is a parked forward's NEXT slot a FORM slot: the word about to be
+    stepped is collected as it is written — not run, not replaced by what
+    it is bound to, not turned into a name (core/go
+    `hasPendingForwardFormArg`). -/
+def pendingFormSlot (tape : List Value) (ptr : Nat) : Bool :=
+  match pendingForwardIdx tape ptr with
+  | some i =>
+    match tape[i]? with
+    | some (.forward f s) => f.collected < s.arity && (s.raw f.collected).form
+    | _ => false
+  | none => false
+
+/-- Does the nearest parked forward capture a paren expression RAW. The
+    question is asked of the forward's SIGNATURE, not of its next slot:
+    a signature with a raw-paren or form slot anywhere takes a paren
+    expression that arrives at the pointer as it stands (core/go
+    `pendingForwardWantsRawParen`). The plan walk has already evaluated
+    the paren expressions written at the signature's ordinary slots, so
+    the two questions differ only for an overload whose raw slot another
+    overload of the word kept raw. -/
+def pendingWantsRawParen (tape : List Value) (ptr : Nat) : Bool :=
+  match pendingForwardIdx tape ptr with
+  | some i =>
+    match tape[i]? with
+    | some (.forward _ s) => s.wantsRawParen
+    | _ => false
+  | none => false
+
 /-- Is a parked forward still short of its signature's arity — still
     collecting. -/
 def pendingCollecting (tape : List Value) (defs : Defs) (ptr : Nat) : Bool :=
@@ -289,7 +317,15 @@ def wouldWiden (tape : List Value) (defs : Defs) (sigs : List Sig) (completed id
 def usurpOver (name : String) (sigs : List Sig) (origIdent ident : Nat) : Value :=
   let orig := Value.fn name sigs origIdent
   let wrapped := sigs.map fun s =>
-    Sig.mk (s.params.reverse.map fun p => Param.mk p.name p.type p.pattern p.quote false p.optional)
+    -- the raw-capture modes are NOT reversed with the parameters: the
+    -- wrapper drops the two no-evaluation modes — so it evaluates a list
+    -- or map the original would have taken raw — and keeps the paren and
+    -- form modes at the positions they had in the ORIGINAL, which are
+    -- other parameters' positions now (NUR413, as the kernel has it)
+    Sig.mk (s.params.reverse.zipIdx.map fun (p, i) =>
+        let stale := ((s.params[i]?).map Param.raw).getD {}
+        Param.mk p.name p.type p.pattern p.quote false p.optional
+          { paren := stale.paren, form := stale.form })
       s.returns s.arity (.usurp orig s.barrier) false
   .fn name (wrapped.foldl (fun acc s => Defs.insertSig s acc) []) ident
 
@@ -567,6 +603,8 @@ def stepWord (nat : Natives) : Nat → Engine → WordInfo → Except BoruError 
     else
     -- a parked forward that captures NAMES takes the word as it is written
     if pendingQuoteSlot e.tape e.defs e.ptr then stepLiteral nat fuel e
+    -- and one whose next slot is a FORM slot takes the word itself
+    else if pendingFormSlot e.tape e.ptr then stepLiteral nat fuel e
     else
       match e.defs.top? w.name with
       | some top =>
@@ -655,8 +693,12 @@ def collectWalk (nat : Natives) :
   | fuel + 1, e, sigs, viable, pos, scanIdx =>
     let maxBarrier := viable.foldl (fun m (_, b) => max m b) 0
     let consumes := viable.any (fun (_, b) => pos < b)
-    let rawSlot (s : Sig) : Bool := s.isTypeArg pos
-    let captures := sigs.any (fun s => s.isQuote pos || s.isTypeArg pos)
+    let rawSlot (s : Sig) : Bool := s.isRawSlot pos
+    let captures := sigs.any (fun s => s.isQuote pos || s.isRawSlot pos)
+    -- a paren expression is left as code when ANY overload of the word
+    -- captures this position raw (core/go `rawParenForward`,
+    -- `rawFormForward`): the walk does not know yet which one will run
+    let keepsParen := sigs.any (fun s => s.keepsParen pos)
     let prunePatterns (v : Value) : List (Sig × Nat) :=
       viable.filter fun (s, b) =>
         !(pos < b && !rawSlot s && !s.isQuote pos && forwardPatternRejects s pos v)
@@ -679,13 +721,17 @@ def collectWalk (nat : Natives) :
                 | some res => (match res with
                     | .word tw => (match e.defs.top? tw.name with
                         | some top => viable.filter fun (s, b) =>
-                            !(pos < b && !s.isTypeArg pos && !s.isQuote pos && forwardPatternRejects s pos top)
+                            !(pos < b && !s.isRawSlot pos && !s.isQuote pos && forwardPatternRejects s pos top)
                         | none => viable)
                     | v => viable.filter fun (s, b) =>
-                        !(pos < b && !s.isTypeArg pos && !s.isQuote pos && forwardPatternRejects s pos v))
+                        !(pos < b && !s.isRawSlot pos && !s.isQuote pos && forwardPatternRejects s pos v))
                 | none => viable
               collectWalk nat fuel e sigs viable (pos + 1) (scanIdx + 1)
           | .parenExpr items =>
+            -- at a raw-capture position it stays code, for the overload
+            -- that captures it
+            if keepsParen then collectWalk nat fuel e sigs viable (pos + 1) (scanIdx + 1)
+            else
             -- a paren expression becomes its marker span and is re-read
             collectWalk nat fuel
               { e with tape := splice e.tape scanIdx 1 (.openParen :: items ++ [.closeParen]) }
@@ -772,10 +818,19 @@ def stepLiteral (nat : Natives) : Nat → Engine → Except BoruError Engine
     let valIdx := e.ptr
     match e.tok? valIdx with
     | none => pure e
-    | some (.parenExpr items) =>
-      -- a deferred paren expression becomes its marker span and is re-stepped
-      pure { e with tape := splice e.tape valIdx 1 (.openParen :: items ++ [.closeParen]) }
     | some val =>
+      -- a paren expression becomes its marker span and is re-stepped —
+      -- unless a parked forward that captures parens raw is waiting: then
+      -- it is a value like any other, and is collected as it stands
+      let expands := match val with
+        | .parenExpr _ => !pendingWantsRawParen e.tape e.ptr
+        | _ => false
+      if expands then
+        match val with
+        | .parenExpr items =>
+          pure { e with tape := splice e.tape valIdx 1 (.openParen :: items ++ [.closeParen]) }
+        | _ => pure e
+      else
       match pendingForwardIdx e.tape e.ptr with
       | none =>
         match val with
@@ -1205,7 +1260,7 @@ def execMatch (nat : Natives) :
     let indices := if positions.isEmpty && n > 0 then resolvedIndicesBefore e.tape e.ptr n else positions
     let rawArgs := indices.filterMap (e.tape[·]?)
     -- a pending container argument is a program: run it first
-    let (args, defs) ← evalArgs nat fuel e.defs rawArgs
+    let (args, defs) ← evalArgs nat fuel e.defs (rawArgs.zipIdx.map fun (v, i) => (v, s.raw i))
     let e := { e with defs := defs }
     -- a signal an argument literal let out: the call is abandoned
     if e.defs.flowing then pure e else
@@ -1303,14 +1358,28 @@ def execMatch (nat : Natives) :
         pure { e with tape := splice e.tape argStart (e.ptr + 1 - argStart) results, ptr := argStart }
 
 def evalArgs (nat : Natives) :
-    Nat → Defs → List Value → Except BoruError (List Value × Defs)
+    Nat → Defs → List (Value × Raw) → Except BoruError (List Value × Defs)
   | 0, _, _ => Engine.outOfFuel
   | _ + 1, defs, [] => pure ([], defs)
-  | fuel + 1, defs, v :: vs => do
-    let (v', defs) ← if v.isPendingContainer then autoEval nat fuel defs v else pure (v, defs)
+  | fuel + 1, defs, (v, raw) :: vs => do
+    -- THE NO-EVALUATION SLOTS (core/go `NoEvalArgs`, `NoEvalMapArgs`): a
+    -- pending list at a slot that takes lists raw, or a pending map at
+    -- one that takes maps raw, is handed over as it was written — no
+    -- longer pending, so nothing evaluates it later either. The two modes
+    -- are separate: a map at a list-raw slot is evaluated, and a list at
+    -- a map-raw slot is
+    let kept : Option Value := match v with
+      | .list elems true => if raw.list then some (.list elems false) else none
+      | .map entries true => if raw.map then some (.map entries false) else none
+      | _ => none
+    let (v', defs) ← match kept with
+      | some k => pure (k, defs)
+      | none => if v.isPendingContainer then autoEval nat fuel defs v else pure (v, defs)
     if defs.flowing then pure ([], defs) else do
     let (vs', defs) ← evalArgs nat fuel defs vs
-    pure (resolveInert v' :: vs', defs)
+    -- a slot with either mode leaves an inert type shape unresolved too,
+    -- whatever the value is
+    pure ((if raw.list || raw.map then v' else resolveInert v') :: vs', defs)
 
 /-- Evaluate a pending container. A list's elements run as one program
     and the list of its residuals is the value. A map evaluates member by
