@@ -793,7 +793,11 @@ def collectWalk (nat : Natives) :
     let maxBarrier := viable.foldl (fun m (_, b) => max m b) 0
     let consumes := viable.any (fun (_, b) => pos < b)
     let rawSlot (s : Sig) : Bool := s.isRawSlot pos
-    let captures := sigs.any (fun s => s.isQuote pos || s.isRawSlot pos)
+    -- does any overload capture THIS token structurally at this position
+    -- (core/go `capturesForwardToken`): a keyword slot captures only its
+    -- keyword, so a word that is not it keeps its ordinary treatment —
+    -- the boundary a function word is, the group a data splice becomes
+    let captures (tok : Value) : Bool := sigs.any (fun s => s.capturesToken pos tok)
     -- a paren expression is left as code when ANY overload of the word
     -- captures this position raw (core/go `rawParenForward`,
     -- `rawFormForward`): the walk does not know yet which one will run
@@ -842,11 +846,11 @@ def collectWalk (nat : Natives) :
             -- and read again — so the group is evaluated here, and what
             -- it leaves fills as many slots as it has values. A binder's
             -- operand is exempt (`def y w` rebinds the marker)
-            if consumes && !binder && !captures && boundToDataSplice e.defs tw.name then
+            if consumes && !binder && !captures tok && boundToDataSplice e.defs tw.name then
               collectWalk nat fuel binder
                 { e with tape := setAt e.tape scanIdx (.parenExpr [tok]) } sigs viable pos scanIdx
             else
-            if !captures && (e.defs.lookup? tw.name).isSome && !tw.forceVal then pure e
+            if !captures tok && (e.defs.lookup? tw.name).isSome && !tw.forceVal then pure e
             else collectWalk nat fuel binder e sigs (pruneResolved tok) (pos + 1) (scanIdx + 1)
           | v =>
             let viable :=

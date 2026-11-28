@@ -516,7 +516,7 @@ Three things from it are worth carrying even if the tables are never read:
   notation and the `spliceq` fixture in all three runners. Two rows are a
   gap in the port: a marker written as a MAP MEMBER is left a marker
   (`{ a: s( [q 1 2 ] ) }` is `{a:word(undefined)}`), where core/go fires
-  it in the member's region. Two more are each engine's own debug print
+  it in the member's region. Three more are each engine's own debug print
   of a marker left on the stack (NUR416: neither is source).
 - NUR059: canon still renders sugar tags, `/r` and `/N` word modifiers,
   and paren groups in debug spelling. Both engines agree, so it is render

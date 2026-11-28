@@ -184,6 +184,26 @@ theorem the_capturing_slots_take_the_word_or_the_group :
       outWith d [w "tyq", w "w"] == refused) = true := by
   native_decide
 
+/-- A KEYWORD SLOT CAPTURES ONLY ITS KEYWORD. An overload whose slot
+    admits the one word `kw` does not make a capture of every word
+    written at its position: beside it, a word bound to a data splice is
+    still the group, and its value takes the overload that fits it. A
+    slot that captures ANY name takes the word. -/
+theorem a_keyword_slot_captures_only_its_keyword :
+    (pairs.all fun (a, b) =>
+      let d := withW a b
+      let f (first : String) (call : List Value) : List Value :=
+        let spec := quot [quot [w first], quot [.typeLit TAny], quot [.str "name"],
+                          quot [.typeLit TInteger], quot [.typeLit TAny], quot [.str "integer"]]
+        [.endMark, w "def", w "f", .openParen, w "fn", spec, .closeParen, .endMark] ++ call
+      let d1 := d.push "w" (.splice (quot [.int a]))
+      outWith d1 (f "n:kw/q" [w "f", w "w"]) == one (.str "integer") &&
+      outWith d1 (f "n:kw/q" [w "f", w "kw"]) == one (.str "name") &&
+      outWith d1 (f "n:Atom/q" [w "f", w "w"]) == one (.str "name") &&
+      -- and a function word that is not the keyword is still a boundary
+      outWith d1 (f "n:kw/q" [w "f", w "negq", .int b]) == "ERROR:signature_error") = true := by
+  native_decide
+
 /-- A BINDER TAKES THE MARKER: `def y w` rebinds it, and `y` is the same
     splice under another name — where `def y ( w )` binds the group's
     value. -/

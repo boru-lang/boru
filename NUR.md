@@ -2360,10 +2360,12 @@ def w word ["a" x] ; w/v          → word()({['a' word(x)]})
 
 The two ports do not print the same dump: core/ts answers
 `word(undefined)` for each of these. `core/spec/divergent.tsv` pins two
-rows; the Lean specification states the Go spelling for a payload of
-lists, maps, words and scalars (`Canon.lean` `debugValue`) and says
-nothing of any other payload, and its differential fuzzer compares only
-what stands before a marker's dump.
+rows of the kind; the Lean specification states the Go spelling for a
+payload of lists, maps, words, paren expressions and scalars
+(`Canon.lean` `debugValue` — a string between single quotes with nothing
+escaped, a paren expression as `paren([…])`), not for one that holds a
+function, and its differential fuzzer compares only what stands before a
+marker's dump.
 
 **Proposed verdict:** resolve by fix — canon gets an arm for the marker
 in both ports: the construction that makes one over the payload's canon,

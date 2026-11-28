@@ -267,7 +267,7 @@ than silently re-baselined. Each runner also **fails a row whose `go` and
 belongs in, or this stops being an honest debt list. Shrink-only, exactly as
 `parser/spec/divergent.tsv` is.
 
-It holds **698 rows**. 661 are a mechanism `core/ts` does not have at
+It holds **703 rows**. 665 are a mechanism `core/ts` does not have at
 all: closures (26 rows, the `afn` fixture); driven loops (36 rows, the
 `eachq` fixture — eight of them the same loop out of a group and inside one
 a waiting word evaluates, where the kernel once stepped the loop's inert
@@ -289,8 +289,9 @@ a function); a function that calls itself last, through a branch (13
 rows); the deferred residual of an anonymous function's one bare
 container (9 rows); an alias of a binding word in the body of a
 function value (6 rows); and the function-spec reader and the definition
-install (101 rows, the `fn` fixture and `def` over a function — five of
-them the dispatch order of a pattern against a bare type, two of
+install (105 rows, the `fn` fixture and `def` over a function — five of
+them the dispatch order of a pattern against a bare type, four a
+keyword slot beside a word bound to a splice, two of
 them NUR409, two NUR410 and three NUR411, pinned as the kernel has it);
 two of the four raw-capture slots (94 rows, the `rawpq`, `formq` and
 `form2q` fixtures — three of them NUR413 and three NUR414, pinned as the
@@ -302,7 +303,7 @@ the kernel puts the argument (two rows), and hands a waiting word the
 paren expression a name is bound to as code, where the kernel runs it as
 the group it is (one), and leaves a splice marker written as a map
 member unfired, where the kernel fires it in the member's region (two).
-Two are a rendering: a splice marker left on the stack prints as each
+Three are a rendering: a splice marker left on the stack prints as each
 engine's own debug dump (NUR416). Two are a diagnostic: the kernel reports a
 void argument of the word named `def` as `def_error`. **Five are the only
 rows where the Lean specification agrees with the `ts` column.** Two are

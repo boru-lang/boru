@@ -103,13 +103,18 @@ def canonTag : Value → String
   | .disjunct alts => "(" ++ " tor ".intercalate (canonAlts alts) ++ ")"
   | v => canon v
 
-/-- The engine's own value print (core/go `Value.String`), for the one
-    place canon falls back to it: a word prints as `word(name)`, and a
-    list or map prints its members the same way. Only what a splice
-    marker's payload is seen to hold is stated here; anything else is
-    printed as canon prints it. -/
+/-- The engine's own value print (core/go `Value.String`,
+    `kernelFormatDefault`), for the one place canon falls back to it. It
+    is not canon: a word prints as `word(name)`, without its modifiers; a
+    string is put between single quotes as it is, nothing escaped; a
+    paren expression is `paren([…])`; an atom is its bare name; and a
+    list or map prints its members the same way. What it prints for a
+    function is not stated — that falls to canon here, and is wrong. -/
 def debugValue : Value → String
   | .word w => "word(" ++ w.name ++ ")"
+  | .str s => "'" ++ s ++ "'"
+  | .atom name => name
+  | .parenExpr items => "paren([" ++ " ".intercalate (debugList items) ++ "])"
   | .list elems _ => "[" ++ " ".intercalate (debugList elems) ++ "]"
   | .map entries _ => "{" ++ " ".intercalate (debugEntries entries) ++ "}"
   | .quoted v => debugValue v

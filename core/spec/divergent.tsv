@@ -1104,3 +1104,17 @@ run def w s( [q 1 2 ] ) ; forq 2 [q w ]	1 2 1 2	ERROR:undefined_word	in a loop's
 run def w s( [q 1 2 ] ) ; eachq [q 7 ] [q w ]	[7 1 2]	ERROR:undefined_word	in a driven loop's region
 run s( [q breakq ] )	ERROR:flow_error	ERROR:undefined_word	a spliced signal with no loop to take it
 run def w s( [q 1 breakq ] ) ; forq 2 [q 7 w 8 ]		ERROR:undefined_word	and with one: the round's values go with it
+
+# --- splice markers and a keyword slot ---------------------------------------------
+# A `/q` slot whose pattern is a name is a KEYWORD slot: it captures the
+# word of that name and no other. So beside a keyword overload, a word
+# bound to a data splice is still the group — the keyword overload does
+# not make a capture of every word written at its position (core/go
+# `capturesForwardToken`). Through the `fn` fixture.
+run def w s( [q 5 ] ) ; ; def f ( fn [q [q n:kw/q ] [q Any ] [q 'keyword' ] [q Integer ] [q Any ] [q 'integer' ] ] ) ; f w	'integer'	ERROR:undefined_word	A KEYWORD SLOT CAPTURES ONLY ITS KEYWORD: `w` is not it, so it is the group `(w)` — and its value takes the Integer overload
+run def w s( [q 5 ] ) ; ; def f ( fn [q [q n:kw/q ] [q Any ] [q 'keyword' ] [q Integer ] [q Any ] [q 'integer' ] ] ) ; f kw	'keyword'	ERROR:undefined_word	the keyword itself is captured
+run def w s( [q 5 ] ) ; ; def f ( fn [q [q n:Atom/q ] [q Any ] [q 'name' ] [q Integer ] [q Any ] [q 'integer' ] ] ) ; f w	'name'	ERROR:undefined_word	(a slot that captures ANY name takes the word `w`, as it takes any)
+run def w s( [q 5 ] ) ; ; def f ( fn [q [q n:kw/q ] [q Any ] [q 'keyword' ] ] ) ; f w	ERROR:signature_error	ERROR:undefined_word	with only the keyword overload, the group's value is no keyword
+
+# --- a marker's print, for other payloads ------------------------------------------
+run def w s( [q 'a'b' p( addq 1 2 ) ] ) ; w/v	word()({['a'b' paren([word(addq) 1 2])]})	word(undefined)	NUR416: the payload is in the engine's value print, not canon — a string between single quotes with nothing escaped, a paren expression as `paren([…])`
